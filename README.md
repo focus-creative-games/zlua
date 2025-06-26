@@ -12,6 +12,7 @@ Unity平台已经有革命性的原生C#热更新方案[HybridCLR](https://githu
 - 生成巨量wrapper文件。不仅低效还显著增加了代码大小。
 - 未优化字段、简单property访问这种最最常用的功能。精心优化可以提升10倍以上性能。
 - 对CLR的特性支持不全。例如对泛型类型、泛型函数以及对ref、out、in之类的函数参数支持不佳。
+- 不支持[luau](https://luau.org/)这种新兴的渐进强类型的lua方言
 - 要么已经数年不维护，要么维护频率极低，基本丧失积极维护的动力，需要一个更敏捷的紧跟Unity和团结引擎版本变化的方案。
 
 ## 特性
@@ -21,11 +22,12 @@ Unity平台已经有革命性的原生C#热更新方案[HybridCLR](https://githu
 - 数倍甚至十倍以上优化了双向调用的性能。首次清晰引入 `[LuaInvoke]`、`[LuaCallback]`、 `[LuaMarshalAs]`的概念。
 - 深度优化双向调用过程产生的GC，通过针对il2cpp的优化可以无感优化掉绝大多数struct和string之类的GC问题。
 - 更高效的wrapper生成，所有相同签名函数只需生成一个wrapper函数，极大缩减wrapper数量，同时提供更简洁和灵活的Wrapper配置。
-- 优化il2cpp和lua循环引用引发的内存泄露。
+- 通过整合bdwgc与lua gc，彻底解决il2cpp和lua循环引用引发的内存泄露问题。
 - 支持全方面的CLR与lua运行时的相互调用。例如支持数组、泛型类型、泛型函数以及对ref、out、in之类的函数参数。
 - 支持字段访问优化及简单property(类似`int Value {get; set;}`)优化，至少**提升10倍**以上性能。
 - 清晰优雅的代码实现、良好的模块。
 - 支持luajit 及 lua 5.3-5.4版本。
+- **支持[luau](https://luau.org/)**
 - 尽可能使用luajit深度优化调用c#函数的性能。
 - 尽可能使用light C function优化调用c#函数的性能。
 - 支持协程。
@@ -48,7 +50,7 @@ Unity平台已经有革命性的原生C#热更新方案[HybridCLR](https://githu
 
 ## 支持的版本和平台
 
-- 支持luajit(5.1)及lua 5.3+版本。
+- 支持luajit(5.1)及lua 5.3+版本，**支持[luau](https://luau.org/)**
 - 支持 unity 2022+版本及团结引擎（2021及更早的版本后面再支持）。
 - 支持 mono、il2cpp backend。
 - 支持il2cpp支持的所有平台（含webgl、微信小游戏及团结引擎支持的鸿蒙和车机平台）。
