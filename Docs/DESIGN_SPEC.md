@@ -43,6 +43,16 @@
 
 在editor模式下，开发者定义LuaPInvoke函数时，函数体为空即可。 插件会在编译dll后自动修改注入。 在开发前期，还是手写。等nextlua功能完善了再实现dll修改注入的功能 。
 
+当unity 的dll 编译后， 使用dnlib 修改 dll，对于包含 [LuaInvoke]的函数：
+
+- 检查它必须是static extern 的，不能是泛型类的成员函数，也不能自身是泛型函数，否则抛出异常
+- 从 [LuaInvoke] 中获取 moduleName和methodName
+- 如果在Editor下
+  - 调用 LuaMonoAppDomain类中的 RunLuaFunc 或 `RunLuaFunc<T>`函数
+- 如果不在Editor下
+  - 移除[LuaInvoke]
+  - 添加 [DllImport("__Internal", entryPoint="{entryPoint}")] ，其中entryPoint的值为  {assembly_name}_{full_type_name}_{method_name})，assembly full_type method name中的不能出现在c函数名上的字符全部要移除。
+
 ### MonoLuaCallbackAttribute
 
 类似于 MonoPInvokeCallback，意味着会从lua调用这个函数。 一般来说，只有获得一个c#函数的指针，并且传递给lua调用时才会需要。然而lua仅支持调用 `int (lua_State* L)`
