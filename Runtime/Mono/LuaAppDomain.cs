@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace NextLua
 {
-    public static class LuaAppDomain
+    public static class LuaMonoAppDomain
     {
         private static LuaEnv _luaEnv;
         private static LuaManagerObject _managerObject;

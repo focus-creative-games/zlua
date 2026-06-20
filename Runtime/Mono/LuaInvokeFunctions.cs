@@ -11,14 +11,14 @@ namespace NextLua
         public static void Run(params object[] args)
         {
             (string moduleName, string methodName) = ResolveCallerLuaTarget();
-            LuaAppDomain.RunLuaFunc(moduleName, methodName, args);
+            LuaMonoAppDomain.RunLuaFunc(moduleName, methodName, args);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static T Run<T>(params object[] args)
         {
             (string moduleName, string methodName) = ResolveCallerLuaTarget();
-            return LuaAppDomain.RunLuaFunc<T>(moduleName, methodName, args);
+            return LuaMonoAppDomain.RunLuaFunc<T>(moduleName, methodName, args);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
