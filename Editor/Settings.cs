@@ -93,6 +93,10 @@ namespace NextLua
 
         public static string LocalLibil2cppPath => $"{LocalIl2CppPath}/libil2cpp";
 
+        public static string LuaSrcPathInPackage => $"{NextLuaDataPathInPackage}/lua5.4/src";
+
+        public static string LocalLuaSrcPath => $"{LocalLibil2cppPath}/lua";
+
         private static Settings LoadOrCreate()
         {
             string filePath = SettingsPath;

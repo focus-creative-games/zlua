@@ -225,6 +225,11 @@ namespace NextLua
             string dstLibil2cppDir = Settings.LocalLibil2cppPath;
             DirectoryUtil.CopyDir($"{modifieldLibil2cppSourceDir}", dstLibil2cppDir, true);
 
+            // copy lua src
+            DirectoryUtil.CopyDir($"{Settings.LuaSrcPathInPackage}", Settings.LocalLuaSrcPath, true);
+            // remove luac.c
+            File.Delete($"{Settings.LocalLuaSrcPath}/luac.c");
+
             // clean Il2cppBuildCache
             DirectoryUtil.RemoveDir($"Library/Il2cppBuildCache", true);
             DirectoryUtil.RemoveDir($"Library/Bee", true);

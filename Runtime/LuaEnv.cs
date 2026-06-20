@@ -295,30 +295,6 @@ namespace NextLua
             DoStringIgnoreResult(source);
         }
 
-        private static string TryReadFromPackagePath(string relativePath)
-        {
-            try
-            {
-                string projectRoot = Directory.GetParent(Application.dataPath)?.FullName;
-                if (string.IsNullOrWhiteSpace(projectRoot))
-                {
-                    return null;
-                }
-
-                string fullPath = Path.Combine(projectRoot, "Packages", "com.code-philosophy.nextlua", relativePath);
-                if (!File.Exists(fullPath))
-                {
-                    return null;
-                }
-
-                return File.ReadAllText(fullPath, Encoding.UTF8);
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
         [LuaCallback]
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int Print(IntPtr luaState)

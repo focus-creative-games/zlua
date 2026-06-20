@@ -81,7 +81,7 @@ namespace NextLua
                 LuaDll.lua_setglobal(luaState, "CSharp");
             }
 
-            // CSharp.__index => 程序集懒注册，Lua 访问形式：CSharp.Assembly_CSharp.Demo
+            // CSharp.__index => 程序集懒注册，Lua 访问形式：CSharp["Assembly-CSharp"].Demo
             LuaDll.lua_createtable(luaState, 0, 1);
             IntPtr fn = Marshal.GetFunctionPointerForDelegate(CSharpIndexCallback);
             CallbackRefs.Add(CSharpIndexCallback);
@@ -801,7 +801,7 @@ namespace NextLua
                 return string.Empty;
             }
 
-            return assemblyName.Replace("-", "_").Replace(".", "_");
+            return assemblyName;
         }
 
         [LuaCallback]

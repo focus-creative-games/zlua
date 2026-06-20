@@ -32,6 +32,7 @@ namespace NextLua
             _luaEnv = new LuaEnv();
             _luaEnv.SetModuleLoader(moduleLoader);
             _managerObject = new LuaManagerObject(_luaEnv);
+            _luaEnv.LoadBuiltinGlobals();
             _managerObject.RegisterNextLuaApi();
             _luaEnv.LoadBuiltinNextLuaLib();
         }
