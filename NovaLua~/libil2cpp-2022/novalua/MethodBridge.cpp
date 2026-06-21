@@ -25,6 +25,15 @@ namespace novalua
         return 1;
     }
 
+    int MethodBridge::InvokeStaticVoidInt(lua_State* L, const MethodInfo* method, int argStart)
+    {
+        const int32_t value = (int32_t)lua_tointeger(L, argStart);
+        typedef void (*Fn)(int32_t);
+        Fn fn = (Fn)method->methodPointer;
+        fn(value);
+        return 0;
+    }
+
     int MethodBridge::InvokeInstanceInt(lua_State* L, const MethodInfo* method, Il2CppObject* instance, int argStart)
     {
         (void)argStart;
