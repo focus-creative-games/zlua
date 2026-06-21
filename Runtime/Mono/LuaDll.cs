@@ -59,6 +59,30 @@ namespace NovaLua
             lua_settop(luaState, -count - 1);
         }
 
+        // lua_remove / lua_insert / lua_replace 在 Lua 5.4 是宏，真实导出是 lua_rotate / lua_copy。
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        private static extern void lua_rotate(IntPtr luaState, int idx, int n);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        private static extern void lua_copy(IntPtr luaState, int fromIdx, int toIdx);
+
+        public static void lua_remove(IntPtr luaState, int idx)
+        {
+            lua_rotate(luaState, idx, -1);
+            lua_pop(luaState, 1);
+        }
+
+        public static void lua_insert(IntPtr luaState, int idx)
+        {
+            lua_rotate(luaState, idx, 1);
+        }
+
+        public static void lua_replace(IntPtr luaState, int idx)
+        {
+            lua_copy(luaState, -1, idx);
+            lua_pop(luaState, 1);
+        }
+
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void lua_pushvalue(IntPtr luaState, int index);
 
@@ -99,6 +123,9 @@ namespace NovaLua
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern int lua_setmetatable(IntPtr luaState, int objIndex);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern int lua_getmetatable(IntPtr luaState, int objIndex);
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern LuaDataType lua_rawgeti(IntPtr luaState, int index, long n);

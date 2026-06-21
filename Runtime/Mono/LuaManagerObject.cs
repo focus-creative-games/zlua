@@ -22,6 +22,10 @@ namespace NovaLua
         private static readonly LuaCSFunction NovaLuaTypeOfCallback = NovaLuaTypeOf;
         private static readonly LuaCSFunction NovaLuaCreateSignatureCallback = NovaLuaCreateSignature;
         private static readonly LuaCSFunction NovaLuaMakeGenericTypeCallback = NovaLuaMakeGenericType;
+        private static readonly LuaCSFunction InstanceIndexCallback = InstanceIndex;
+        private static readonly LuaCSFunction InstanceNewIndexCallback = InstanceNewIndex;
+        private static readonly LuaCSFunction StaticTypeIndexCallback = StaticTypeIndex;
+        private static readonly LuaCSFunction StaticTypeNewIndexCallback = StaticTypeNewIndex;
 
         private static int _nextMethodId = 1;
         private static int _nextAssemblyId = 1;
@@ -136,13 +140,26 @@ namespace NovaLua
             PushInstanceMetatable(luaState, type);
             LuaDll.lua_setfield(luaState, typeTableIndex, "__instance_mt");
 
-            LuaDll.lua_createtable(luaState, 0, 1);
+            LuaDll.lua_createtable(luaState, 0, 3);
             LuaCSFunction ctorCb = CreateTypeInstance;
             CallbackRefs.Add(ctorCb);
             IntPtr ctorFn = Marshal.GetFunctionPointerForDelegate(ctorCb);
             LuaDll.lua_pushinteger(luaState, typeId);
             LuaDll.lua_pushcclosure(luaState, ctorFn, 1);
             LuaDll.lua_setfield(luaState, -2, "__call");
+
+            CallbackRefs.Add(StaticTypeIndexCallback);
+            IntPtr staticIndexFn = Marshal.GetFunctionPointerForDelegate(StaticTypeIndexCallback);
+            LuaDll.lua_pushinteger(luaState, typeId);
+            LuaDll.lua_pushcclosure(luaState, staticIndexFn, 1);
+            LuaDll.lua_setfield(luaState, -2, "__index");
+
+            CallbackRefs.Add(StaticTypeNewIndexCallback);
+            IntPtr staticNewIndexFn = Marshal.GetFunctionPointerForDelegate(StaticTypeNewIndexCallback);
+            LuaDll.lua_pushinteger(luaState, typeId);
+            LuaDll.lua_pushcclosure(luaState, staticNewIndexFn, 1);
+            LuaDll.lua_setfield(luaState, -2, "__newindex");
+
             LuaDll.lua_setmetatable(luaState, typeTableIndex);
 
             // 清理注册过程中的临时栈项，保证栈顶是 type table 本身。
@@ -189,8 +206,19 @@ namespace NovaLua
                 SetMethodWithOverloadKeys(luaState, mtIndex, methods[i]);
             }
 
-            LuaDll.lua_pushvalue(luaState, -1);
+            int instanceTypeId = GetOrCreateTypeId(type);
+
+            CallbackRefs.Add(InstanceIndexCallback);
+            IntPtr indexFn = Marshal.GetFunctionPointerForDelegate(InstanceIndexCallback);
+            LuaDll.lua_pushinteger(luaState, instanceTypeId);
+            LuaDll.lua_pushcclosure(luaState, indexFn, 1);
             LuaDll.lua_setfield(luaState, mtIndex, "__index");
+
+            CallbackRefs.Add(InstanceNewIndexCallback);
+            IntPtr newIndexFn = Marshal.GetFunctionPointerForDelegate(InstanceNewIndexCallback);
+            LuaDll.lua_pushinteger(luaState, instanceTypeId);
+            LuaDll.lua_pushcclosure(luaState, newIndexFn, 1);
+            LuaDll.lua_setfield(luaState, mtIndex, "__newindex");
 
             LuaCSFunction gcCb = ReleaseUserData;
             CallbackRefs.Add(gcCb);
@@ -509,6 +537,182 @@ namespace NovaLua
             catch (Exception ex)
             {
                 return LuaDllExtension.error(luaState, $"novalua CreateTypeInstance error: {ex}");
+            }
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int InstanceIndex(IntPtr luaState)
+        {
+            try
+            {
+                int typeId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
+                if (!Types.TryGetValue(typeId, out Type type))
+                {
+                    return 0;
+                }
+
+                string key = LuaDllExtension.tostring(luaState, 2);
+                if (string.IsNullOrEmpty(key))
+                {
+                    return 0;
+                }
+
+                if (LuaDll.lua_getmetatable(luaState, 1) != 0)
+                {
+                    LuaDataType methodType = RawGetField(luaState, -1, key);
+                    if (methodType != LuaDataType.Nil)
+                    {
+                        // stack: userdata, key, metatable, method
+                        LuaDll.lua_remove(luaState, -2);
+                        return 1;
+                    }
+                    LuaDll.lua_pop(luaState, 2);
+                }
+
+                if (!TryGetUserDataTarget(luaState, 1, out object target))
+                {
+                    return 0;
+                }
+
+                FieldInfo field = type.GetField(key, BindingFlags.Public | BindingFlags.Instance);
+                if (field == null)
+                {
+                    return 0;
+                }
+
+                return PushReturn(luaState, field.FieldType, field.GetValue(target));
+            }
+            catch (Exception ex)
+            {
+                return LuaDllExtension.error(luaState, $"novalua InstanceIndex error: {ex}");
+            }
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int InstanceNewIndex(IntPtr luaState)
+        {
+            try
+            {
+                int typeId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
+                if (!Types.TryGetValue(typeId, out Type type))
+                {
+                    return LuaDllExtension.error(luaState, $"novalua: type id {typeId} not found");
+                }
+
+                string key = LuaDllExtension.tostring(luaState, 2);
+                if (string.IsNullOrEmpty(key))
+                {
+                    return LuaDllExtension.error(luaState, "novalua: invalid field name");
+                }
+
+                if (!TryGetUserDataTarget(luaState, 1, out object target))
+                {
+                    return LuaDllExtension.error(luaState, "novalua: invalid userdata for field assignment");
+                }
+
+                FieldInfo field = type.GetField(key, BindingFlags.Public | BindingFlags.Instance);
+                if (field == null)
+                {
+                    return LuaDllExtension.error(luaState, $"novalua: instance field not found: {type.Name}.{key}");
+                }
+
+                object value;
+                try
+                {
+                    value = ReadValue(luaState, 3, field.FieldType);
+                }
+                catch (Exception ex)
+                {
+                    return LuaDllExtension.error(luaState, $"novalua: field arg error: {ex.Message}");
+                }
+
+                field.SetValue(target, value);
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                return LuaDllExtension.error(luaState, $"novalua InstanceNewIndex error: {ex}");
+            }
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int StaticTypeIndex(IntPtr luaState)
+        {
+            try
+            {
+                int typeId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
+                if (!Types.TryGetValue(typeId, out Type type))
+                {
+                    return 0;
+                }
+
+                string key = LuaDllExtension.tostring(luaState, 2);
+                if (string.IsNullOrEmpty(key))
+                {
+                    return 0;
+                }
+
+                FieldInfo field = type.GetField(key, BindingFlags.Public | BindingFlags.Static);
+                if (field != null)
+                {
+                    return PushReturn(luaState, field.FieldType, field.GetValue(null));
+                }
+
+                LuaDataType existsType = RawGetField(luaState, 1, key);
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                return LuaDllExtension.error(luaState, $"novalua StaticTypeIndex error: {ex}");
+            }
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int StaticTypeNewIndex(IntPtr luaState)
+        {
+            try
+            {
+                int typeId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
+                if (!Types.TryGetValue(typeId, out Type type))
+                {
+                    return LuaDllExtension.error(luaState, $"novalua: type id {typeId} not found");
+                }
+
+                string key = LuaDllExtension.tostring(luaState, 2);
+                if (string.IsNullOrEmpty(key))
+                {
+                    return LuaDllExtension.error(luaState, "novalua: invalid field name");
+                }
+
+                FieldInfo field = type.GetField(key, BindingFlags.Public | BindingFlags.Static);
+                if (field != null)
+                {
+                    if (field.IsLiteral)
+                    {
+                        return LuaDllExtension.error(luaState, $"novalua: cannot assign to const field {type.Name}.{key}");
+                    }
+
+                    object value;
+                    try
+                    {
+                        value = ReadValue(luaState, 3, field.FieldType);
+                    }
+                    catch (Exception ex)
+                    {
+                        return LuaDllExtension.error(luaState, $"novalua: field arg error: {ex.Message}");
+                    }
+
+                    field.SetValue(null, value);
+                    return 0;
+                }
+
+                LuaDll.lua_pushvalue(luaState, 3);
+                LuaDll.lua_setfield(luaState, 1, key);
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                return LuaDllExtension.error(luaState, $"novalua StaticTypeNewIndex error: {ex}");
             }
         }
 
