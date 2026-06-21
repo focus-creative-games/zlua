@@ -7,15 +7,14 @@
 
 #include "vm/Class.h"
 #include "vm/Object.h"
+#include "vm/Runtime.h"
 #include "il2cpp-tabledefs.h"
 
 #include <cstring>
 #include <string>
-#include <unordered_map>
 
 namespace novalua
 {
-    static std::unordered_map<Il2CppClass*, int> s_InstanceMtRefs;
     static int ResolveAssemblyTypeIndex(lua_State* L);
 
     static int PushLuaError(lua_State* L, const char* prefix, const char* detail)
@@ -41,6 +40,26 @@ namespace novalua
         return MetadataUtil::ResolveType(assembly, typeName);
     }
 
+    static bool RawFieldIsTable(lua_State* L, int tableIndex, const char* key)
+    {
+        const int absIndex = lua_absindex(L, tableIndex);
+        lua_pushstring(L, key);
+        lua_rawget(L, absIndex);
+        const bool isTable = lua_istable(L, -1);
+        lua_pop(L, 1);
+        return isTable;
+    }
+
+    static bool RawFieldIsNil(lua_State* L, int tableIndex, const char* key)
+    {
+        const int absIndex = lua_absindex(L, tableIndex);
+        lua_pushstring(L, key);
+        lua_rawget(L, absIndex);
+        const bool isNil = lua_isnil(L, -1);
+        lua_pop(L, 1);
+        return isNil;
+    }
+
     static void SetMethodField(lua_State* L, int tableIndex, const char* key);
     static void PushStaticMethodClosure(lua_State* L, const MethodInfo* method);
     static void PushInstanceMethodClosure(lua_State* L, const MethodInfo* method);
@@ -53,10 +72,12 @@ namespace novalua
         if (typeName == nullptr || typeName[0] == '\0')
             return 0;
 
-        lua_getfield(L, 1, typeName);
-        if (lua_istable(L, -1))
+        if (RawFieldIsTable(L, 1, typeName))
+        {
+            lua_pushstring(L, typeName);
+            lua_rawget(L, 1);
             return 1;
-        lua_pop(L, 1);
+        }
 
         lua_getfield(L, 1, "__assembly_name");
         const char* assemblyName = lua_tostring(L, -1);
@@ -81,10 +102,12 @@ namespace novalua
         if (assemblyName == nullptr || assemblyName[0] == '\0')
             return 0;
 
-        lua_getfield(L, 1, assemblyName);
-        if (lua_istable(L, -1))
+        if (RawFieldIsTable(L, 1, assemblyName))
+        {
+            lua_pushstring(L, assemblyName);
+            lua_rawget(L, 1);
             return 1;
-        lua_pop(L, 1);
+        }
 
         if (MetadataUtil::ResolveAssembly(assemblyName) == nullptr)
             return 0;
@@ -168,39 +191,42 @@ namespace novalua
         return luaL_error(L, "novalua: unsupported instance method signature");
     }
 
+    static bool AttachInstanceMetatable(lua_State* L, Il2CppClass* klass)
+    {
+        lua_pushstring(L, "__instance_mt");
+        lua_rawget(L, 1);
+        if (!lua_istable(L, -1))
+        {
+            lua_pop(L, 1);
+            return false;
+        }
+        lua_setmetatable(L, -2);
+        return true;
+    }
+
     static int CreateTypeInstance(lua_State* L)
     {
         Il2CppClass* klass = (Il2CppClass*)lua_touserdata(L, lua_upvalueindex(1));
         if (klass == nullptr)
             return luaL_error(L, "novalua: invalid type binding");
 
-        const int argCount = lua_gettop(L);
+        const int argCount = lua_gettop(L) - 1;
         const MethodInfo* ctor = MetadataUtil::FindConstructor(klass, argCount);
-        if (argCount == 0)
-        {
-            if (ctor != nullptr)
-            {
-                const int ret = MethodBridge::InvokeConstructorNoArgs(L, ctor, klass);
-                auto it = s_InstanceMtRefs.find(klass);
-                if (it != s_InstanceMtRefs.end())
-                {
-                    lua_rawgeti(L, LUA_REGISTRYINDEX, it->second);
-                    lua_setmetatable(L, -2);
-                }
-                return ret;
-            }
-            Il2CppObject* instance = il2cpp::vm::Object::New(klass);
-            ObjectRegistry::PushObject(L, instance);
-            auto it = s_InstanceMtRefs.find(klass);
-            if (it != s_InstanceMtRefs.end())
-            {
-                lua_rawgeti(L, LUA_REGISTRYINDEX, it->second);
-                lua_setmetatable(L, -2);
-            }
-            return 1;
-        }
+        if (ctor == nullptr)
+            return luaL_error(L, "novalua: no constructor found for type: %s", klass->name);
+        if (argCount != 0)
+            return luaL_error(L, "novalua: unsupported constructor signature");
 
-        return luaL_error(L, "novalua: unsupported constructor signature");
+        Il2CppObject* instance = il2cpp::vm::Object::New(klass);
+        Il2CppException* exc = nullptr;
+        il2cpp::vm::Runtime::Invoke(ctor, instance, nullptr, &exc);
+        if (exc != nullptr)
+            return luaL_error(L, "novalua: exception occurred while invoking constructor for type: %s", klass->name);
+
+        ObjectRegistry::PushObject(L, instance);
+        if (!AttachInstanceMetatable(L, klass))
+            return luaL_error(L, "novalua: instance metatable missing for type: %s", klass->name);
+        return 1;
     }
 
     static int ReleaseUserData(lua_State* L)
@@ -212,16 +238,12 @@ namespace novalua
     static void SetMethodField(lua_State* L, int tableIndex, const char* key)
     {
         const int absIndex = lua_absindex(L, tableIndex);
-        lua_getfield(L, absIndex, key);
-        if (lua_isnil(L, -1))
+        if (RawFieldIsNil(L, absIndex, key))
         {
-            lua_pop(L, 1);
-            lua_pushvalue(L, -1);
             lua_setfield(L, absIndex, key);
         }
         else
         {
-            lua_pop(L, 1);
             lua_pop(L, 1);
         }
     }
@@ -316,8 +338,6 @@ namespace novalua
 
         PushInstanceMetatable(L, klass);
         lua_setfield(L, typeTableIndex, "__instance_mt");
-        lua_getfield(L, typeTableIndex, "__instance_mt");
-        s_InstanceMtRefs[klass] = luaL_ref(L, LUA_REGISTRYINDEX);
 
         lua_newtable(L);
         lua_pushlightuserdata(L, klass);
