@@ -31,6 +31,7 @@ namespace novalua
 
     void LuaAppDomain::InitializeFromManaged(void* moduleLoaderDelegate)
     {
+        LuaEnv::RegisterRoots();
         LuaEnv::Create((Il2CppDelegate*)moduleLoaderDelegate);
         BuiltinScripts::LoadGlobals();
         LuaInteropManager::RegisterNovaLuaApi();

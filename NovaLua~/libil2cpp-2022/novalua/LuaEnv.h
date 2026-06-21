@@ -15,6 +15,7 @@ namespace novalua
         static void Create(Il2CppDelegate* moduleLoader);
         static void Shutdown();
 
+        static void RegisterRoots();
         static lua_State* GetState();
         static Il2CppDelegate* GetModuleLoader();
 

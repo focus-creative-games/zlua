@@ -15,7 +15,6 @@
 namespace novalua
 {
     static lua_State* s_L = nullptr;
-    static Il2CppDelegate** s_gcFixedDatas = nullptr;
     static Il2CppDelegate* s_ModuleLoader = nullptr;
     static const MethodInfo* s_moduleLoaderInvoker = nullptr;
     static std::unordered_map<std::string, int> s_ModuleRefs;
@@ -45,17 +44,17 @@ namespace novalua
         return 0;
     }
 
+    void LuaEnv::RegisterRoots()
+    {
+        il2cpp::gc::GarbageCollector::RegisterRoot((char*)&s_ModuleLoader, sizeof(s_ModuleLoader));
+    }
+
     void LuaEnv::Create(Il2CppDelegate* moduleLoader)
     {
         if (moduleLoader == nullptr)
         {
             RaiseLuaException("module loader is null");
         }
-        if (s_gcFixedDatas == nullptr)
-        {
-            s_gcFixedDatas = (Il2CppDelegate**)il2cpp::gc::GarbageCollector::AllocateFixed(sizeof(void*), nullptr);
-        }
-        il2cpp::gc::WriteBarrier::GenericStore(s_gcFixedDatas, moduleLoader);
         s_ModuleLoader = moduleLoader;
         s_moduleLoaderInvoker = il2cpp::vm::Runtime::GetDelegateInvoke(((Il2CppObject*)s_ModuleLoader)->klass);
         IL2CPP_ASSERT(s_moduleLoaderInvoker);
@@ -70,7 +69,7 @@ namespace novalua
         {
             RaiseLuaException("Failed to create lua state");
         }
-
+        
         luaL_openlibs(s_L);
         RegisterPrintCallback();
     }
