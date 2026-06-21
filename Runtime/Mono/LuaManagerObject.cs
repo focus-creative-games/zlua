@@ -548,13 +548,13 @@ namespace NovaLua
                 int typeId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
                 if (!Types.TryGetValue(typeId, out Type type))
                 {
-                    return 0;
+                    return LuaDllExtension.error(luaState, $"novalua: type id {typeId} not found");
                 }
 
                 string key = LuaDllExtension.tostring(luaState, 2);
                 if (string.IsNullOrEmpty(key))
                 {
-                    return 0;
+                    return LuaDllExtension.error(luaState, "novalua: invalid member name");
                 }
 
                 if (LuaDll.lua_getmetatable(luaState, 1) != 0)
@@ -571,13 +571,13 @@ namespace NovaLua
 
                 if (!TryGetUserDataTarget(luaState, 1, out object target))
                 {
-                    return 0;
+                    return LuaDllExtension.error(luaState, "novalua: invalid userdata for member access");
                 }
 
                 FieldInfo field = type.GetField(key, BindingFlags.Public | BindingFlags.Instance);
                 if (field == null)
                 {
-                    return 0;
+                    return LuaDllExtension.error(luaState, $"novalua: member not found: {key}");
                 }
 
                 return PushReturn(luaState, field.FieldType, field.GetValue(target));
@@ -613,7 +613,7 @@ namespace NovaLua
                 FieldInfo field = type.GetField(key, BindingFlags.Public | BindingFlags.Instance);
                 if (field == null)
                 {
-                    return LuaDllExtension.error(luaState, $"novalua: instance field not found: {type.Name}.{key}");
+                    return LuaDllExtension.error(luaState, $"novalua: member not found: {key}");
                 }
 
                 object value;
@@ -643,13 +643,13 @@ namespace NovaLua
                 int typeId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
                 if (!Types.TryGetValue(typeId, out Type type))
                 {
-                    return 0;
+                    return LuaDllExtension.error(luaState, $"novalua: type id {typeId} not found");
                 }
 
                 string key = LuaDllExtension.tostring(luaState, 2);
                 if (string.IsNullOrEmpty(key))
                 {
-                    return 0;
+                    return LuaDllExtension.error(luaState, "novalua: invalid member name");
                 }
 
                 FieldInfo field = type.GetField(key, BindingFlags.Public | BindingFlags.Static);
@@ -659,6 +659,10 @@ namespace NovaLua
                 }
 
                 LuaDataType existsType = RawGetField(luaState, 1, key);
+                if (existsType == LuaDataType.Nil)
+                {
+                    return LuaDllExtension.error(luaState, $"novalua: member not found: {key}");
+                }
                 return 1;
             }
             catch (Exception ex)
@@ -706,9 +710,7 @@ namespace NovaLua
                     return 0;
                 }
 
-                LuaDll.lua_pushvalue(luaState, 3);
-                LuaDll.lua_setfield(luaState, 1, key);
-                return 0;
+                return LuaDllExtension.error(luaState, $"novalua: member not found: {key}");
             }
             catch (Exception ex)
             {

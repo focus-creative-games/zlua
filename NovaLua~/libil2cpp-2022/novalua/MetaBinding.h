@@ -23,7 +23,17 @@ namespace novalua
         union
         {
             struct { int closureRef; } method;
-            struct { const FieldInfo* field; FnFieldGetter getter; FnFieldSetter setter; } field;
+            struct
+            {
+                const FieldInfo* field;
+                FnFieldGetter getter;
+                FnFieldSetter setter;
+                union
+                {
+                    void* staticAddress;
+                    int32_t instanceOffset;
+                };
+            } field;
             struct { int getterRef; int setterRef; } property;
             struct { int getterRef; int setterRef; int fireRef; } event;
         };

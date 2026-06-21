@@ -20,7 +20,6 @@ namespace novalua
     static int InvokeStaticMethod(lua_State* L);
     static int InvokeInstanceMethod(lua_State* L);
     static int ReleaseUserData(lua_State* L);
-    static int ReleaseUserData(lua_State* L);
 
     static bool IsSpecialMethodName(const char* name)
     {
@@ -170,15 +169,19 @@ namespace novalua
             return PushClosureRef(L, info->method.closureRef);
         case MetaKind::Field:
         {
-            void* fieldPtr = FieldBridge::GetFieldAddress(info->field.field, isStatic ? nullptr : ObjectRegistry::GetObject(L, 1));
-            if (fieldPtr == nullptr || info->field.getter == nullptr)
-                return 0;
+            IL2CPP_ASSERT(info->field.getter != nullptr);
+            if (isStatic)
+                return info->field.getter(L, info->field.staticAddress);
+            Il2CppObject* instance = ObjectRegistry::GetObject(L, 1);
+            if (instance == nullptr)
+                return luaL_error(L, "novalua: invalid target for field access: %s", key);
+            void* fieldPtr = (uint8_t*)instance + info->field.instanceOffset;
             return info->field.getter(L, fieldPtr);
         }
         case MetaKind::Property:
         {
             if (info->property.getterRef == LUA_NOREF)
-                return 0;
+                return luaL_error(L, "novalua: property has no getter: %s", key);
             return PCallClosureRef(L, info->property.getterRef, isStatic ? 0 : 1, 1);
         }
         case MetaKind::Event:
@@ -188,20 +191,12 @@ namespace novalua
         }
     }
 
-    static int DispatchNewIndex(lua_State* L, const NameMetaMap* map, bool isStatic, bool allowRawSet)
+    static int DispatchNewIndex(lua_State* L, const NameMetaMap* map, bool isStatic)
     {
         const char* key = lua_tostring(L, 2);
         const MetaInfo* info = LookupMeta(map, key);
         if (info == nullptr)
-        {
-            if (allowRawSet)
-            {
-                lua_pushvalue(L, 3);
-                lua_setfield(L, 1, key);
-                return 0;
-            }
             return luaL_error(L, "novalua: member not found: %s", key != nullptr ? key : "");
-        }
 
         switch (info->kind)
         {
@@ -209,9 +204,12 @@ namespace novalua
         {
             if (info->field.setter == nullptr)
                 return luaL_error(L, "novalua: field is read-only: %s", key);
-            void* fieldPtr = FieldBridge::GetFieldAddress(info->field.field, isStatic ? nullptr : ObjectRegistry::GetObject(L, 1));
-            if (fieldPtr == nullptr)
+            if (isStatic)
+                return info->field.setter(L, info->field.field, info->field.staticAddress, 3);
+            Il2CppObject* instance = ObjectRegistry::GetObject(L, 1);
+            if (instance == nullptr)
                 return luaL_error(L, "novalua: invalid target for field assignment: %s", key);
+            void* fieldPtr = (uint8_t*)instance + info->field.instanceOffset;
             return info->field.setter(L, info->field.field, fieldPtr, 3);
         }
         case MetaKind::Property:
@@ -325,6 +323,10 @@ namespace novalua
             info.field.field = field;
             info.field.getter = accessor.getter;
             info.field.setter = accessor.setter;
+            if (isStatic)
+                info.field.staticAddress = FieldBridge::ComputeStaticFieldAddress(field);
+            else
+                info.field.instanceOffset = FieldBridge::ComputeInstanceFieldOffset(field);
             map[field->name] = info;
         }
     }
@@ -434,7 +436,7 @@ namespace novalua
     int MetaBinding::InstanceNewIndex(lua_State* L)
     {
         NameMetaMap* map = (NameMetaMap*)lua_touserdata(L, lua_upvalueindex(2));
-        return DispatchNewIndex(L, map, false, false);
+        return DispatchNewIndex(L, map, false);
     }
 
     int MetaBinding::StaticIndex(lua_State* L)
@@ -452,7 +454,7 @@ namespace novalua
     int MetaBinding::StaticNewIndex(lua_State* L)
     {
         NameMetaMap* map = (NameMetaMap*)lua_touserdata(L, lua_upvalueindex(2));
-        return DispatchNewIndex(L, map, true, true);
+        return DispatchNewIndex(L, map, true);
     }
 
     void MetaBinding::PushInstanceMetatable(lua_State* L, Il2CppClass* klass)

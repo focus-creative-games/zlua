@@ -21,7 +21,8 @@ namespace novalua
     {
     public:
         static bool IsPublicField(const FieldInfo* field);
-        static void* GetFieldAddress(const FieldInfo* field, Il2CppObject* instance);
+        static void* ComputeStaticFieldAddress(const FieldInfo* field);
+        static int32_t ComputeInstanceFieldOffset(const FieldInfo* field);
         static FieldAccessor ResolveFieldAccessor(const FieldInfo* field);
         static void WriteBarrierForFieldType(const Il2CppType* type, void** targetAddress);
     };

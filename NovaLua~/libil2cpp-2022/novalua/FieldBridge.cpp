@@ -224,15 +224,18 @@ namespace novalua
         return (il2cpp::vm::Field::GetFlags(const_cast<FieldInfo*>(field)) & FIELD_ATTRIBUTE_FIELD_ACCESS_MASK) == FIELD_ATTRIBUTE_PUBLIC;
     }
 
-    void* FieldBridge::GetFieldAddress(const FieldInfo* field, Il2CppObject* instance)
+    void* FieldBridge::ComputeStaticFieldAddress(const FieldInfo* field)
     {
-        if (il2cpp::vm::Field::IsNormalStatic(const_cast<FieldInfo*>(field)))
-        {
-            il2cpp::vm::Class::Init(field->parent);
-            return (uint8_t*)field->parent->static_fields + field->offset;
-        }
+        il2cpp::vm::Class::Init(field->parent);
+        return (uint8_t*)field->parent->static_fields + field->offset;
+    }
 
-        return il2cpp::vm::Field::GetInstanceFieldDataPointer(instance, const_cast<FieldInfo*>(field));
+    int32_t FieldBridge::ComputeInstanceFieldOffset(const FieldInfo* field)
+    {
+        int32_t offset = (int32_t)il2cpp::vm::Field::GetOffset(const_cast<FieldInfo*>(field));
+        if (field->parent->byval_arg.valuetype)
+            offset -= (int32_t)sizeof(Il2CppObject);
+        return offset;
     }
 
     FieldAccessor FieldBridge::ResolveFieldAccessor(const FieldInfo* field)
