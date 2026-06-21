@@ -1,9 +1,10 @@
 #include "LuaInteropManager.h"
 
-#include "LuaEnv.h"
+#include "FieldBridge.h"
 #include "MetadataUtil.h"
 #include "MethodBridge.h"
 #include "ObjectRegistry.h"
+#include "LuaEnv.h"
 
 #include "vm/Class.h"
 #include "vm/Object.h"
@@ -65,6 +66,10 @@ namespace novalua
     static void PushInstanceMethodClosure(lua_State* L, const MethodInfo* method);
     static void PushInstanceMetatable(lua_State* L, Il2CppClass* klass);
     static void PushTypeTable(lua_State* L, Il2CppClass* klass);
+    static int InstanceIndex(lua_State* L);
+    static int InstanceNewIndex(lua_State* L);
+    static int StaticTypeIndex(lua_State* L);
+    static int StaticTypeNewIndex(lua_State* L);
 
     static int ResolveAssemblyTypeIndex(lua_State* L)
     {
@@ -170,6 +175,8 @@ namespace novalua
         if (method == nullptr)
             return luaL_error(L, "novalua: invalid static method binding");
 
+        if (method->parameters_count == 0)
+            return MethodBridge::InvokeStaticInt(L, method);
         if (method->parameters_count == 2)
             return MethodBridge::InvokeStaticIntIntInt(L, method, 1);
 
@@ -235,6 +242,94 @@ namespace novalua
         return 0;
     }
 
+    static int InstanceIndex(lua_State* L)
+    {
+        Il2CppClass* klass = (Il2CppClass*)lua_touserdata(L, lua_upvalueindex(1));
+        const char* key = lua_tostring(L, 2);
+        if (klass == nullptr || key == nullptr || key[0] == '\0')
+            return 0;
+
+        if (lua_getmetatable(L, 1))
+        {
+            lua_pushstring(L, key);
+            lua_rawget(L, -2);
+            if (!lua_isnil(L, -1))
+            {
+                lua_remove(L, -2);
+                return 1;
+            }
+            lua_pop(L, 2);
+        }
+
+        Il2CppObject* instance = ObjectRegistry::GetObject(L, 1);
+        if (instance == nullptr)
+            return 0;
+
+        FieldInfo* field = FieldBridge::FindPublicField(klass, key, false);
+        if (field == nullptr)
+            return 0;
+
+        void* fieldPtr = FieldBridge::GetFieldAddress(field, instance);
+        return FieldBridge::PushField(L, field, fieldPtr);
+    }
+
+    static int InstanceNewIndex(lua_State* L)
+    {
+        Il2CppClass* klass = (Il2CppClass*)lua_touserdata(L, lua_upvalueindex(1));
+        const char* key = lua_tostring(L, 2);
+        if (klass == nullptr || key == nullptr || key[0] == '\0')
+            return luaL_error(L, "novalua: invalid field name");
+
+        Il2CppObject* instance = ObjectRegistry::GetObject(L, 1);
+        if (instance == nullptr)
+            return luaL_error(L, "novalua: invalid userdata for field assignment");
+
+        FieldInfo* field = FieldBridge::FindPublicField(klass, key, false);
+        if (field == nullptr)
+            return luaL_error(L, "novalua: instance field not found: %s.%s", klass->name, key);
+
+        void* fieldPtr = FieldBridge::GetFieldAddress(field, instance);
+        return FieldBridge::SetField(L, field, fieldPtr, 3);
+    }
+
+    static int StaticTypeIndex(lua_State* L)
+    {
+        Il2CppClass* klass = (Il2CppClass*)lua_touserdata(L, lua_upvalueindex(1));
+        const char* key = lua_tostring(L, 2);
+        if (klass == nullptr || key == nullptr || key[0] == '\0')
+            return 0;
+
+        FieldInfo* field = FieldBridge::FindPublicField(klass, key, true);
+        if (field != nullptr)
+        {
+            void* fieldPtr = FieldBridge::GetFieldAddress(field, nullptr);
+            return FieldBridge::PushField(L, field, fieldPtr);
+        }
+
+        lua_pushstring(L, key);
+        lua_rawget(L, 1);
+        return 1;
+    }
+
+    static int StaticTypeNewIndex(lua_State* L)
+    {
+        Il2CppClass* klass = (Il2CppClass*)lua_touserdata(L, lua_upvalueindex(1));
+        const char* key = lua_tostring(L, 2);
+        if (klass == nullptr || key == nullptr || key[0] == '\0')
+            return luaL_error(L, "novalua: invalid field name");
+
+        FieldInfo* field = FieldBridge::FindPublicField(klass, key, true);
+        if (field != nullptr)
+        {
+            void* fieldPtr = FieldBridge::GetFieldAddress(field, nullptr);
+            return FieldBridge::SetField(L, field, fieldPtr, 3);
+        }
+
+        lua_pushvalue(L, 3);
+        lua_setfield(L, 1, key);
+        return 0;
+    }
+
     static void SetMethodField(lua_State* L, int tableIndex, const char* key)
     {
         const int absIndex = lua_absindex(L, tableIndex);
@@ -284,8 +379,13 @@ namespace novalua
             SetMethodField(L, mtIndex, method->name);
         }
 
-        lua_pushvalue(L, -1);
+        lua_pushlightuserdata(L, klass);
+        lua_pushcclosure(L, InstanceIndex, 1);
         lua_setfield(L, mtIndex, "__index");
+
+        lua_pushlightuserdata(L, klass);
+        lua_pushcclosure(L, InstanceNewIndex, 1);
+        lua_setfield(L, mtIndex, "__newindex");
 
         lua_pushcfunction(L, ReleaseUserData);
         lua_setfield(L, mtIndex, "__gc");
@@ -343,6 +443,15 @@ namespace novalua
         lua_pushlightuserdata(L, klass);
         lua_pushcclosure(L, CreateTypeInstance, 1);
         lua_setfield(L, -2, "__call");
+
+        lua_pushlightuserdata(L, klass);
+        lua_pushcclosure(L, StaticTypeIndex, 1);
+        lua_setfield(L, -2, "__index");
+
+        lua_pushlightuserdata(L, klass);
+        lua_pushcclosure(L, StaticTypeNewIndex, 1);
+        lua_setfield(L, -2, "__newindex");
+
         lua_setmetatable(L, typeTableIndex);
 
         lua_settop(L, typeTableIndex);

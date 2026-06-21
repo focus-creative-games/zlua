@@ -16,6 +16,15 @@ namespace novalua
         return 1;
     }
 
+    int MethodBridge::InvokeStaticInt(lua_State* L, const MethodInfo* method)
+    {
+        typedef int32_t (*Fn)();
+        Fn fn = (Fn)method->methodPointer;
+        const int32_t result = fn();
+        lua_pushinteger(L, result);
+        return 1;
+    }
+
     int MethodBridge::InvokeInstanceInt(lua_State* L, const MethodInfo* method, Il2CppObject* instance, int argStart)
     {
         (void)argStart;
