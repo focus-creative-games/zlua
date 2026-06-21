@@ -179,6 +179,8 @@ namespace vm
             return false;
         }
 
+        novalua::LuaAppDomain::Initialize();
+
         Assembly::Initialize();
         gc::GarbageCollector::Initialize();
 

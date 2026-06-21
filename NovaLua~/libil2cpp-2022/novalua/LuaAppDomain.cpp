@@ -1,22 +1,40 @@
 #include "LuaAppDomain.h"
 
+#include "BuiltinScripts.h"
+#include "LuaEnv.h"
+#include "LuaInteropManager.h"
+
+#include "generated/LuaInvokeSites.h"
+
 #include "vm/InternalCalls.h"
 #include "il2cpp-object-internals.h"
 
 namespace novalua
 {
-    static void LuaIl2CppAppDomain_InitializeInternal(Il2CppMulticastDelegate* luaLoader)
+    static void LuaIl2CppAppDomain_InitializeInternal(Il2CppDelegate* moduleLoader)
     {
-        // Perform any necessary initialization for the Lua app domain here
+        LuaAppDomain::InitializeFromManaged(moduleLoader);
     }
 
-    static void RegisterInternalCalls()
+    static void RegisterCoreInternalCalls()
     {
-        il2cpp::vm::InternalCalls::Add("NovaLua.LuaIl2CppAppDomain::InitializeInternal", (Il2CppMethodPointer)LuaIl2CppAppDomain_InitializeInternal);
+        il2cpp::vm::InternalCalls::Add(
+            "NovaLua.LuaIl2CppAppDomain::InitializeInternal",
+            (Il2CppMethodPointer)LuaIl2CppAppDomain_InitializeInternal);
     }
 
     void LuaAppDomain::Initialize()
     {
-        RegisterInternalCalls();
+        RegisterCoreInternalCalls();
+        RegisterGeneratedInternalCalls();
+    }
+
+    void LuaAppDomain::InitializeFromManaged(void* moduleLoaderDelegate)
+    {
+        LuaEnv::Create((Il2CppDelegate*)moduleLoaderDelegate);
+        BuiltinScripts::LoadGlobals();
+        LuaInteropManager::RegisterNovaLuaApi();
+        BuiltinScripts::LoadNovaLuaLib();
+        InitLuaInvokeSites();
     }
 }

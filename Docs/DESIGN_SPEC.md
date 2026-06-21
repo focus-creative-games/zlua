@@ -160,7 +160,8 @@ namespace NovaLua
 
 我们需要修改Unity的原始libil2cpp代码：
 
-- 将 lua 源码加到 `libil2cpp/lua` 目录。 这个我们已经手动添加了。 只要源码加入libil2cpp，unity在构建时会自动将它加入编译，最终lua代码将和libil2cpp及il2cpp生成的c++代码静态编译到同一个二进制模块（.a或.dll或.so）。
-- `libil2cpp/novalua`目录为 novalua的源码实现目录
-- 
+- `libil2cpp/lua` 为 lua源码（当前使用lua 5.4）。这个我们已经手动添加了。
+- `libil2cpp/novalua`目录为 novalua的源码目录
+
+以上代码unity在构建时会自动将它加入编译，最终将lua、novalua及libil2cpp及il2cpp生成的c++代码静态编译到同一个二进制模块（.a或.dll或.so）。
 

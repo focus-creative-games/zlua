@@ -97,6 +97,11 @@ namespace NovaLua
 
         public static string LocalLuaSrcPath => $"{LocalLibil2cppPath}/lua";
 
+        public static string GeneratedNovaLuaPath => Path.GetFullPath(Path.Combine(LocalLibil2cppPath, "novalua", "generated"));
+
+        public static string BuildWin64GeneratedNovaLuaPath =>
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "build-win64", "Il2CppOutputProject", "IL2CPP", "libil2cpp", "novalua", "generated"));
+
         private static Settings LoadOrCreate()
         {
             string filePath = SettingsPath;
