@@ -23,7 +23,7 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
-namespace NextLua.BuildProcessors
+namespace NovaLua.BuildProcessors
 {
     internal class InstallLocal : IPreprocessBuildWithReport
     {
@@ -38,17 +38,17 @@ namespace NextLua.BuildProcessors
             var installerController = new LocalInstaller();
             if (!installerController.HasInstalledToLocal())
             {
-                Debug.LogWarning($"[CheckSettings] NextLua is not installed, start install NextLua..");
+                Debug.LogWarning($"[CheckSettings] NovaLua is not installed, start install NovaLua..");
                 installerController.InstallLocal();
             }
             if (installerController.NeedReinstallAfterUpdatePackage())
             {
-                Debug.LogWarning($"[CheckSettings] NextLua package updated, start reinstall NextLua..");
+                Debug.LogWarning($"[CheckSettings] NovaLua package updated, start reinstall NovaLua..");
                 installerController.InstallLocal();
             }
             if (!installerController.HasInstalledToLocal() || installerController.NeedReinstallAfterUpdatePackage())
             {
-                throw new Exception($"[CheckSettings] Failed to install NextLua, please check the log for details.");
+                throw new Exception($"[CheckSettings] Failed to install NovaLua, please check the log for details.");
             }
         }
     }

@@ -1,6 +1,6 @@
-﻿using System;
+using System;
 
-namespace NextLua
+namespace NovaLua
 {
     public static class LuaMarshal
     {

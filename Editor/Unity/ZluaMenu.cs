@@ -3,19 +3,19 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
-namespace NextLua.Unity
+namespace NovaLua.Unity
 {
 
-    public static class NextLuaMenu
+    public static class NovaLuaMenu
     {
-        [MenuItem("NextLua/Settings...", priority = 1)]
-        public static void OpenSettings() => SettingsService.OpenProjectSettings("Project/NextLua");
+        [MenuItem("NovaLua/Settings...", priority = 1)]
+        public static void OpenSettings() => SettingsService.OpenProjectSettings("Project/NovaLua");
 
-        [MenuItem("NextLua/Documents/About")]
-        public static void OpenAbout() => Application.OpenURL("https://www.nextlua.cc/docs/intro");
+        [MenuItem("NovaLua/Documents/About")]
+        public static void OpenAbout() => Application.OpenURL("https://www.novalua.cc/docs/intro");
 
-        [MenuItem("NextLua/Documents/GitHub")]
-        public static void OpenGitHub() => Application.OpenURL("https://github.com/focus-creative-games/nextlua");
+        [MenuItem("NovaLua/Documents/GitHub")]
+        public static void OpenGitHub() => Application.OpenURL("https://github.com/focus-creative-games/novalua");
     }
 }
 

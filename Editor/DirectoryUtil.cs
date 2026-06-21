@@ -26,7 +26,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 
-namespace NextLua
+namespace NovaLua
 {
     public static class DirectoryUtil
     {

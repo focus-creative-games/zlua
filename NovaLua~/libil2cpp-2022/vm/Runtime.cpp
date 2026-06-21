@@ -62,6 +62,8 @@
 #include "Baselib.h"
 #include "Cpp/ReentrantLock.h"
 
+#include "novalua/LuaAppDomain.h"
+
 Il2CppDefaults il2cpp_defaults;
 bool g_il2cpp_is_fully_initialized = false;
 static bool shutting_down = false;
@@ -394,7 +396,7 @@ namespace vm
 #if !IL2CPP_TINY && !IL2CPP_MONO_DEBUGGER
         il2cpp::utils::DebugSymbolReader::LoadDebugSymbols();
 #endif
-
+        novalua::LuaAppDomain::Initialize();
         return true;
     }
 

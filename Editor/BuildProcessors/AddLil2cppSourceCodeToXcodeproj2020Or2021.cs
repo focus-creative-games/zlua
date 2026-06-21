@@ -11,7 +11,7 @@ using UnityEditor.Callbacks;
 using UnityEditor.iOS.Xcode;
 using UnityEngine;
 
-namespace NextLua.BuildProcessors
+namespace NovaLua.BuildProcessors
 {
     public static class AddLil2cppSourceCodeToXcodeproj2020Or2021
     {

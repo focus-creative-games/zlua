@@ -8,7 +8,7 @@ using UnityEngine;
 
 #if UNITY_2022 && (UNITY_IOS || UNITY_TVOS || UNITY_VISIONOS)
 
-namespace NextLua.BuildProcessors
+namespace NovaLua.BuildProcessors
 {
     public static class AddLil2cppSourceCodeToXcodeproj2022OrNewer
     {

@@ -401,4 +401,4 @@ FodyWeavers.xsd
 *.sln.iml
 
 !Docs~/
-!NextLua~/
+!NovaLua~/

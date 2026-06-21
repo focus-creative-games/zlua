@@ -3,8 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
+using System.Runtime.CompilerServices;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using dnlib.DotNet.Writer;
@@ -12,14 +11,16 @@ using UnityEditor;
 using UnityEditor.Compilation;
 using MethodAttributes = dnlib.DotNet.MethodAttributes;
 using MethodImplAttributes = dnlib.DotNet.MethodImplAttributes;
-using NextLua;
+using NovaLua;
 using UnityEngine;
 
-namespace NextLua
+namespace NovaLua
 {
     [InitializeOnLoad]
     internal static class LuaInvokeWeaver
     {
+        private const int MethodImplOptionsInternalCall = (int)MethodImplOptions.InternalCall;
+
         private static readonly MethodInfo EditorRunLuaFuncVoidMethod = typeof(LuaMonoAppDomain).GetMethods(BindingFlags.Public | BindingFlags.Static)
             .First(m =>
                 m.Name == nameof(LuaMonoAppDomain.RunLuaFunc) &&
@@ -152,7 +153,14 @@ namespace NextLua
                     }
 
                     (string moduleName, string methodName) = ReadLuaInvokeNames(luaInvokeAttr, method);
-                    if (IsEditorWeavedMethod(method, moduleName, methodName))
+                    if (isEditorDevelopment)
+                    {
+                        if (IsEditorWeavedMethod(method, moduleName, methodName))
+                        {
+                            continue;
+                        }
+                    }
+                    else if (IsPlayerWeavedMethod(method))
                     {
                         continue;
                     }
@@ -356,35 +364,86 @@ namespace NextLua
             }
         }
 
+        private static bool IsPlayerWeavedMethod(MethodDef method)
+        {
+            if (method.HasBody)
+            {
+                return false;
+            }
+
+            if ((method.ImplAttributes & MethodImplAttributes.InternalCall) == 0)
+            {
+                return false;
+            }
+
+            return HasMethodImplInternalCallAttribute(method);
+        }
+
+        private static bool HasMethodImplInternalCallAttribute(MethodDef method)
+        {
+            for (int i = 0; i < method.CustomAttributes.Count; i++)
+            {
+                CustomAttribute attr = method.CustomAttributes[i];
+                if (!IsAttribute(attr, "System.Runtime.CompilerServices", nameof(MethodImplAttribute)))
+                {
+                    continue;
+                }
+
+                if (attr.ConstructorArguments.Count == 0)
+                {
+                    continue;
+                }
+
+                int flags = ReadMethodImplOptionsValue(attr.ConstructorArguments[0].Value);
+                if ((flags & MethodImplOptionsInternalCall) != 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int ReadMethodImplOptionsValue(object value)
+        {
+            switch (value)
+            {
+                case int intValue:
+                    return intValue;
+                case short shortValue:
+                    return shortValue;
+                case ushort ushortValue:
+                    return ushortValue;
+                case byte byteValue:
+                    return byteValue;
+                default:
+                    return 0;
+            }
+        }
+
         private static void RewritePlayerMethod(ModuleDefMD module, MethodDef method, CustomAttribute luaInvokeAttr)
         {
             method.CustomAttributes.Remove(luaInvokeAttr);
             RemoveDllImportAttributeIfExists(method);
-            AddDllImportAttribute(module, method, BuildEntryPoint(module, method));
+
+            method.Body = null;
+            method.ImplMap = null;
+            method.Attributes &= ~MethodAttributes.PinvokeImpl;
+            method.ImplAttributes &= ~MethodImplAttributes.Managed;
+            method.ImplAttributes &= ~MethodImplAttributes.IL;
+            method.ImplAttributes |= MethodImplAttributes.InternalCall;
+
+            AddMethodImplInternalCallAttribute(module, method);
         }
 
-        private static string BuildEntryPoint(ModuleDefMD module, MethodDef method)
+        private static void AddMethodImplInternalCallAttribute(ModuleDefMD module, MethodDef method)
         {
-            string assemblyName = module.Assembly?.Name?.String ?? module.Name;
-            string fullTypeName = method.DeclaringType?.FullName ?? string.Empty;
-            string rawName = $"{assemblyName}_{fullTypeName}_{method.Name}";
-            return Regex.Replace(rawName, "[^A-Za-z0-9_]", string.Empty);
-        }
-
-        private static void AddDllImportAttribute(ModuleDefMD module, MethodDef method, string entryPoint)
-        {
-            TypeRef dllImportTypeRef = module.CorLibTypes.GetTypeRef("System.Runtime.InteropServices", nameof(DllImportAttribute));
-            var ctorSig = MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.String);
-            var ctorRef = new MemberRefUser(module, ".ctor", ctorSig, dllImportTypeRef);
+            TypeRef methodImplTypeRef = module.CorLibTypes.GetTypeRef("System.Runtime.CompilerServices", nameof(MethodImplAttribute));
+            var ctorSig = MethodSig.CreateInstance(module.CorLibTypes.Void, module.CorLibTypes.Int32);
+            var ctorRef = new MemberRefUser(module, ".ctor", ctorSig, methodImplTypeRef);
 
             var attribute = new CustomAttribute(ctorRef);
-            attribute.ConstructorArguments.Add(new CAArgument(module.CorLibTypes.String, "__Internal"));
-            attribute.NamedArguments.Add(new CANamedArgument(
-                true,
-                module.CorLibTypes.String,
-                "EntryPoint",
-                new CAArgument(module.CorLibTypes.String, entryPoint)));
-
+            attribute.ConstructorArguments.Add(new CAArgument(module.CorLibTypes.Int32, MethodImplOptionsInternalCall));
             method.CustomAttributes.Add(attribute);
         }
 
@@ -392,7 +451,7 @@ namespace NextLua
         {
             for (int i = method.CustomAttributes.Count - 1; i >= 0; i--)
             {
-                if (IsAttribute(method.CustomAttributes[i], "System.Runtime.InteropServices", nameof(DllImportAttribute)))
+                if (IsAttribute(method.CustomAttributes[i], "System.Runtime.InteropServices", "DllImportAttribute"))
                 {
                     method.CustomAttributes.RemoveAt(i);
                 }
@@ -404,7 +463,7 @@ namespace NextLua
             for (int i = 0; i < method.CustomAttributes.Count; i++)
             {
                 CustomAttribute attr = method.CustomAttributes[i];
-                if (IsAttribute(attr, "NextLua", nameof(LuaInvokeAttribute)))
+                if (IsAttribute(attr, "NovaLua", nameof(LuaInvokeAttribute)))
                 {
                     return attr;
                 }

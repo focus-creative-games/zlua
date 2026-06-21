@@ -1,27 +1,27 @@
-nextlua = nextlua or {}
+novalua = novalua or {}
 
-nextlua.typeof = function(t)
-    return __nextlua_typeof(t)
+novalua.typeof = function(t)
+    return __novalua_typeof(t)
 end
 
-nextlua.make_generic_type = function(generic_type, ...)
-    return __nextlua_make_generic_type(generic_type, ...)
+novalua.make_generic_type = function(generic_type, ...)
+    return __novalua_make_generic_type(generic_type, ...)
 end
 
-nextlua.create_signature = function(method_name, ...)
-    return __nextlua_create_signature(method_name, ...)
+novalua.create_signature = function(method_name, ...)
+    return __novalua_create_signature(method_name, ...)
 end
 
-nextlua.signature = nextlua.create_signature
+novalua.signature = novalua.create_signature
 
-nextlua.get_method = function(obj, signature)
+novalua.get_method = function(obj, signature)
     return obj[signature]
 end
 
-nextlua.register_method = function(obj, name, method)
+novalua.register_method = function(obj, name, method)
     local mt = getmetatable(obj)
     if mt == nil then
-        error("nextlua.register_method requires userdata with metatable")
+        error("novalua.register_method requires userdata with metatable")
     end
     mt[name] = method
 end
@@ -49,14 +49,14 @@ local function safe_typeof(type_table)
     if type_table == nil then
         return nil
     end
-    local ok, ret = pcall(nextlua.typeof, type_table)
+    local ok, ret = pcall(novalua.typeof, type_table)
     if ok then
         return ret
     end
     return nil
 end
 
-nextlua.corlibtypes = {
+novalua.corlibtypes = {
     int32 = safe_typeof(resolve_corlib_type("System.Int32")),
     int64 = safe_typeof(resolve_corlib_type("System.Int64")),
     string = safe_typeof(resolve_corlib_type("System.String")),
@@ -64,4 +64,4 @@ nextlua.corlibtypes = {
     object = safe_typeof(resolve_corlib_type("System.Object")),
 }
 
-return nextlua
+return novalua

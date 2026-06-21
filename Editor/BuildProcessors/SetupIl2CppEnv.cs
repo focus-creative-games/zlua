@@ -26,7 +26,7 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
-namespace NextLua.BuildProcessors
+namespace NovaLua.BuildProcessors
 {
 
     internal class SetupIl2CppEnv : IPreprocessBuildWithReport
@@ -44,7 +44,7 @@ namespace NextLua.BuildProcessors
             var installerController = new LocalInstaller();
             if (!installerController.HasInstalledToLocal())
             {
-                throw new Exception($"Please install NextLua first.");
+                throw new Exception($"Please install NovaLua first.");
             }
             string runtimeDir = Settings.LocalIl2CppPath;
             Environment.SetEnvironmentVariable("UNITY_IL2CPP_PATH", runtimeDir);

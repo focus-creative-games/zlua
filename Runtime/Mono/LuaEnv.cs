@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using UnityEngine;
 
-namespace NextLua
+namespace NovaLua
 {
     public sealed class LuaEnv : IDisposable
     {
@@ -29,7 +29,7 @@ namespace NextLua
 
             LuaDll.luaL_openlibs(LuaState);
             RegisterCallbacks();
-            // LoadBuiltinNextLuaLib();
+            // LoadBuiltinNovaLuaLib();
         }
 
         public void SetModuleLoader(Func<string, string> moduleLoader)
@@ -176,7 +176,7 @@ namespace NextLua
         public void CallLuaGlobal(string functionName, Action<IntPtr> pushArgs = null)
         {
             int oldTop = LuaDll.lua_gettop(LuaState);
-            LuaDll.lua_getglobal(LuaState, "__nextluaErrorHandler");
+            LuaDll.lua_getglobal(LuaState, "__novaluaErrorHandler");
             LuaDataType type = LuaDll.lua_getglobal(LuaState, functionName);
             if (type != LuaDataType.Function)
             {
@@ -205,7 +205,7 @@ namespace NextLua
 
             try
             {
-                LuaDll.lua_getglobal(LuaState, "__nextluaErrorHandler");
+                LuaDll.lua_getglobal(LuaState, "__novaluaErrorHandler");
                 int functionRef = GetOrCreateModuleFunctionRef(moduleName, methodName, key);
                 LuaDll.lua_rawgeti(LuaState, LuaConsts.LuaRegistryIndex, functionRef);
 
@@ -274,22 +274,22 @@ namespace NextLua
 
         public void LoadBuiltinGlobals()
         {
-            TextAsset globals = Resources.Load<TextAsset>("nextlua/globals.lua");
+            TextAsset globals = Resources.Load<TextAsset>("novalua/globals.lua");
             string source = globals != null ? globals.text : null;
             if (string.IsNullOrWhiteSpace(source))
             {
-                throw new Exception("nextlua built-in globals not found: Resources/nextlua/globals.lua or Packages/com.code-philosophy.nextlua/Resources/nextlua/globals.lua");
+                throw new Exception("novalua built-in globals not found: Resources/novalua/globals.lua or Packages/com.code-philosophy.novalua/Resources/novalua/globals.lua");
             }
             DoStringIgnoreResult(source);
         }
 
-        public void LoadBuiltinNextLuaLib()
+        public void LoadBuiltinNovaLuaLib()
         {
-            TextAsset lib = Resources.Load<TextAsset>("nextlua/nextlualib.lua");
+            TextAsset lib = Resources.Load<TextAsset>("novalua/novalualib.lua");
             string source = lib != null ? lib.text : null;
             if (string.IsNullOrWhiteSpace(source))
             {
-                throw new Exception("nextlua built-in library not found: Resources/nextlua/nextlualib.lua or Packages/com.code-philosophy.nextlua/Resources/nextlua/nextlualib.lua");
+                throw new Exception("novalua built-in library not found: Resources/novalua/novalualib.lua or Packages/com.code-philosophy.novalua/Resources/novalua/novalualib.lua");
             }
 
             DoStringIgnoreResult(source);
@@ -300,7 +300,7 @@ namespace NextLua
         {
             int count = LuaDll.lua_gettop(luaState);
             SharedBuilder.Clear();
-            SharedBuilder.Append("[NextLua] ");
+            SharedBuilder.Append("[NovaLua] ");
             for (int i = 1; i <= count; i++)
             {
                 if (i > 1)

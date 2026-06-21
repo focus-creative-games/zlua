@@ -29,7 +29,7 @@ using System.Runtime.CompilerServices;
 using MonoHook;
 using System.IO;
 
-namespace NextLua.MonoHooks
+namespace NovaLua.MonoHooks
 {
 #if UNITY_2022 || UNITY_2023_1_OR_NEWER
     [InitializeOnLoad]

@@ -37,7 +37,7 @@ using UnityEngine;
 using Debug = UnityEngine.Debug;
 using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 
-namespace NextLua
+namespace NovaLua
 {
 
     public class LocalInstaller
@@ -112,7 +112,7 @@ namespace NextLua
         private static string InstalledPackageFingerprintPath =>
             Path.Combine(Settings.InstallRootDir, "installed_package_max_mtime_utc_ticks.txt");
 
-        private static string GetNextLuaPackageRootPath()
+        private static string GetNovaLuaPackageRootPath()
         {
             var packageInfo = PackageInfo.FindForAssembly(typeof(LocalInstaller).Assembly);
             if (!string.IsNullOrEmpty(packageInfo?.resolvedPath))
@@ -124,7 +124,7 @@ namespace NextLua
 
         private static long ComputePackageLatestFileWriteTimeUtcTicks()
         {
-            string root = GetNextLuaPackageRootPath();
+            string root = GetNovaLuaPackageRootPath();
             if (!Directory.Exists(root))
             {
                 return 0L;

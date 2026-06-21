@@ -25,13 +25,13 @@ using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
 
-namespace NextLua
+namespace NovaLua
 {
 
 
     public class Settings : ScriptableObject
     {
-        [Tooltip("Enable NextLua")]
+        [Tooltip("Enable NovaLua")]
         public bool enable = true;
 
         private static Settings s_Instance;
@@ -64,18 +64,18 @@ namespace NextLua
             }
         }
 
-        public static string InstallRootDir => Path.GetFullPath($"Library/NextLua");
+        public static string InstallRootDir => Path.GetFullPath($"Library/NovaLua");
 
         public static string GetPreservedLinkXmlPath()
         {
-            return Path.GetFullPath($"{NextLuaDataPathInPackage}/link.xml");
+            return Path.GetFullPath($"{NovaLuaDataPathInPackage}/link.xml");
         }
 
-        public static string SettingsPath => "ProjectSettings/NextLua.asset";
+        public static string SettingsPath => "ProjectSettings/NovaLua.asset";
 
-        public static string PackageName => "com.code-philosophy.nextlua";
+        public static string PackageName => "com.code-philosophy.novalua";
 
-        public static string NextLuaDataPathInPackage => $"Packages/{PackageName}/NextLua~";
+        public static string NovaLuaDataPathInPackage => $"Packages/{PackageName}/NovaLua~";
 
         public static string Libil2cppCppPathInPackage
         {
@@ -83,7 +83,7 @@ namespace NextLua
             {
                 var unityVersion = new UnityVersion(Application.unityVersion);
                 string branch = unityVersion.isTuanjieEngine ? "tuanjie" : $"{unityVersion.major}";
-                return $"{NextLuaDataPathInPackage}/libil2cpp-{branch}";
+                return $"{NovaLuaDataPathInPackage}/libil2cpp-{branch}";
             }
         }
 
@@ -93,7 +93,7 @@ namespace NextLua
 
         public static string LocalLibil2cppPath => $"{LocalIl2CppPath}/libil2cpp";
 
-        public static string LuaSrcPathInPackage => $"{NextLuaDataPathInPackage}/lua5.4/src";
+        public static string LuaSrcPathInPackage => $"{NovaLuaDataPathInPackage}/lua5.4/src";
 
         public static string LocalLuaSrcPath => $"{LocalLibil2cppPath}/lua";
 

@@ -21,7 +21,7 @@
 using UnityEditor;
 using UnityEngine.UIElements;
 
-namespace NextLua
+namespace NovaLua
 {
     public class SettingsProvider : UnityEditor.SettingsProvider
     {
@@ -40,7 +40,7 @@ namespace NextLua
 
 
         private SerializedObject _serializedObject;
-        public SettingsProvider() : base("Project/NextLua", SettingsScope.Project)
+        public SettingsProvider() : base("Project/NovaLua", SettingsScope.Project)
         {
         }
 

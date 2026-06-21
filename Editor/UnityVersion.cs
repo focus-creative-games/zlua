@@ -21,7 +21,7 @@
 
 using System.Text.RegularExpressions;
 
-namespace NextLua
+namespace NovaLua
 {
     public class UnityVersion
     {

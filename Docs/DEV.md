@@ -4,7 +4,7 @@
 
 当前插件中已经包含Windows版本的lua 5.4的dll。本版本的目标是实现Editor下lua与c#之间的无感相互调用。设计要求如下：
 
-- 类比于 P/Invoke、 MonoPInvokeCallback, MarshalAs， nextlua 有同样对应的概念 L/Invoke、MonoLuaCallback, LuaMarshalAs
+- 类比于 P/Invoke、 MonoPInvokeCallback, MarshalAs， novalua 有同样对应的概念 L/Invoke、MonoLuaCallback, LuaMarshalAs
 - c# 与 lua 之间交互是高度统一的：
   - c#可以调用 标记为 [LuaInvoke] 的static c#函数，调用lua函数
   - 所有c#类都通过lazy register的方式，使用时自动注册到lua环境。  lua通过 `CSharp.<Module>.<Type>` 可以访问类， 通过`<Type>.XXX` 访问静态成员和函数，通过 `obj:Fun` 调用成员函数和属性，无论它是struct、class、泛型还是array。语义完全等价到c#中以这种方式调用c#函数。没有特殊概念，完全统一
@@ -24,5 +24,5 @@
 - 访问类成员（静态和非静态）函数，也是通过il2cpp的 MethodInfo中的 methodPointer直接调用，不需要经过 c#包装类
 - 为托管对象生成lua userData时，在userData中直接记录了object指针。同时在native代码维护了一个 object列表，这个列表被注册到 gc roots。等lua释放userDatas时，再将这个对象从列表中清除。
 
-以上目标需要深度修改 libil2cpp 代码。在 `Packages\com.code-philosophy.nextlua\Cpp~\libil2cpp-2022` 目录已经放置了 unity 2022.3.62f3版本的libil2cpp源码。在启动nextlua插件
-后，需要一个类似hybridclr的安装过程，将unity editor安装目录下的il2cpp复制到项目某个本地目录，然后替换其中的libil2cpp目录为`Packages\com.code-philosophy.nextlua\Cpp~\libil2cpp-2022`。 同时在构建过程中设置环境变量UNITY_IL2CPP_PATH为本地il2cpp目录。 具体实现可以参考 hybridclr的实现 `D:\workspace\main\hybridclr_unity\Editor\Installer\InstallerController.cs`。
+以上目标需要深度修改 libil2cpp 代码。在 `Packages\com.code-philosophy.novalua\Cpp~\libil2cpp-2022` 目录已经放置了 unity 2022.3.62f3版本的libil2cpp源码。在启动novalua插件
+后，需要一个类似hybridclr的安装过程，将unity editor安装目录下的il2cpp复制到项目某个本地目录，然后替换其中的libil2cpp目录为`Packages\com.code-philosophy.novalua\Cpp~\libil2cpp-2022`。 同时在构建过程中设置环境变量UNITY_IL2CPP_PATH为本地il2cpp目录。 具体实现可以参考 hybridclr的实现 `D:\workspace\main\hybridclr_unity\Editor\Installer\InstallerController.cs`。

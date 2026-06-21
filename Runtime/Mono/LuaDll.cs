@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace NextLua
+namespace NovaLua
 {
     [UnmanagedFunctionPointer(LuaDll.CALLING_CONVENTION)]
     public delegate int LuaCSFunction(IntPtr luaState);

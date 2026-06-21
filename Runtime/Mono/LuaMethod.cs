@@ -1,6 +1,6 @@
-﻿using System;
+using System;
 
-namespace NextLua
+namespace NovaLua
 {
     public sealed class LuaMethod : IDisposable
     {

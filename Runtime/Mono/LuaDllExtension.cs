@@ -1,8 +1,8 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace NextLua
+namespace NovaLua
 {
     public static class LuaDllExtension
     {

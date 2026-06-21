@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using System.Reflection;
 
-namespace NextLua
+namespace NovaLua
 {
     public static class LuaFunctionDelegateFactory
     {

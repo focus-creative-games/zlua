@@ -1,8 +1,8 @@
-﻿using System;
+using System;
 using System.IO;
 using UnityEditor.Build;
 
-namespace NextLua.BuildProcessors
+namespace NovaLua.BuildProcessors
 {
 
 	public static class XCodeUtil

@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using UnityEngine.Scripting;
 
-namespace NextLua
+namespace NovaLua
 {
     public static class LuaIl2CppAppDomain
     {

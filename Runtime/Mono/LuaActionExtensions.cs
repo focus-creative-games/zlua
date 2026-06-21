@@ -1,4 +1,4 @@
-﻿namespace NextLua
+namespace NovaLua
 {
     public static class LuaActionExtensions
     {

@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
-namespace NextLua
+namespace NovaLua
 {
     public static class LuaInvokeFunctions
     {

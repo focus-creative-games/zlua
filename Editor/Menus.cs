@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-using NextLua.BuildProcessors;
+using NovaLua.BuildProcessors;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -26,21 +26,21 @@ using System.Text;
 using UnityEditor;
 using UnityEngine;
 
-namespace NextLua
+namespace NovaLua
 {
     public static class Menus
     {
 
-        [MenuItem("NextLua/Settings...")]
-        public static void OpenSettings() => SettingsService.OpenProjectSettings("Project/NextLua");
+        [MenuItem("NovaLua/Settings...")]
+        public static void OpenSettings() => SettingsService.OpenProjectSettings("Project/NovaLua");
 
-        [MenuItem("NextLua/Install...", priority = 100)]
+        [MenuItem("NovaLua/Install...", priority = 100)]
         public static void Install()
         {
             var installer = new LocalInstaller();
             if (installer.HasInstalledToLocal())
             {
-                if (EditorUtility.DisplayDialog("NextLua is already installed", "Do you want to reinstall it?", "Yes", "No"))
+                if (EditorUtility.DisplayDialog("NovaLua is already installed", "Do you want to reinstall it?", "Yes", "No"))
                 {
                     installer.InstallLocal();
                 }
@@ -51,14 +51,14 @@ namespace NextLua
             }
         }
 
-        [MenuItem("NextLua/Documents/About", priority = 200)]
-        public static void OpenAbout() => Application.OpenURL("https://www.nextlua.cn/docs/intro");
+        [MenuItem("NovaLua/Documents/About", priority = 200)]
+        public static void OpenAbout() => Application.OpenURL("https://www.novalua.cn/docs/intro");
 
-        [MenuItem("NextLua/Documents/Home")]
-        public static void OpenHomePage() => Application.OpenURL("https://www.nextlua.cn");
+        [MenuItem("NovaLua/Documents/Home")]
+        public static void OpenHomePage() => Application.OpenURL("https://www.novalua.cn");
 
-        [MenuItem("NextLua/Documents/GitHub")]
-        public static void OpenGitHub() => Application.OpenURL("https://github.com/focus-creative-games/nextlua");
+        [MenuItem("NovaLua/Documents/GitHub")]
+        public static void OpenGitHub() => Application.OpenURL("https://github.com/focus-creative-games/novalua");
     }
 
 }

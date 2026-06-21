@@ -4,7 +4,7 @@
 
 ### 使用方式
 
-- 类比于 P/Invoke、 MonoPInvokeCallback, MarshalAs， nextlua 有同样对应的概念 L/Invoke、MonoLuaCallback, LuaMarshalAs
+- 类比于 P/Invoke、 MonoPInvokeCallback, MarshalAs， novalua 有同样对应的概念 L/Invoke、MonoLuaCallback, LuaMarshalAs
 - c# 与 lua 之间交互是高度统一的：
   - c#可以调用 标记为 `[LuaInvoke]` 的static c#函数，调用lua函数
   - 所有c#类都通过lazy register的方式，使用时自动注册到lua环境。  lua通过 `CSharp.<Module>.<Type>` 可以访问类， 通过`<Type>.XXX` 访问静态成员和函数，通过 `obj:Fun` 调用成员函数和属性，无论它是struct、class、泛型还是array。语义完全等价到c#中以这种方式调用c#函数。没有特殊概念，完全统一
@@ -22,20 +22,20 @@
 
 ## 实现
 
-### nextlua 库
+### novalua 库
 
-`Packages\com.code-philosophy.nextlua\Resources\nextlua\nextlualib.lua` 文件包含了一些全局公共的nextlua 辅助函数。 这个文件在luaState初始化时被读取然后执行`dostring`。
+`Packages\com.code-philosophy.novalua\Resources\novalua\novalualib.lua` 文件包含了一些全局公共的novalua 辅助函数。 这个文件在luaState初始化时被读取然后执行`dostring`。
 
 有以下函数：
 
-- typeof 。根据传入的类型，返回对应的System.Type对象。 例如  `local t = nextlua.typeof(CSharp.mscorlib['System.Int32'])` ，t等价于 c#里`typeof(int)`的值
-- make_generic_type。 根据传入的泛型基类和泛型实例化参数，返回最终的类型。如 `local t = nextlua.make_generic_type(CSharp.mscorlib['System.Collections.Generic.List'], CSharp.mscorlib['System.Int32'])`
-- create_signature。返回一个函数签名。如`local t = nextlua.create_signature('run', CSharp.mscorlib['System.Int32'])`
+- typeof 。根据传入的类型，返回对应的System.Type对象。 例如  `local t = novalua.typeof(CSharp.mscorlib['System.Int32'])` ，t等价于 c#里`typeof(int)`的值
+- make_generic_type。 根据传入的泛型基类和泛型实例化参数，返回最终的类型。如 `local t = novalua.make_generic_type(CSharp.mscorlib['System.Collections.Generic.List'], CSharp.mscorlib['System.Int32'])`
+- create_signature。返回一个函数签名。如`local t = novalua.create_signature('run', CSharp.mscorlib['System.Int32'])`
 
 
 有以下字段：
 
-- corlibtypes。 包含常见类型的typeof的值。如 ` int32 = nextlua.typeof(CSharp.mscorlib['System.Int32'])`。
+- corlibtypes。 包含常见类型的typeof的值。如 ` int32 = novalua.typeof(CSharp.mscorlib['System.Int32'])`。
 
 ### LuaInvokeAttribute
 
@@ -50,7 +50,7 @@
   - 调用 LuaMonoAppDomain类中的 RunLuaFunc 或 `RunLuaFunc<T>`函数
 - 如果不在Editor下
   - 移除[LuaInvoke]
-  - 添加 [DllImport("__Internal", entryPoint="{entryPoint}")] ，其中entryPoint的值为  {assembly_name}_{full_type_name}_{method_name})，assembly full_type method name中的不能出现在c函数名上的字符全部要移除。
+  - 添加 [MethodImpl(MethodImplOptions.InternalCall)]
 
 ### MonoLuaCallbackAttribute
 
@@ -69,7 +69,7 @@ c#类中可能存在同名函数，如 `void Run(int x)` 和 `void Run(string x)
 
 ```lua
 
-local sig_run_int32 = nextlua.signature("Run", nextlua.corlibtypes.int32)
+local sig_run_int32 = novalua.signature("Run", novalua.corlibtypes.int32)
 
 -- 有两种调用方式：
 -- 方法1
@@ -78,8 +78,8 @@ obj[sig_run_int32](obj)
 
 -- 方法2
 
-local run_i32 = nextlua.get_method(obj, sig_run_int32)
-nextlua.register_method(obj, "run_i32", run_i32)
+local run_i32 = novalua.get_method(obj, sig_run_int32)
+novalua.register_method(obj, "run_i32", run_i32)
 
 obj:run_i32(10)
 
@@ -116,22 +116,22 @@ void Run(int x)
 
 ## Mono 和 Il2Cpp 实现
 
-为了最大化正式发布时的运行效率，实现了两套代码，分别为 NextLua.Mono和NextLua.Il2Cpp。Editor下使用NextLua.Mono中的实现，正式发布时使用NextLua.Il2Cpp中实现。
+为了最大化正式发布时的运行效率，实现了两套代码，分别为 NovaLua.Mono和NovaLua.Il2Cpp。Editor下使用NovaLua.Mono中的实现，正式发布时使用NovaLua.Il2Cpp中实现。
 
-LuaInvokeAttriubte、MonoLuaCallbackAttribute、LuaMarshalAsAttribute这些类在NextLua.Common模块中定义。
+LuaInvokeAttriubte、MonoLuaCallbackAttribute、LuaMarshalAsAttribute这些类在NovaLua.Common模块中定义。
 
-NextLua.Common中定义了 LuaAppDomain 门面类，它会将真正实现转发到 NextLua.Mono中的LuaMonoAppDomain或 NextLua.Il2Cpp中的LuaIl2CppAppDomain。
+NovaLua.Common中定义了 LuaAppDomain 门面类，它会将真正实现转发到 NovaLua.Mono中的LuaMonoAppDomain或 NovaLua.Il2Cpp中的LuaIl2CppAppDomain。
 
 ```csharp
-namespace NextLua
+namespace NovaLua
 {
     public class LuaAppDomain
     {
         public static void Initialize(Func<string, string> moduleLoader)
         {
-            string assemblyName = Application.isEditor ? "NextLua.Mono" : "NextLua.Il2Cpp";
+            string assemblyName = Application.isEditor ? "NovaLua.Mono" : "NovaLua.Il2Cpp";
             Assembly assembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == assemblyName);
-            string typeName = Application.isEditor ? "NextLua.LuaMonoAppDomain" : "NextLua.LuaIl2CppAppDomain";
+            string typeName = Application.isEditor ? "NovaLua.LuaMonoAppDomain" : "NovaLua.LuaIl2CppAppDomain";
             assembly.GetType(typeName).GetMethod("Initialize", BindingFlags.Public | BindingFlags.Static)
                 .Invoke(null, new object[] { moduleLoader });
         }
@@ -139,9 +139,9 @@ namespace NextLua
 }
 ```
 
-### NextLua.Il2Cpp 的实现
+### NovaLua.Il2Cpp 的实现
 
-在C#层面，Il2Cpp版本实现在 NextLua.Il2Cpp 程序集内，仅有一个非常薄的实现：
+在C#层面，Il2Cpp版本实现在 NovaLua.Il2Cpp 程序集内，仅有一个非常薄的实现：
 
 ```csharp
     public static class LuaIl2CppAppDomain
@@ -156,11 +156,11 @@ namespace NextLua
     }
 ```
 
-与NextLua.Mono对应的代码， 全部在c++层实现。
+与NovaLua.Mono对应的代码， 全部在c++层实现。
 
 我们需要修改Unity的原始libil2cpp代码：
 
 - 将 lua 源码加到 `libil2cpp/lua` 目录。 这个我们已经手动添加了。 只要源码加入libil2cpp，unity在构建时会自动将它加入编译，最终lua代码将和libil2cpp及il2cpp生成的c++代码静态编译到同一个二进制模块（.a或.dll或.so）。
-- `libil2cpp/nextlua`目录为 nextlua的源码实现目录
+- `libil2cpp/novalua`目录为 novalua的源码实现目录
 - 
 

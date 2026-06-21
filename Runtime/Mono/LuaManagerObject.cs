@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-namespace NextLua
+namespace NovaLua
 {
     public sealed class LuaManagerObject
     {
@@ -19,9 +19,9 @@ namespace NextLua
         private static readonly List<LuaCSFunction> CallbackRefs = new List<LuaCSFunction>();
         private static readonly LuaCSFunction CSharpIndexCallback = ResolveAssemblyIndex;
         private static readonly LuaCSFunction AssemblyTypeIndexCallback = ResolveAssemblyTypeIndex;
-        private static readonly LuaCSFunction NextLuaTypeOfCallback = NextLuaTypeOf;
-        private static readonly LuaCSFunction NextLuaCreateSignatureCallback = NextLuaCreateSignature;
-        private static readonly LuaCSFunction NextLuaMakeGenericTypeCallback = NextLuaMakeGenericType;
+        private static readonly LuaCSFunction NovaLuaTypeOfCallback = NovaLuaTypeOf;
+        private static readonly LuaCSFunction NovaLuaCreateSignatureCallback = NovaLuaCreateSignature;
+        private static readonly LuaCSFunction NovaLuaMakeGenericTypeCallback = NovaLuaMakeGenericType;
 
         private static int _nextMethodId = 1;
         private static int _nextAssemblyId = 1;
@@ -44,12 +44,12 @@ namespace NextLua
             }
         }
 
-        public void RegisterNextLuaApi()
+        public void RegisterNovaLuaApi()
         {
             IntPtr luaState = _luaEnv.LuaState;
-            LuaDllExtension.RegisterCallback(luaState, "__nextlua_typeof", NextLuaTypeOfCallback);
-            LuaDllExtension.RegisterCallback(luaState, "__nextlua_create_signature", NextLuaCreateSignatureCallback);
-            LuaDllExtension.RegisterCallback(luaState, "__nextlua_make_generic_type", NextLuaMakeGenericTypeCallback);
+            LuaDllExtension.RegisterCallback(luaState, "__novalua_typeof", NovaLuaTypeOfCallback);
+            LuaDllExtension.RegisterCallback(luaState, "__novalua_create_signature", NovaLuaCreateSignatureCallback);
+            LuaDllExtension.RegisterCallback(luaState, "__novalua_make_generic_type", NovaLuaMakeGenericTypeCallback);
         }
 
         public void RegisterType(Type type)
@@ -239,7 +239,7 @@ namespace NextLua
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"nextlua ResolveAssemblyIndex error: {ex}");
+                return LuaDllExtension.error(luaState, $"novalua ResolveAssemblyIndex error: {ex}");
             }
         }
 
@@ -315,39 +315,39 @@ namespace NextLua
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"nextlua ResolveAssemblyTypeIndex error: {ex}");
+                return LuaDllExtension.error(luaState, $"novalua ResolveAssemblyTypeIndex error: {ex}");
             }
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
-        private static int NextLuaTypeOf(IntPtr luaState)
+        private static int NovaLuaTypeOf(IntPtr luaState)
         {
             try
             {
-                // editor 原型阶段：type table 本身即可作为“类型对象”在 nextlua helper 中继续使用
+                // editor 原型阶段：type table 本身即可作为“类型对象”在 novalua helper 中继续使用
                 if (LuaDll.lua_type(luaState, 1) == LuaDataType.Table)
                 {
                     LuaDll.lua_pushvalue(luaState, 1);
                     return 1;
                 }
 
-                return LuaDllExtension.error(luaState, "nextlua.typeof expects a csharp type table");
+                return LuaDllExtension.error(luaState, "novalua.typeof expects a csharp type table");
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"nextlua typeof error: {ex}");
+                return LuaDllExtension.error(luaState, $"novalua typeof error: {ex}");
             }
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
-        private static int NextLuaCreateSignature(IntPtr luaState)
+        private static int NovaLuaCreateSignature(IntPtr luaState)
         {
             try
             {
                 string methodName = LuaDllExtension.tostring(luaState, 1);
                 if (string.IsNullOrWhiteSpace(methodName))
                 {
-                    return LuaDllExtension.error(luaState, "nextlua.create_signature expects method name");
+                    return LuaDllExtension.error(luaState, "novalua.create_signature expects method name");
                 }
 
                 int top = LuaDll.lua_gettop(luaState);
@@ -357,7 +357,7 @@ namespace NextLua
                     string typeName = ReadTypeNameFromTypeTable(luaState, i);
                     if (string.IsNullOrWhiteSpace(typeName))
                     {
-                        return LuaDllExtension.error(luaState, $"nextlua.create_signature arg{i - 1} is not a type");
+                        return LuaDllExtension.error(luaState, $"novalua.create_signature arg{i - 1} is not a type");
                     }
                     parameterNames.Add(typeName);
                 }
@@ -368,12 +368,12 @@ namespace NextLua
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"nextlua create_signature error: {ex}");
+                return LuaDllExtension.error(luaState, $"novalua create_signature error: {ex}");
             }
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
-        private static int NextLuaMakeGenericType(IntPtr luaState)
+        private static int NovaLuaMakeGenericType(IntPtr luaState)
         {
             try
             {
@@ -381,7 +381,7 @@ namespace NextLua
                 string genericAssemblyName = ReadAssemblyNameFromTypeTable(luaState, 1);
                 if (string.IsNullOrWhiteSpace(genericTypeName) || string.IsNullOrWhiteSpace(genericAssemblyName))
                 {
-                    return LuaDllExtension.error(luaState, "nextlua.make_generic_type expects generic type table as first arg");
+                    return LuaDllExtension.error(luaState, "novalua.make_generic_type expects generic type table as first arg");
                 }
 
                 Assembly assembly = ResolveAssembly(NormalizeAssemblyName(genericAssemblyName));
@@ -428,7 +428,7 @@ namespace NextLua
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"nextlua make_generic_type error: {ex}");
+                return LuaDllExtension.error(luaState, $"novalua make_generic_type error: {ex}");
             }
         }
 
@@ -467,14 +467,14 @@ namespace NextLua
                 int typeId = (int)LuaDll.lua_tointeger(luaState, upvalueIndex);
                 if (!Types.TryGetValue(typeId, out Type type))
                 {
-                    return LuaDllExtension.error(luaState, $"nextlua: type id {typeId} not found");
+                    return LuaDllExtension.error(luaState, $"novalua: type id {typeId} not found");
                 }
 
                 int argCount = LuaDll.lua_gettop(luaState) - 1;
                 ConstructorInfo ctor = SelectConstructor(type, argCount);
                 if (ctor == null)
                 {
-                    return LuaDllExtension.error(luaState, $"nextlua: constructor not found for {type.Name} with {argCount} args");
+                    return LuaDllExtension.error(luaState, $"novalua: constructor not found for {type.Name} with {argCount} args");
                 }
 
                 object[] args;
@@ -484,7 +484,7 @@ namespace NextLua
                 }
                 catch (Exception ex)
                 {
-                    return LuaDllExtension.error(luaState, $"nextlua: ctor arg error: {ex.Message}");
+                    return LuaDllExtension.error(luaState, $"novalua: ctor arg error: {ex.Message}");
                 }
 
                 object instance = ctor.Invoke(args);
@@ -500,7 +500,7 @@ namespace NextLua
                     handle.Free();
                     Marshal.WriteIntPtr(userData, IntPtr.Zero);
                     LuaDll.lua_pop(luaState, 1);
-                    return LuaDllExtension.error(luaState, $"nextlua: instance metatable missing for {type.Name}");
+                    return LuaDllExtension.error(luaState, $"novalua: instance metatable missing for {type.Name}");
                 }
 
                 LuaDll.lua_setmetatable(luaState, -2);
@@ -508,7 +508,7 @@ namespace NextLua
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"nextlua CreateTypeInstance error: {ex}");
+                return LuaDllExtension.error(luaState, $"novalua CreateTypeInstance error: {ex}");
             }
         }
 
@@ -521,12 +521,12 @@ namespace NextLua
                 int methodId = (int)LuaDll.lua_tointeger(luaState, upvalueIndex);
                 if (!InstanceMethods.TryGetValue(methodId, out MethodInfo method))
                 {
-                    return LuaDllExtension.error(luaState, $"nextlua: instance method id {methodId} not found");
+                    return LuaDllExtension.error(luaState, $"novalua: instance method id {methodId} not found");
                 }
 
                 if (!TryGetUserDataTarget(luaState, 1, out object target))
                 {
-                    return LuaDllExtension.error(luaState, $"nextlua: invalid userdata for instance method {method.Name}");
+                    return LuaDllExtension.error(luaState, $"novalua: invalid userdata for instance method {method.Name}");
                 }
 
                 object[] args;
@@ -536,7 +536,7 @@ namespace NextLua
                 }
                 catch (Exception ex)
                 {
-                    return LuaDllExtension.error(luaState, $"nextlua: method arg error: {ex.Message}");
+                    return LuaDllExtension.error(luaState, $"novalua: method arg error: {ex.Message}");
                 }
 
                 object ret = method.Invoke(target, args);
@@ -544,7 +544,7 @@ namespace NextLua
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"nextlua InvokeInstanceMethod error: {ex}");
+                return LuaDllExtension.error(luaState, $"novalua InvokeInstanceMethod error: {ex}");
             }
         }
 
@@ -803,7 +803,7 @@ namespace NextLua
             int methodId = (int)LuaDll.lua_tointeger(luaState, upvalueIndex);
             if (!StaticMethods.TryGetValue(methodId, out MethodInfo method))
             {
-                return LuaDllExtension.error(luaState, $"nextlua: static method id {methodId} not found");
+                return LuaDllExtension.error(luaState, $"novalua: static method id {methodId} not found");
             }
 
             object[] args;
@@ -813,7 +813,7 @@ namespace NextLua
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"nextlua: static arg error: {ex.Message}");
+                return LuaDllExtension.error(luaState, $"novalua: static arg error: {ex.Message}");
             }
 
             object ret = method.Invoke(null, args);
@@ -823,7 +823,7 @@ namespace NextLua
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"nextlua: static return error: {ex.Message}");
+                return LuaDllExtension.error(luaState, $"novalua: static return error: {ex.Message}");
             }
         }
     }

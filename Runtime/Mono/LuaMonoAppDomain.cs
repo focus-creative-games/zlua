@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
-namespace NextLua
+namespace NovaLua
 {
     public static class LuaMonoAppDomain
     {
@@ -14,7 +14,7 @@ namespace NextLua
             {
                 if (_luaEnv == null)
                 {
-                    throw new InvalidOperationException("NextLua is not initialized. Call LuaAppDomain.Initialize first.");
+                    throw new InvalidOperationException("NovaLua is not initialized. Call LuaAppDomain.Initialize first.");
                 }
 
                 return _luaEnv;
@@ -33,8 +33,8 @@ namespace NextLua
             _luaEnv.SetModuleLoader(moduleLoader);
             _managerObject = new LuaManagerObject(_luaEnv);
             _luaEnv.LoadBuiltinGlobals();
-            _managerObject.RegisterNextLuaApi();
-            _luaEnv.LoadBuiltinNextLuaLib();
+            _managerObject.RegisterNovaLuaApi();
+            _luaEnv.LoadBuiltinNovaLuaLib();
         }
 
         public static void Shutdown()
@@ -76,7 +76,7 @@ namespace NextLua
         {
             if (_luaEnv == null)
             {
-                throw new InvalidOperationException("NextLua is not initialized. Call LuaAppDomain.Initialize first.");
+                throw new InvalidOperationException("NovaLua is not initialized. Call LuaAppDomain.Initialize first.");
             }
         }
     }

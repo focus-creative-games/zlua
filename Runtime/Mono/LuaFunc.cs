@@ -1,6 +1,6 @@
-﻿using System;
+using System;
 
-namespace NextLua
+namespace NovaLua
 {
     public readonly struct LuaFunc
     {
@@ -20,7 +20,7 @@ namespace NextLua
             }
 
             int oldTop = LuaDll.lua_gettop(luaState);
-            LuaDll.lua_getglobal(luaState, "__nextluaErrorHandler");
+            LuaDll.lua_getglobal(luaState, "__novaluaErrorHandler");
             try
             {
                 LuaDataType type = LuaDll.lua_rawgeti(luaState, LuaConsts.LuaRegistryIndex, _method.RefIndex);
