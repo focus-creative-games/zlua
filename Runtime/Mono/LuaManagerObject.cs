@@ -554,7 +554,7 @@ namespace NovaLua
                 string key = LuaDllExtension.tostring(luaState, 2);
                 if (string.IsNullOrEmpty(key))
                 {
-                    return LuaDllExtension.error(luaState, "novalua: invalid member name");
+                    return 0;
                 }
 
                 if (LuaDll.lua_getmetatable(luaState, 1) != 0)
@@ -577,7 +577,7 @@ namespace NovaLua
                 FieldInfo field = type.GetField(key, BindingFlags.Public | BindingFlags.Instance);
                 if (field == null)
                 {
-                    return LuaDllExtension.error(luaState, $"novalua: member not found: {key}");
+                    return 0;
                 }
 
                 return PushReturn(luaState, field.FieldType, field.GetValue(target));
@@ -613,7 +613,7 @@ namespace NovaLua
                 FieldInfo field = type.GetField(key, BindingFlags.Public | BindingFlags.Instance);
                 if (field == null)
                 {
-                    return LuaDllExtension.error(luaState, $"novalua: member not found: {key}");
+                    return LuaDllExtension.error(luaState, $"novalua: instance field not found: {type.Name}.{key}");
                 }
 
                 object value;
@@ -649,7 +649,7 @@ namespace NovaLua
                 string key = LuaDllExtension.tostring(luaState, 2);
                 if (string.IsNullOrEmpty(key))
                 {
-                    return LuaDllExtension.error(luaState, "novalua: invalid member name");
+                    return 0;
                 }
 
                 FieldInfo field = type.GetField(key, BindingFlags.Public | BindingFlags.Static);
@@ -659,10 +659,6 @@ namespace NovaLua
                 }
 
                 LuaDataType existsType = RawGetField(luaState, 1, key);
-                if (existsType == LuaDataType.Nil)
-                {
-                    return LuaDllExtension.error(luaState, $"novalua: member not found: {key}");
-                }
                 return 1;
             }
             catch (Exception ex)
