@@ -113,3 +113,54 @@ void Run(int x)
 </assembly>
 
 ```
+
+## Mono 和 Il2Cpp 实现
+
+为了最大化正式发布时的运行效率，实现了两套代码，分别为 NextLua.Mono和NextLua.Il2Cpp。Editor下使用NextLua.Mono中的实现，正式发布时使用NextLua.Il2Cpp中实现。
+
+LuaInvokeAttriubte、MonoLuaCallbackAttribute、LuaMarshalAsAttribute这些类在NextLua.Common模块中定义。
+
+NextLua.Common中定义了 LuaAppDomain 门面类，它会将真正实现转发到 NextLua.Mono中的LuaMonoAppDomain或 NextLua.Il2Cpp中的LuaIl2CppAppDomain。
+
+```csharp
+namespace NextLua
+{
+    public class LuaAppDomain
+    {
+        public static void Initialize(Func<string, string> moduleLoader)
+        {
+            string assemblyName = Application.isEditor ? "NextLua.Mono" : "NextLua.Il2Cpp";
+            Assembly assembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == assemblyName);
+            string typeName = Application.isEditor ? "NextLua.LuaMonoAppDomain" : "NextLua.LuaIl2CppAppDomain";
+            assembly.GetType(typeName).GetMethod("Initialize", BindingFlags.Public | BindingFlags.Static)
+                .Invoke(null, new object[] { moduleLoader });
+        }
+    }
+}
+```
+
+### NextLua.Il2Cpp 的实现
+
+在C#层面，Il2Cpp版本实现在 NextLua.Il2Cpp 程序集内，仅有一个非常薄的实现：
+
+```csharp
+    public static class LuaIl2CppAppDomain
+    {
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void InitializeInternal(Func<string, string> moduleLoader);
+
+        public static void Initialize(Func<string, string> moduleLoader)
+        {
+            InitializeInternal(moduleLoader);
+        }
+    }
+```
+
+与NextLua.Mono对应的代码， 全部在c++层实现。
+
+我们需要修改Unity的原始libil2cpp代码：
+
+- 将 lua 源码加到 `libil2cpp/lua` 目录。 这个我们已经手动添加了。 只要源码加入libil2cpp，unity在构建时会自动将它加入编译，最终lua代码将和libil2cpp及il2cpp生成的c++代码静态编译到同一个二进制模块（.a或.dll或.so）。
+- `libil2cpp/nextlua`目录为 nextlua的源码实现目录
+- 
+
