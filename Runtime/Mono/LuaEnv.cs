@@ -15,7 +15,7 @@ namespace NovaLua
         private readonly Dictionary<string, int> _moduleFunctionRefs = new Dictionary<string, int>();
         private bool _disposed;
 
-        private Func<string, string> _moduleLoader;
+        private Func<string, object> _moduleLoader;
 
         public IntPtr LuaState { get; private set; }
 
@@ -32,7 +32,7 @@ namespace NovaLua
             // LoadBuiltinNovaLuaLib();
         }
 
-        public void SetModuleLoader(Func<string, string> moduleLoader)
+        public void SetModuleLoader(Func<string, object> moduleLoader)
         {
             _moduleLoader = moduleLoader;
         }
@@ -49,8 +49,8 @@ namespace NovaLua
                 throw new InvalidOperationException("Lua module loader is not configured.");
             }
 
-            string source = _moduleLoader(moduleName);
-            if (string.IsNullOrEmpty(source))
+            object loaded = _moduleLoader(moduleName);
+            if (loaded == null)
             {
                 throw new Exception($"Lua module '{moduleName}' cannot be loaded.");
             }
@@ -58,7 +58,31 @@ namespace NovaLua
             int oldTop = LuaDll.lua_gettop(LuaState);
             try
             {
-                int loadResult = LuaDllExtension.loadstring(LuaState, source);
+                int loadResult;
+                if (loaded is string source)
+                {
+                    if (string.IsNullOrEmpty(source))
+                    {
+                        throw new Exception($"Lua module '{moduleName}' cannot be loaded.");
+                    }
+
+                    loadResult = LuaDllExtension.loadstring(LuaState, source);
+                }
+                else if (loaded is byte[] bytes)
+                {
+                    if (bytes.Length == 0)
+                    {
+                        throw new Exception($"Lua module '{moduleName}' cannot be loaded.");
+                    }
+
+                    loadResult = LuaDllExtension.loadbuffer(LuaState, bytes, moduleName);
+                }
+                else
+                {
+                    throw new Exception(
+                        $"Lua module loader returned unsupported type '{loaded.GetType().FullName}' for module '{moduleName}'.");
+                }
+
                 if (loadResult != 0)
                 {
                     string error = LuaDllExtension.tostring(LuaState, -1);

@@ -10,7 +10,7 @@ namespace NovaLua
 {
     public class LuaAppDomain
     {
-        public static void Initialize(Func<string, string> moduleLoader)
+        public static void Initialize(Func<string, object> moduleLoader)
         {
             string assemblyName = Application.isEditor ? "NovaLua.Mono" : "NovaLua.Il2Cpp";
             Assembly assembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == assemblyName);

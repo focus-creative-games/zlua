@@ -5,6 +5,9 @@
 #include "vm/Runtime.h"
 #include "vm/String.h"
 #include "vm/Exception.h"
+#include "vm/Array.h"
+#include "gc/GarbageCollector.h"
+#include "gc/WriteBarrier.h"
 
 #include <unordered_map>
 #include <string>
@@ -12,7 +15,9 @@
 namespace novalua
 {
     static lua_State* s_L = nullptr;
+    static Il2CppDelegate** s_gcFixedDatas = nullptr;
     static Il2CppDelegate* s_ModuleLoader = nullptr;
+    static const MethodInfo* s_moduleLoaderInvoker = nullptr;
     static std::unordered_map<std::string, int> s_ModuleRefs;
     static std::unordered_map<std::string, int> s_ModuleFunctionRefs;
 
@@ -42,13 +47,24 @@ namespace novalua
 
     void LuaEnv::Create(Il2CppDelegate* moduleLoader)
     {
+        if (moduleLoader == nullptr)
+        {
+            RaiseLuaException("module loader is null");
+        }
+        if (s_gcFixedDatas == nullptr)
+        {
+            s_gcFixedDatas = (Il2CppDelegate**)il2cpp::gc::GarbageCollector::AllocateFixed(sizeof(void*), nullptr);
+        }
+        il2cpp::gc::WriteBarrier::GenericStore(s_gcFixedDatas, moduleLoader);
+        s_ModuleLoader = moduleLoader;
+        s_moduleLoaderInvoker = il2cpp::vm::Runtime::GetDelegateInvoke(((Il2CppObject*)s_ModuleLoader)->klass);
+        IL2CPP_ASSERT(s_moduleLoaderInvoker);
+        
         if (s_L != nullptr)
         {
-            s_ModuleLoader = moduleLoader;
             return;
         }
 
-        s_ModuleLoader = moduleLoader;
         s_L = luaL_newstate();
         if (s_L == nullptr)
         {
@@ -104,11 +120,21 @@ namespace novalua
 
         if (result == nullptr)
             return std::string();
+        if (result->klass->byval_arg.type == IL2CPP_TYPE_STRING)
+        {
+            Il2CppString* sourceStr = (Il2CppString*)result;
+            return il2cpp::utils::StringUtils::Utf16ToUtf8(
+                il2cpp::utils::StringUtils::GetChars(sourceStr),
+                il2cpp::utils::StringUtils::GetLength(sourceStr));
+        }
+        else if (result->klass->byval_arg.type == IL2CPP_TYPE_SZARRAY && result->klass->rank == 1 && result->klass->element_class->byval_arg.type == IL2CPP_TYPE_I1)
 
-        Il2CppString* sourceStr = (Il2CppString*)result;
-        return il2cpp::utils::StringUtils::Utf16ToUtf8(
-            il2cpp::utils::StringUtils::GetChars(sourceStr),
-            il2cpp::utils::StringUtils::GetLength(sourceStr));
+        {
+            Il2CppArray* charArray = (Il2CppArray*)result;
+            return std::string((char*)il2cpp::vm::Array::GetFirstElementAddress(charArray), charArray->max_length);
+        }
+
+        RaiseLuaException("Lua module loader must return a string or byte array");
     }
 
     void LuaEnv::EnsureModuleLoaded(const char* moduleName)

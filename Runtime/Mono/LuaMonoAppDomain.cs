@@ -21,7 +21,7 @@ namespace NovaLua
             }
         }
 
-        public static void Initialize(Func<string, string> moduleLoader)
+        public static void Initialize(Func<string, object> moduleLoader)
         {
             if (_luaEnv != null)
             {

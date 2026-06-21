@@ -8,9 +8,9 @@ namespace NovaLua
     public static class LuaIl2CppAppDomain
     {
         [MethodImpl(MethodImplOptions.InternalCall)]
-        private static extern void InitializeInternal(Func<string, string> moduleLoader);
+        private static extern void InitializeInternal(Func<string, object> moduleLoader);
 
-        public static void Initialize(Func<string, string> moduleLoader)
+        public static void Initialize(Func<string, object> moduleLoader)
         {
             InitializeInternal(moduleLoader);
         }

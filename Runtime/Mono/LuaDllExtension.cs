@@ -9,6 +9,21 @@ namespace NovaLua
         [DllImport(LuaDll.LUA_DLL, EntryPoint = "luaL_loadstring", CallingConvention = LuaDll.CALLING_CONVENTION)]
         public static extern int loadstring(IntPtr luaState, string chunk);
 
+        [DllImport(LuaDll.LUA_DLL, EntryPoint = "luaL_loadbufferx", CallingConvention = LuaDll.CALLING_CONVENTION)]
+        private static extern int luaL_loadbufferx(IntPtr luaState, byte[] buff, UIntPtr sz, string name, IntPtr mode);
+
+        public static int loadbuffer(IntPtr luaState, byte[] buffer, string chunkName)
+        {
+            if (buffer == null || buffer.Length == 0)
+            {
+                return LUA_ERRSYNTAX;
+            }
+
+            return luaL_loadbufferx(luaState, buffer, (UIntPtr)buffer.Length, chunkName, IntPtr.Zero);
+        }
+
+        private const int LUA_ERRSYNTAX = 3;
+
         public static int dostring(IntPtr luaState, string chunk)
         {
             int result = loadstring(luaState, chunk);
