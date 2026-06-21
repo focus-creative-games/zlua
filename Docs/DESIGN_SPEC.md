@@ -41,8 +41,7 @@
 
 标记了 `[LuaInvoke]`的函数应该是一个 特殊的c#函数，它在editor下实现为 调用 LuaAppDomain.RunLuaFunc(moduleName, methodName); 其中 methodName和moduleName都是通过反射从 LuaPInvoke获得的。 如果有返回值 ，还需要处理返回值。 在非editor环境下。它会在发布过程中被IL修改为一个 extern 函数， 它的entryPointer指向一个生成的 extern "C" 函数。也就是在发布到il2cpp时，它直接调用了一个 c++ 函数。整个过程中透明的。
 
-在editor模式下，开发者定义LuaPInvoke函数时，函数体为空即可。 插件会在编译dll后自动修改注入。 在开发前期，还是手写。等nextlua功能完善了再实现dll修改注入的功能 。
-
+在editor模式下，开发者定义标记`[LuaInvoke]`函数时，必须为`static extern`函数。 插件会在编译dll后自动修改注入，实现真正的代码。
 当unity 的dll 编译后， 使用dnlib 修改 dll，对于包含 [LuaInvoke]的函数：
 
 - 检查它必须是static extern 的，不能是泛型类的成员函数，也不能自身是泛型函数，否则抛出异常

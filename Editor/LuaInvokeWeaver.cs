@@ -12,6 +12,8 @@ using UnityEditor;
 using UnityEditor.Compilation;
 using MethodAttributes = dnlib.DotNet.MethodAttributes;
 using MethodImplAttributes = dnlib.DotNet.MethodImplAttributes;
+using NextLua;
+using UnityEngine;
 
 namespace NextLua
 {
@@ -177,6 +179,7 @@ namespace NextLua
 
             File.Copy(assemblyPath, assemblyPath + ".backup", overwrite: true);
             var options = new ModuleWriterOptions(module);
+            Debug.Log($"RewriteAssemblyIfNeeded: {assemblyPath}");
 
             module.Write(assemblyPath, options);
             return true;

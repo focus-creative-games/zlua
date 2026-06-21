@@ -199,7 +199,6 @@ namespace NextLua
             LuaDll.lua_setfield(luaState, mtIndex, "__gc");
         }
 
-        [LuaCallback]
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int ResolveAssemblyIndex(IntPtr luaState)
         {
@@ -286,7 +285,6 @@ namespace NextLua
             return methodName + "(" + string.Join(",", parameterTypeNames) + ")";
         }
 
-        [LuaCallback]
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int ResolveAssemblyTypeIndex(IntPtr luaState)
         {
@@ -321,7 +319,6 @@ namespace NextLua
             }
         }
 
-        [LuaCallback]
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int NextLuaTypeOf(IntPtr luaState)
         {
@@ -342,7 +339,6 @@ namespace NextLua
             }
         }
 
-        [LuaCallback]
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int NextLuaCreateSignature(IntPtr luaState)
         {
@@ -376,7 +372,6 @@ namespace NextLua
             }
         }
 
-        [LuaCallback]
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int NextLuaMakeGenericType(IntPtr luaState)
         {
@@ -463,7 +458,6 @@ namespace NextLua
             return value;
         }
 
-        [LuaCallback]
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int CreateTypeInstance(IntPtr luaState)
         {
@@ -518,7 +512,6 @@ namespace NextLua
             }
         }
 
-        [LuaCallback]
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int InvokeInstanceMethod(IntPtr luaState)
         {
@@ -555,7 +548,6 @@ namespace NextLua
             }
         }
 
-        [LuaCallback]
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int ReleaseUserData(IntPtr luaState)
         {
@@ -804,7 +796,6 @@ namespace NextLua
             return assemblyName;
         }
 
-        [LuaCallback]
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int InvokeStaticMethod(IntPtr luaState)
         {

@@ -295,7 +295,6 @@ namespace NextLua
             DoStringIgnoreResult(source);
         }
 
-        [LuaCallback]
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int Print(IntPtr luaState)
         {
