@@ -199,32 +199,18 @@ namespace novalua
 
     Il2CppObject* ObjectRegistry::GetObject(lua_State* L, int idx)
     {
-        if (!lua_isuserdata(L, idx))
-            return nullptr;
-
         NovaLuaUserData* ud = (NovaLuaUserData*)lua_touserdata(L, idx);
-        if (ud == nullptr || ud->slotIndex == kInvalidSlotIndex)
-            return nullptr;
-
-        if (ud->obj != nullptr)
-            return ud->obj;
-
-        return s_objRegMgr.GetObject(ud->slotIndex);
+        return ud ? ud->obj : nullptr;
     }
 
     void ObjectRegistry::ReleaseObject(lua_State* L, int idx)
     {
-        if (!lua_isuserdata(L, idx))
-            return;
-
         NovaLuaUserData* ud = (NovaLuaUserData*)lua_touserdata(L, idx);
-        if (ud == nullptr || ud->slotIndex == kInvalidSlotIndex)
-            return;
+        IL2CPP_ASSERT(ud != nullptr);
+        IL2CPP_ASSERT(ud->slotIndex != kInvalidSlotIndex);
 
         Il2CppObject* obj = ud->obj;
         s_objRegMgr.UnregisterObject(ud->slotIndex);
         RemoveFromObjectCache(L, obj);
-        ud->obj = nullptr;
-        ud->slotIndex = kInvalidSlotIndex;
     }
 }
