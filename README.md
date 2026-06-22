@@ -1,4 +1,4 @@
-# novalua
+# NovaLua
 
 NovaLua是一个针对Unity Il2Cpp 极致优化的现代原生lua方案。
 
@@ -125,23 +125,6 @@ public class Demo
 
 ```lua
 CSharp['AC'] = CSharp['Assembly-CSharp']
-
-
-function add(a, b)
-    return a + b
-end
-
-function concat(a, b)
-    return a .. b
-end
-
-function print_mt(t)
-    for k, v in pairs(t) do
-        print("===", k, v)
-    end
-    print(t.Add(3, 4))
-    print(t.Multi(3, 4))
-end
 
 local function test_call_static_method()
     print("[test_call_static_method] start")
