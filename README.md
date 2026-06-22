@@ -13,7 +13,7 @@ NovaLua是一个针对Unity Il2Cpp 极致优化的现代原生lua方案。
 
 - 使用清晰的规则统一了c#与lua之间的双向调用，并且**几乎**支持lua调用c#的所有功能：包括class对象访问、struct对象访问、静态成员访问、成员函数和静态函数调用、泛型类、泛型函数调用，数组，函数重载访问，函数回调，协程、以及支持ref\out\in之类的函数参数等。
 - 极致易用优雅。 只需用`[LuaInvoke]` 标记c#函数，自动实现调用代码。lua中访问c#类时自动注册meta table信息。无论在Editor下还是发布到il2cpp后，所有操作对开发者都是无感的。
-- 极致高效。数倍甚至十部以下优化了c#与lua之间的调用开销。在il2cpp中内嵌lua，抛开lua与c#之间交互绕开低效的C#接口，在c++层面让il2cpp和lua虚拟机直接相互操作。
+- 极致高效。数倍甚至十倍以上优化了c#与lua之间的调用开销。在il2cpp中内嵌lua，抛开lua与c#之间交互绕开低效的C#接口，在c++层面让il2cpp和lua虚拟机直接相互操作。
   - 托管对象的UserData中直接包含了对象指针，相比于xlua之类传统方案十倍以上优化了this对象查找到开销。
   - 在c++层维护了lua引用的托管对象，并且注册到il2cpp的GCRoots。相比于xlua之类传统方案数倍优化了维护托管对象引用的开销。
   - 在c++层直接内存访问成员和静态成员变量。完全不需要经过低效的c# wrapper函数，十倍以上优化的字段访问的开销。
@@ -38,7 +38,7 @@ NovaLua是一个针对Unity Il2Cpp 极致优化的现代原生lua方案。
 极致简单：
 
 - **不需要任何配置**，仅需要初始化时设置LuaLoader即可。
-- 定义static extern 函数用于调用c#函数，添加`[LuaInvoke("app", "main")]`指定要调用的lua函数。
+- 定义`static extern` c#函数用于调用lua函数，添加`[LuaInvoke("app", "main")]`指定要调用的lua函数。
 - 通过`CSharp.{assembly name}.{full type name}`访问c#类型，操作跟c#代码中调用c#完全一致。
 - 通过`obj.x`访问成员变量和属性，通过`{class}.x`访问静态成员变量和属性
 - 通过`obj:foo(..)` 调用成员函数，通过`{class}.foo(...)`调用静态成员函数
