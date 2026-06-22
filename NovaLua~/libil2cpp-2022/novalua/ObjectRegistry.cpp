@@ -107,10 +107,9 @@ namespace novalua
 
     static ObjectRegistryManager s_objRegMgr;
 
-    static void EnsureObjectCache(lua_State* L)
+    void ObjectRegistry::EnsureObjectCache(lua_State* L)
     {
-        if (s_objectCacheRef != LUA_NOREF)
-            return;
+        IL2CPP_ASSERT(s_objectCacheRef == LUA_NOREF);
 
         lua_newtable(L);
         lua_newtable(L);
@@ -120,10 +119,17 @@ namespace novalua
         s_objectCacheRef = luaL_ref(L, LUA_REGISTRYINDEX);
     }
 
+    void ObjectRegistry::Shutdown()
+    {
+        s_objectCacheRef = LUA_NOREF;
+    }
+
     static void RemoveFromObjectCache(lua_State* L, Il2CppObject* obj)
     {
-        if (s_objectCacheRef == LUA_NOREF || obj == nullptr)
+        if (obj == nullptr)
             return;
+
+        IL2CPP_ASSERT(s_objectCacheRef != LUA_NOREF);
 
         lua_rawgeti(L, LUA_REGISTRYINDEX, s_objectCacheRef);
         lua_pushlightuserdata(L, obj);
@@ -134,7 +140,8 @@ namespace novalua
 
     static bool TryPushCachedObject(lua_State* L, Il2CppObject* obj)
     {
-        EnsureObjectCache(L);
+        IL2CPP_ASSERT(s_objectCacheRef != LUA_NOREF);
+
         lua_rawgeti(L, LUA_REGISTRYINDEX, s_objectCacheRef);
         lua_pushlightuserdata(L, obj);
         lua_rawget(L, -2);
@@ -157,7 +164,8 @@ namespace novalua
 
     static void AddToObjectCache(lua_State* L, Il2CppObject* obj, int userdataIndex)
     {
-        EnsureObjectCache(L);
+        IL2CPP_ASSERT(s_objectCacheRef != LUA_NOREF);
+
         const int absUserdataIndex = lua_absindex(L, userdataIndex);
         lua_rawgeti(L, LUA_REGISTRYINDEX, s_objectCacheRef);
         lua_pushlightuserdata(L, obj);
@@ -191,18 +199,32 @@ namespace novalua
 
     Il2CppObject* ObjectRegistry::GetObject(lua_State* L, int idx)
     {
+        if (!lua_isuserdata(L, idx))
+            return nullptr;
+
         NovaLuaUserData* ud = (NovaLuaUserData*)lua_touserdata(L, idx);
-        return ud ? ud->obj : nullptr;
+        if (ud == nullptr || ud->slotIndex == kInvalidSlotIndex)
+            return nullptr;
+
+        if (ud->obj != nullptr)
+            return ud->obj;
+
+        return s_objRegMgr.GetObject(ud->slotIndex);
     }
 
     void ObjectRegistry::ReleaseObject(lua_State* L, int idx)
     {
+        if (!lua_isuserdata(L, idx))
+            return;
+
         NovaLuaUserData* ud = (NovaLuaUserData*)lua_touserdata(L, idx);
-        IL2CPP_ASSERT(ud != nullptr);
-        IL2CPP_ASSERT(ud->slotIndex != kInvalidSlotIndex);
+        if (ud == nullptr || ud->slotIndex == kInvalidSlotIndex)
+            return;
 
         Il2CppObject* obj = ud->obj;
         s_objRegMgr.UnregisterObject(ud->slotIndex);
         RemoveFromObjectCache(L, obj);
+        ud->obj = nullptr;
+        ud->slotIndex = kInvalidSlotIndex;
     }
 }

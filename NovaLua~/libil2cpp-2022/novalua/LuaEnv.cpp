@@ -1,6 +1,7 @@
 #include "LuaEnv.h"
 
 #include "Marshaling.h"
+#include "ObjectRegistry.h"
 
 #include "vm/Runtime.h"
 #include "vm/String.h"
@@ -72,12 +73,15 @@ namespace novalua
         
         luaL_openlibs(s_L);
         RegisterPrintCallback();
+        ObjectRegistry::EnsureObjectCache(s_L);
     }
 
     void LuaEnv::Shutdown()
     {
         if (s_L == nullptr)
             return;
+
+        ObjectRegistry::Shutdown();
 
         for (auto& kv : s_ModuleFunctionRefs)
             luaL_unref(s_L, LUA_REGISTRYINDEX, kv.second);
