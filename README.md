@@ -35,6 +35,8 @@ NovaLua是一个针对Unity Il2Cpp 极致优化的现代原生lua方案。
 
 ## 示例
 
+示例项目 [NovaLua-Demo](https://github.com/focus-creative-games/novalua-demo)。
+
 极致简单：
 
 - **不需要任何配置**，仅需要初始化时设置LuaLoader即可。
@@ -205,6 +207,11 @@ return {
     add = add,
 }
 ```
+
+## 当前状态
+
+目前还处于早期阶段，仅在Unity 2022.3.62f3版本、lua 5.4版本上测试通过。目前仅支持基础的交互，功能远未完善。
+预计在2026年8月发布正式版本。
 
 ## 许可证
 
