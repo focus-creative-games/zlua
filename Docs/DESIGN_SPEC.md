@@ -24,18 +24,7 @@
 
 ### novalua 库
 
-`Packages\com.code-philosophy.novalua\Resources\novalua\novalualib.lua` 文件包含了一些全局公共的novalua 辅助函数。 这个文件在luaState初始化时被读取然后执行`dostring`。
-
-有以下函数：
-
-- typeof 。根据传入的类型，返回对应的System.Type对象。 例如  `local t = novalua.typeof(CSharp.mscorlib['System.Int32'])` ，t等价于 c#里`typeof(int)`的值
-- make_generic_type。 根据传入的泛型基类和泛型实例化参数，返回最终的类型。如 `local t = novalua.make_generic_type(CSharp.mscorlib['System.Collections.Generic.List'], CSharp.mscorlib['System.Int32'])`
-- signature。返回**仅含参数类型**的签名字符串。如 `local sig = novalua.signature(novalua.types.int32)` → `"(System.Int32)"`。详见 `METHOD_OVERLOAD_SPEC.md`。
-
-
-有以下字段：
-
-- types（原 corlibtypes）。包含常见类型的 typeof 值。如 `novalua.types.int32`。
+见[LIB_SPEC](./LIB_SPEC.md)。
 
 ### LuaInvokeAttribute
 

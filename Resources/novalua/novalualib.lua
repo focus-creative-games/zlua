@@ -33,4 +33,23 @@ function novalua.register_method(obj, name, fn)
     rawset(obj, name, fn)
 end
 
-novalua.corlibtypes = novalua.corlibtypes or {}
+novalua.types = {
+    void = "System.Void",
+    bool = "System.Boolean",
+    char = "System.Char",
+    byte = "System.Byte",
+    sbyte = "System.SByte",
+    short = "System.Int16",
+    ushort = "System.UInt16",
+    int = "System.Int32",
+    uint = "System.UInt32",
+    long = "System.Int64",
+    ulong = "System.UInt64",
+    float = "System.Float",
+    double = "System.Double",
+    intptr = "System.IntPtr",
+    uintptr = "System.UIntPtr",
+    decimal = "System.Decimal",
+    object = "System.Object",
+    string = "System.String",
+}

@@ -6,6 +6,7 @@
 
 | 文档 | 内容 |
 |------|------|
+| `LIB_SPEC.md` | `novalua` 标准库 Lua API |
 | `METHOD_OVERLOAD_SPEC.md` | 方法重载 dispatch、签名、`get_method` |
 | `MARSHAL_SPEC.md` | 参数编组总览 |
 | `STRUCT_MARSHAL_SPEC.md` | struct 传递 |
@@ -143,7 +144,7 @@ local t = novalua.typeof(CSharp.AC.Demo)
 
 ### 2.7 `novalua.types`
 
-内置常用基元与核心类型，等价于 `novalua.typeof(CSharp....)`，例如 `novalua.types.int32`、`novalua.types.string`。
+记录了c#常见类型的全名字符串。如 `novalua.types.int32`的值为`System.Int32`
 
 ---
 
