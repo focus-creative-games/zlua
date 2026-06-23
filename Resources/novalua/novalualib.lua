@@ -16,6 +16,14 @@ function novalua.make_generic_type(genericType, ...)
     return __novalua_make_generic_type(genericType, ...)
 end
 
+function novalua.to_bytes(szarray)
+    return __novalua_to_bytes(szarray)
+end
+
+function novalua.to_table(szarray)
+    return __novalua_to_table(szarray)
+end
+
 function novalua.get_method(obj, sig)
     if type(obj) == "table" then
         return obj[sig]

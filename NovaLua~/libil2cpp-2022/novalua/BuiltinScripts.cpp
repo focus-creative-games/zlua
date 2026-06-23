@@ -19,6 +19,8 @@ function novalua.typeof(typeTable) return __novalua_typeof(typeTable) end
 function novalua.create_signature(methodName, ...) return __novalua_create_signature(methodName, ...) end
 function novalua.signature(methodName, ...) return novalua.create_signature(methodName, ...) end
 function novalua.make_generic_type(genericType, ...) return __novalua_make_generic_type(genericType, ...) end
+function novalua.to_bytes(szarray) return __novalua_to_bytes(szarray) end
+function novalua.to_table(szarray) return __novalua_to_table(szarray) end
 function novalua.get_method(obj, sig)
     if type(obj) == "table" then return obj[sig] end
     local mt = getmetatable(obj)

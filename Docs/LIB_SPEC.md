@@ -163,7 +163,62 @@ novalua.new_mdarray_by_spec(typeArg, lowbounds, sizes) → mdarrayUserdata
 
 元素初始化为 `default(T)`。szarray 实例支持 `#arr`（`__len`，等价 `Length`）。
 
-**Native：** `__novalua_make_szarray_type`、`__novalua_new_szarray_*` 等（名称以实现为准，语义对齐本文档）。
+### 6.3 szarray 转换
+
+#### `novalua.to_bytes`
+
+```lua
+novalua.to_bytes(szarray) → string
+```
+
+将 **szarray** 实例的底层元素内存按顺序拷贝为 Lua **二进制字符串**（`string` 每字节对应一字节，可含 `\0`）。
+
+| 约束 | 说明 |
+|------|------|
+| 输入 | 必须是 szarray userdata（**不支持** mdarray） |
+| 元素类型 | 仅 **blittable 基元**：`bool`、`byte`、`sbyte`、`char`、`short`、`ushort`、`int`、`uint`、`long`、`ulong`、`float`、`double` |
+| 不支持 | `string`、`object`、`decimal` 及任意引用类型、非 blittable struct |
+
+**布局：**
+
+- 按 C# 数组下标 `0 .. Length-1` 顺序拼接；无额外长度头。
+- 多字节数值使用 **平台原生字节序**（Il2Cpp 目标平台通常为 **little-endian**），与 `Buffer.BlockCopy` / 内存逐元素布局一致。
+- `bool` 按 **1 字节** 存储：`0` / `非 0`（与 Il2Cpp 布尔数组内存布局一致）。
+
+```lua
+local bytes = novalua.to_bytes(int_arr)   -- #bytes == #int_arr * 4（int 为 4 字节）
+```
+
+元素类型不在白名单内时 `luaL_error`。
+
+**Native：** `__novalua_to_bytes`
+
+#### `novalua.to_table`
+
+```lua
+novalua.to_table(szarray) → table
+```
+
+将 szarray 转为 **等长** Lua 表；**对元素类型无限制**，每个元素按 `MARSHAL_SPEC.md` / `CLASS_MARSHAL_SPEC.md` 规则转为 Lua 值。
+
+| 约束 | 说明 |
+|------|------|
+| 输入 | 必须是 szarray userdata |
+| 输出长度 | `n = #szarray`；返回表在 `1 .. n` 上连续赋值 |
+| 下标对应 | `t[i]` ↔ C# `arr[i - 1]`（Lua 1 基 ↔ C# 0 基） |
+
+```lua
+local t = novalua.to_table(obj_arr)
+-- t[1] 对应 arr[0]，t[#t] 对应 arr[Length-1]
+```
+
+引用类型元素转为 userdata；值类型 struct 按 class marshal 规则处理。
+
+**Native：** `__novalua_to_table`
+
+---
+
+**Native（§6.1–6.2）：** `__novalua_make_szarray_type`、`__novalua_new_szarray_*` 等（名称以实现为准，语义对齐本文档）。
 
 ---
 
@@ -285,6 +340,8 @@ local ListInt = novalua.make_generic_type(
 local IntArray = novalua.make_szarray_type(novalua.types.int32)
 local arr = novalua.new_szarray_by_szarray_type(IntArray, 4)
 print(#arr)
+local bytes = novalua.to_bytes(arr)
+local t = novalua.to_table(arr)
 
 -- 重载
 local run_i32 = novalua.get_method(demo, "Run", sig, false)
@@ -303,6 +360,8 @@ novalua.register_method("run_i32", run_i32)
 | `novalua.make_szarray_type` | `__novalua_make_szarray_type` | 待实现 |
 | `novalua.make_mdarray_type` | `__novalua_make_mdarray_type` | 待实现 |
 | `novalua.new_szarray_*` | `__novalua_new_szarray_*` | 待实现 |
+| `novalua.to_bytes` | `__novalua_to_bytes` | 待实现 |
+| `novalua.to_table` | `__novalua_to_table` | 待实现 |
 | `novalua.new_mdarray_*` | `__novalua_new_mdarray_*` | 待实现 |
 | `novalua.make_generic_inst` | `__novalua_make_generic_inst` | 待实现 |
 | `novalua.get_method` | `__novalua_get_method` | 待实现 |
@@ -343,6 +402,14 @@ end
 
 function novalua.new_szarray_by_szarray_type(szarrayType, length)
     return __novalua_new_szarray_by_szarray_type(szarrayType, length)
+end
+
+function novalua.to_bytes(szarray)
+    return __novalua_to_bytes(szarray)
+end
+
+function novalua.to_table(szarray)
+    return __novalua_to_table(szarray)
 end
 
 function novalua.new_mdarray_by_mdarray_type(mdarrayType, lowbounds, sizes)
@@ -388,6 +455,7 @@ novalua.types = novalua.types or {
 - [ ] `get_method(target, methodName, signature, is_static)` native 实现
 - [ ] `register_method(aliasName, closure)` native 实现
 - [ ] 数组 `make_*` / `new_*` 全套 API
+- [ ] `to_bytes` / `to_table`（szarray）
 - [ ] `make_generic_inst` + 泛型方法 `inflatedMap`
 - [ ] Mono / Il2Cpp `novalualib.lua` 内容同步（嵌入 vs Resources）
 - [ ] `TYPE_SYSTEM_SPEC.md` §2.2 命名空间括号规则在类型解析回调中强制执行

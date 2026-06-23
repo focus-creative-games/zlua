@@ -368,7 +368,16 @@ local n = #arr   -- 等价于 C# arr.Length
 
 mdarray 无单一 `Length` 语义，**不**实现 `__len`；通过 `GetLength(d)` 或专用 API 访问。
 
-### 7.4 数组类型表
+### 7.4 szarray 与 Lua 互转
+
+由 `novalua` 标准库提供（详见 `LIB_SPEC.md` §6.3）：
+
+| API | 说明 |
+|-----|------|
+| `novalua.to_bytes(arr)` | 基元 szarray → 二进制 Lua `string`（仅 blittable 基元） |
+| `novalua.to_table(arr)` | 任意元素类型 szarray → 等长 Lua 表（`t[i]` ↔ `arr[i-1]`） |
+
+### 7.5 数组类型表
 
 数组类型表与普通类型表结构相同（静态门面 + 实例元表）。实例为数组对象 userdata，元素访问/赋值规则见 `CLASS_MARSHAL_SPEC.md`。
 
@@ -488,6 +497,8 @@ local list = ListInt()
 local IntArray = novalua.make_szarray_type(novalua.types.int32)
 local arr = novalua.new_szarray_by_szarray_type(IntArray, 4)
 print(#arr)
+local bytes = novalua.to_bytes(arr)
+local t = novalua.to_table(arr)
 
 -- 显式重载（见 METHOD_OVERLOAD_SPEC.md）
 local sig = novalua.signature(novalua.types.int32)
