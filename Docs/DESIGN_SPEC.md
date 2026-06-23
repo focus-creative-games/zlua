@@ -7,7 +7,7 @@
 - 类比于 P/Invoke、 MonoPInvokeCallback, MarshalAs， novalua 有同样对应的概念 L/Invoke、MonoLuaCallback, LuaMarshalAs
 - c# 与 lua 之间交互是高度统一的：
   - c#可以调用 标记为 `[LuaInvoke]` 的static c#函数，调用lua函数
-  - 所有c#类都通过lazy register的方式，使用时自动注册到lua环境。  lua通过 `CSharp.<Module>.<Type>` 可以访问类， 通过`<Type>.XXX` 访问静态成员和函数，通过 `obj:Fun` 调用成员函数和属性，无论它是struct、class、泛型还是array。语义完全等价到c#中以这种方式调用c#函数。没有特殊概念，完全统一
+  - 所有c#类都通过lazy register的方式，使用时自动注册到lua环境。类型访问、元表与成员规则见 **`TYPE_SYSTEM_SPEC.md`**（含命名空间类型须 `CSharp.{asm}['Ns.Type']` 括号访问）。通过类型表访问静态成员、通过 `obj:Method()` 调用实例成员，语义与 C# 一致。
   - c# 与 lua之间的 交互代码，都是自动生成的，对开发者完全感。 在editor下生成c#代码，发布到il2cpp时，生成 c++ 代码。
 - 深度集成，启动时就有初始化好的全局CLR和luaState
 
@@ -30,12 +30,12 @@
 
 - typeof 。根据传入的类型，返回对应的System.Type对象。 例如  `local t = novalua.typeof(CSharp.mscorlib['System.Int32'])` ，t等价于 c#里`typeof(int)`的值
 - make_generic_type。 根据传入的泛型基类和泛型实例化参数，返回最终的类型。如 `local t = novalua.make_generic_type(CSharp.mscorlib['System.Collections.Generic.List'], CSharp.mscorlib['System.Int32'])`
-- create_signature。返回一个函数签名。如`local t = novalua.create_signature('run', CSharp.mscorlib['System.Int32'])`
+- signature。返回**仅含参数类型**的签名字符串。如 `local sig = novalua.signature(novalua.types.int32)` → `"(System.Int32)"`。详见 `METHOD_OVERLOAD_SPEC.md`。
 
 
 有以下字段：
 
-- corlibtypes。 包含常见类型的typeof的值。如 ` int32 = novalua.typeof(CSharp.mscorlib['System.Int32'])`。
+- types（原 corlibtypes）。包含常见类型的 typeof 值。如 `novalua.types.int32`。
 
 ### LuaInvokeAttribute
 
@@ -63,56 +63,23 @@ c#函数，都是在lua 第一次调用时自动注册的。无需`[MonoLuaCallb
 
 #### 处理函数重载
 
-c#类中可能存在同名函数，如 `void Run(int x)` 和 `void Run(string x)`。而lua无法区分这个。解决办法有几个：
+c#类中可能存在同名函数，如 `void Run(int x)` 和 `void Run(string x)`。完整规范见 **`METHOD_OVERLOAD_SPEC.md`**。概要：
 
-1. 引入 signature 机制。
+1. **默认 dispatch**：`obj:Run(x)` 运行时分派（多重重载时）。
+2. **`[LuaAlias]` / XML**：类内唯一别名。
+3. **运行时签名**：`get_method` 查找后缓存或 `register_method` 注册。
 
 ```lua
-
-local sig_run_int32 = novalua.signature("Run", novalua.corlibtypes.int32)
-
--- 有两种调用方式：
--- 方法1
-
-obj[sig_run_int32](obj)
-
--- 方法2
-
-local run_i32 = novalua.get_method(obj, sig_run_int32)
-novalua.register_method(obj, "run_i32", run_i32)
-
+local sig_i32 = novalua.signature(novalua.types.int32)
+local run_i32 = novalua.get_method(obj, "Run", sig_i32, false)
+run_i32(obj, 10)
+novalua.register_method("run_i32", run_i32)
 obj:run_i32(10)
-
-
 ```
 
-2. 引入别名
+**不推荐** `obj[sig](obj, ...)` 按签名字符串键查找。
 
-在c#函数中加上`[MonoLuaCallback("Run_i32)]`。
-
-```csharp
-
-[MonoLuaCallback("Run_i32")]
-void Run(int x)
-{
-
-}
-
-```
-
-在lua中可以直接 `obj:Run_i32(10)` 调用。 缺点是对于预编译好的dll或者第三方代码没法这么做
-
-3. 引入别名配置
-
-```xml
-
-<assembly fullname="Assembly-CSharp">
-    <type fullname="Demo">
-        <method signature="void Run(System.Int32)" lua_call_name="Run_i32"/>
-    </type>
-</assembly>
-
-```
+别名细节（`[LuaAlias]`、XML 格式）见 `METHOD_OVERLOAD_SPEC.md` §5。
 
 ## Mono 和 Il2Cpp 实现
 

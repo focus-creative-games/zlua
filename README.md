@@ -163,12 +163,12 @@ end
 local function test_overload_signature()
     print("[test_overload_signature] start")
     local demo = CSharp.AC.Demo()
-    local sig_run_i32 = novalua.signature("Run", novalua.corlibtypes.int32)
-    demo[sig_run_i32](demo, 10)
+    local sig_i32 = novalua.signature(novalua.types.int32)
+    local run_i32 = novalua.get_method(demo, "Run", sig_i32, false)
+    run_i32(demo, 10)
     print("After Run(int):", demo:GetX())
 
-    local run_i32 = novalua.get_method(demo, sig_run_i32)
-    novalua.register_method(demo, "run_i32", run_i32)
+    novalua.register_method("run_i32", run_i32)
     demo:run_i32(20)
     print("After run_i32 alias:", demo:GetX())
 end
