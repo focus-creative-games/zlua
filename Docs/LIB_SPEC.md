@@ -13,6 +13,7 @@
 | `TYPE_SYSTEM_SPEC.md` | `CSharp` 类型访问、元表、数组、泛型方法 |
 | `METHOD_OVERLOAD_SPEC.md` | `signature` / `get_method` / `register_method` 语义 |
 | `MARSHAL_SPEC.md` | 参数编组总览 |
+| `FUNCTION_MARSHAL_SPEC.md` | Lua function ↔ C# delegate |
 | `DESIGN_SPEC.md` | 双运行时与总体架构 |
 
 **平台原则：** `novalua` 的 Lua 封装在 Mono 与 Il2Cpp 上**签名与语义一致**；耗时逻辑在 native `__novalua_*` 回调中实现，Lua 层保持薄封装。
@@ -243,13 +244,47 @@ Type.Foo(inst, value)   -- 第一实参必须是 generic_inst
 
 每个泛型方法在 native 维护 `inflatedMap`：`generic_inst` 指纹 → 单态化后的 bridge closure。
 
+每个泛型方法在 native 维护 `inflatedMap`：`generic_inst` 指纹 → 单态化后的 bridge closure。
+
 ---
 
-## 8. 方法重载辅助
+## 8. Delegate（可选显式 API）
+
+**默认行为：** Lua 调用带 delegate 形参的 C# 方法时，直接传入 Lua function 即可，由 **方法参数 marshal** 隐式转换，与其它形参规则相同。详见 **`FUNCTION_MARSHAL_SPEC.md` §4.0**。
+
+```lua
+obj:RegisterCallback(function(v) print(v) end)   -- 无需 to_delegate
+```
+
+### 8.1 `novalua.to_delegate`（可选）
+
+仅在需要先构造 delegate、再传递或缓存时使用（非常规路径）。
+
+```lua
+novalua.to_delegate(func, delegateTypeTable) → delegateUserdata
+```
+
+```lua
+local d = novalua.to_delegate(function(a) return a end, closedFuncIntIntType)
+obj:RegisterCallback(d)
+```
+
+| 参数 | 说明 |
+|------|------|
+| `func` | Lua function |
+| `delegateTypeTable` | 已闭合的 delegate 类型表（无方法形参上下文时须显式指定） |
+
+**Native：** `__novalua_to_delegate`（可选，待实现）
+
+C# delegate 传入 Lua 后可直接 `d(...)`（`IMT.__call`），见 `FUNCTION_MARSHAL_SPEC.md` §3。
+
+---
+
+## 9. 方法重载辅助
 
 完整语义见 `METHOD_OVERLOAD_SPEC.md`。`novalua` 仅提供薄封装。
 
-### 8.1 `novalua.signature`
+### 9.1 `novalua.signature`
 
 ```lua
 novalua.signature([typeArg1, typeArg2, ...]) → paramSignature
@@ -267,7 +302,7 @@ local sig2 = novalua.signature(novalua.types.int32, novalua.types.string)
 
 **Native：** `__novalua_create_signature`（Lua 层不再暴露 `create_signature` 公共 API；若存在则视为 `signature` 别名并标记废弃）。
 
-### 8.2 `novalua.get_method`
+### 9.2 `novalua.get_method`
 
 ```lua
 novalua.get_method(target, methodName, signature, is_static) → closure
@@ -295,7 +330,7 @@ add(3, 5)
 
 **Native：** `__novalua_get_method`（待实现）
 
-### 8.3 `novalua.register_method`
+### 9.3 `novalua.register_method`
 
 ```lua
 novalua.register_method(aliasName, methodClosure) → void
@@ -317,7 +352,7 @@ demo:run_i32(20)
 
 ---
 
-## 9. 与 `CSharp` 的配合示例
+## 10. 与 `CSharp` 的配合示例
 
 ```lua
 CSharp.AC = CSharp['Assembly-CSharp']
@@ -350,7 +385,7 @@ novalua.register_method("run_i32", run_i32)
 
 ---
 
-## 10. Native 回调一览
+## 11. Native 回调一览
 
 | Lua API | Native 回调 | 状态（参考） |
 |---------|-------------|--------------|
@@ -364,6 +399,7 @@ novalua.register_method("run_i32", run_i32)
 | `novalua.to_table` | `__novalua_to_table` | 待实现 |
 | `novalua.new_mdarray_*` | `__novalua_new_mdarray_*` | 待实现 |
 | `novalua.make_generic_inst` | `__novalua_make_generic_inst` | 待实现 |
+| `novalua.to_delegate` | `__novalua_to_delegate` | 可选，待实现 |
 | `novalua.get_method` | `__novalua_get_method` | 待实现 |
 | `novalua.register_method` | `__novalua_register_method` | 待实现 |
 
@@ -371,7 +407,7 @@ novalua.register_method("run_i32", run_i32)
 
 ---
 
-## 11. `novalualib.lua` 目标骨架
+## 12. `novalualib.lua` 目标骨架
 
 ```lua
 novalua = novalua or {}
@@ -424,6 +460,10 @@ function novalua.make_generic_inst(...)
     return __novalua_make_generic_inst(...)
 end
 
+function novalua.to_delegate(func, delegateType)
+    return __novalua_to_delegate(func, delegateType)
+end
+
 function novalua.get_method(target, methodName, signature, is_static)
     return __novalua_get_method(target, methodName, signature, is_static)
 end
@@ -448,7 +488,7 @@ novalua.types = novalua.types or {
 
 ---
 
-## 12. 实现清单
+## 13. 实现清单
 
 - [ ] `novalua.types` 初始化与 `corlibtypes` 迁移
 - [ ] `signature` 仅接收 `typeArg`，去掉 methodName
@@ -456,6 +496,8 @@ novalua.types = novalua.types or {
 - [ ] `register_method(aliasName, closure)` native 实现
 - [ ] 数组 `make_*` / `new_*` 全套 API
 - [ ] `to_bytes` / `to_table`（szarray）
+- [ ] `Marshaling::ReadDelegate` 隐式 marshal（`FUNCTION_MARSHAL_SPEC.md` §4.0，**必做**）
+- [ ] （可选）`to_delegate` 显式 API
 - [ ] `make_generic_inst` + 泛型方法 `inflatedMap`
 - [ ] Mono / Il2Cpp `novalualib.lua` 内容同步（嵌入 vs Resources）
 - [ ] `TYPE_SYSTEM_SPEC.md` §2.2 命名空间括号规则在类型解析回调中强制执行

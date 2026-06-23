@@ -7,8 +7,11 @@
 | `TYPE_SYSTEM_SPEC.md` | 类型解析、元表、成员访问 |
 | `STRUCT_MARSHAL_SPEC.md` | struct（值类型） |
 | `CLASS_MARSHAL_SPEC.md` | class、引用类型、数组元素 |
+| `FUNCTION_MARSHAL_SPEC.md` | **Delegate、Lua 函数回调** |
 | `METHOD_OVERLOAD_SPEC.md` | 重载与实参匹配 |
 
 **平台原则：** Mono 与 Il2Cpp 的 Lua 可见编组语义一致；Il2Cpp 侧重零 GC 与生成代码快速路径。
 
-（详细规则待补充。）
+**函数 / delegate：** Lua 调用 C# 方法时，delegate 形参接受 Lua function，由 `MethodBridge` 隐式 marshal，规则见 `FUNCTION_MARSHAL_SPEC.md` §4.0。
+
+（其余类型详细规则待补充。）

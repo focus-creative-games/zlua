@@ -10,6 +10,7 @@
 | `METHOD_OVERLOAD_SPEC.md` | 方法重载 dispatch、签名、`get_method` |
 | `MARSHAL_SPEC.md` | 参数编组总览 |
 | `STRUCT_MARSHAL_SPEC.md` | struct 传递 |
+| `FUNCTION_MARSHAL_SPEC.md` | Delegate、Lua 函数回调 |
 | `CLASS_MARSHAL_SPEC.md` | class / 引用类型传递 |
 | `DESIGN_SPEC.md` | 总体目标与双运行时架构 |
 
@@ -451,7 +452,7 @@ flowchart TB
 | 抽象类 | 若有 protected 构造对 Lua 不可见；仅 public 构造可 `__call` |
 | 静态类 | 仅静态成员，无 `__call` |
 | 枚举 | 作为类型表；值见 `MARSHAL_SPEC.md` |
-| 委托 | 类型表 + `__call` 调用链，见 `CLASS_MARSHAL_SPEC.md` |
+| 委托 | 类型表 + 实例 `IMT.__call`；Lua↔C# 见 `FUNCTION_MARSHAL_SPEC.md` |
 | 值类型 struct | 类型表 + 实例 userdata；传递见 `STRUCT_MARSHAL_SPEC.md` |
 
 ---
