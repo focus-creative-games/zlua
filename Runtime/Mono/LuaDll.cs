@@ -183,6 +183,9 @@ namespace NovaLua
         }
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern int lua_isinteger(IntPtr luaState, int index);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern int lua_toboolean(IntPtr luaState, int index);
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
