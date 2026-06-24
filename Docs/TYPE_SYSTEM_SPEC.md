@@ -105,47 +105,111 @@ TopClass.NestedClass     -- 对应 C# TopClass 内的 NestedClass
 
 > **实现注记：** CLR 反射/IL 元数据中嵌套类型常用 `TopClass+NestedClass`（`+` 分隔）。解析时由 native 将 Lua 的 `.` 形式映射到 Il2Cpp/反射全名；类型表 `__fullname` 字段统一存 Lua 规范名（`.` 形式）。
 
-### 2.4 泛型类型
+### 2.4 类型描述符（type descriptor）
+
+`novalua.make_generic_type`、`novalua.make_szarray_type`、`novalua.make_mdarray_type` 的类型相关参数（下文统称 **typeArg**）须为下列两种形式之一。
+
+#### 2.4.1 类型表
+
+须为 NovaLua **类型表**（`typeTable`），且**仅**允许以下来源：
+
+| 来源 | 示例 |
+|------|------|
+| `CSharp[assemblyName][typeFullName]` | `CSharp.mscorlib['System.Int32']`、`CSharp.AC['MyGame.UI.Panel']` |
+| `novalua.make_generic_type(...)` 返回值 | 闭合泛型类型表 |
+| `novalua.make_szarray_type(...)` 返回值 | szarray 类型表 |
+| `novalua.make_mdarray_type(...)` 返回值 | mdarray 类型表 |
+
+含 namespace 的类型须用 §2.2 规定的括号键；**不得**拆成多级点号。
+
+**禁止**将普通 Lua 表、任意 userdata、`novalua.typeof(...)` 返回值等非上述来源的值当作 typeArg 传入（`typeof` 供 `signature` 等 API 使用，见 §2.7）。
+
+#### 2.4.2 字符串（仅 mscorlib）
+
+typeArg 可为 **字符串**，此时**仅接受 mscorlib 程序集中类型的 CLR 全名**（单段字符串，与反射 `Type.FullName` 一致）：
 
 ```lua
+"System.Int32"
+"System.String"
+"System.Object"
+```
+
+- **不接受**其他程序集类型的字符串。例如 `System.Collections.Generic.List\`1` 须通过 `CSharp.mscorlib['System.Collections.Generic.List']`（或**定义所在程序集**的 `CSharp[...]` 表）取得类型表，**不能**传字符串。
+- `novalua.types.*` 为上述 mscorlib 全名的预定义常量（§2.8），可直接作为 typeArg。
+
+#### 2.4.3 各 API 的参数映射
+
+| API | 使用 typeArg 规则的参数 |
+|-----|-------------------------|
+| `novalua.make_generic_type(genericBaseType, genericParamType1, …)` | **全部**参数：`genericBaseType` 与各 `genericParamType` |
+| `novalua.make_szarray_type(elementType)` | `elementType` |
+| `novalua.make_mdarray_type(elementType, rank)` | `elementType` |
+
+`make_szarray_type` 与 `make_mdarray_type` 的 `elementType` 规则与 `make_generic_type` 的类型参数**完全相同**。
+
+### 2.5 泛型类型
+
+```lua
+-- genericBaseType：类型表；genericParamType：字符串或类型表
 local List_int = novalua.make_generic_type(
     CSharp.mscorlib['System.Collections.Generic.List'],
+    novalua.types.int32                    -- 等价于 "System.Int32"
+)
+
+-- 类型实参亦可为类型表或嵌套构造结果
+local Dict_str_int = novalua.make_generic_type(
+    CSharp.mscorlib['System.Collections.Generic.Dictionary'],
+    novalua.types.string,
     novalua.types.int32
+)
+
+-- 元素类型为数组的闭合泛型
+local List_int_arr = novalua.make_generic_type(
+    CSharp.mscorlib['System.Collections.Generic.List'],
+    novalua.make_szarray_type(novalua.types.int32)
 )
 ```
 
-- `generic_base_type`：未闭合的泛型定义类型表（通过 `CSharp[...]` 获得）。
-- 其余参数：类型实参（`novalua.types.*` 或 `novalua.typeof(...)`）。
-- 返回**新的类型表**，与 `make_generic_type` 的实参一一对应；同一闭合泛型多次调用应返回**同一**类型表（intern）。
+- `genericBaseType`：未闭合的泛型定义（CLR 名含 `` ` `` 与 arity，如 `System.Nullable\`1`）；遵循 §2.4。定义在非 mscorlib 程序集时（如 `System.Collections.Generic.List\`1`）**须**用 `CSharp[assemblyName][typeFullName]` 类型表，**不能**传字符串。
+- `genericParamType`…：泛型实参，遵循 §2.4（类型表或 mscorlib 字符串）。
+- 返回闭合泛型的**类型表**；相同实参组合多次调用应 **intern** 为同一表。
 
-### 2.5 数组类型
+### 2.6 数组类型
+
+`elementType` 遵循 §2.4（与 `make_generic_type` 的类型参数规则相同）。
 
 #### 单维向量数组（szarray）
 
 ```lua
 local int_arr_type = novalua.make_szarray_type(novalua.types.int32)
--- 语义等价于 C# int[]
+-- 等价于 novalua.make_szarray_type("System.Int32")；语义对应 C# int[]
+
+local panel_arr = novalua.make_szarray_type(CSharp.AC['MyGame.UI.Panel'])
 ```
 
 #### 多维数组（mdarray）
 
 ```lua
 local md_type = novalua.make_mdarray_type(novalua.types.int32, 2)  -- int[,]
+local nested = novalua.make_mdarray_type(
+    novalua.make_szarray_type(novalua.types.int32),
+    2
+)  -- int[][,]
 ```
 
 `rank` 为维度数（≥ 1）。mdarray 与 szarray 为不同类型。
 
-### 2.6 `novalua.typeof`
+### 2.7 `novalua.typeof`
 
 ```lua
 local t = novalua.typeof(CSharp.AC.Demo)
 ```
 
-返回该类型对应的 **System.Type 等价物**（Mono 为真实 `System.Type`；Il2Cpp 为携带 `Il2CppClass*` 的类型描述对象）。供 `signature`、`make_*_type` 等 API 使用。
+返回该类型对应的 **System.Type 等价物**（Mono 为真实 `System.Type`；Il2Cpp 为携带 `Il2CppClass*` 的类型描述对象）。供 `signature`、`get_method` 等 API 使用；**不**作为 §2.4 所规定的 typeArg 传入 `make_*_type`。
 
-### 2.7 `novalua.types`
+### 2.8 `novalua.types`
 
-记录了c#常见类型的全名字符串。如 `novalua.types.int32`的值为`System.Int32`
+记录 **mscorlib** 常见基元与常用类型的 CLR 全名字符串，可直接作为 §2.4.2 的 typeArg。例如 `novalua.types.int32` 的值为 `"System.Int32"`。
 
 ---
 
@@ -518,7 +582,7 @@ run_i32(demo, 20)
 - [ ] Bind 期扁平注册继承的 static 成员
 - [ ] 实例 `__index` 继承查找 + promotion
 - [ ] 构造 `__call`（无继承查找）+ overload dispatch
-- [ ] `make_generic_type` / `make_szarray_type` / `make_mdarray_type`
+- [ ] `make_generic_type` / `make_szarray_type` / `make_mdarray_type`（typeArg 校验见 §2.4）
 - [ ] `new_szarray_*` / `new_mdarray_*`
 - [ ] szarray `__len`
 - [ ] 泛型方法 `make_generic_inst` + `inflatedMap`

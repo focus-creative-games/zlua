@@ -109,6 +109,7 @@ novalua.make_generic_type(genericBaseType, typeArg1, typeArg2, ...) → typeTabl
 | 参数 | 说明 |
 |------|------|
 | `genericBaseType` | 未闭合泛型定义的类型表；**含 namespace 时必须括号访问** |
+| `genericParamType…` | 泛型实参；typeArg 规则见 `TYPE_SYSTEM_SPEC.md` §2.4 |
 
 ```lua
 local ListInt = novalua.make_generic_type(
@@ -127,7 +128,7 @@ local list = ListInt()   -- 构造实例，见 TYPE_SYSTEM_SPEC §4.6
 
 ## 6. 数组类型与实例
 
-与 `TYPE_SYSTEM_SPEC.md` §2.5、§7 一致。
+与 `TYPE_SYSTEM_SPEC.md` §2.4–§2.6、§7 一致。
 
 ### 6.1 数组类型构造
 
@@ -138,8 +139,8 @@ novalua.make_mdarray_type(typeArg, rank) → mdarrayTypeTable
 
 | API | 说明 |
 |-----|------|
-| `make_szarray_type` | 单维 0 基向量数组 `T[]` |
-| `make_mdarray_type` | `rank` 维数组 `T[,…]`，`rank ≥ 1` |
+| `make_szarray_type` | 单维 0 基向量数组 `T[]`；`elementType` 见 `TYPE_SYSTEM_SPEC.md` §2.4 |
+| `make_mdarray_type` | `rank` 维数组 `T[,…]`，`rank ≥ 1`；`elementType` 见 `TYPE_SYSTEM_SPEC.md` §2.4 |
 
 ```lua
 local IntArray = novalua.make_szarray_type(novalua.types.int32)

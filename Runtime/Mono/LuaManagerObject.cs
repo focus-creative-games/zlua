@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -62,7 +63,7 @@ namespace NovaLua
             int oldTop = LuaDll.lua_gettop(luaState);
             try
             {
-                EnsureCSharpRoot(luaState); // stack top: CSharp table
+                GetCSharpRoot(luaState); // stack top: CSharp table
                 PushAssemblyTable(luaState, type.Assembly); // stack top: assembly table
                 PushTypeTable(luaState, type);
                 LuaDll.lua_setfield(luaState, -2, type.Name); // assembly[type.Name] = typeTable
@@ -92,6 +93,12 @@ namespace NovaLua
             LuaDll.lua_pushcfunction(luaState, fn);
             LuaDll.lua_setfield(luaState, -2, "__index");
             LuaDll.lua_setmetatable(luaState, -2);
+        }
+
+        private static void GetCSharpRoot(IntPtr luaState)
+        {
+            LuaDataType csharpType = LuaDll.lua_getglobal(luaState, "CSharp");
+            Debug.Assert(csharpType == LuaDataType.Table);
         }
 
         private static void PushAssemblyTable(IntPtr luaState, Assembly assembly)
@@ -262,7 +269,7 @@ namespace NovaLua
                 LuaDll.lua_setmetatable(luaState, -2);
 
                 LuaDll.lua_pushvalue(luaState, -1);
-                LuaDll.lua_setfield(luaState, 1, luaAssemblyName);
+                RawSetField(luaState, 1, luaAssemblyName);
                 return 1;
             }
             catch (Exception ex)
@@ -303,6 +310,13 @@ namespace NovaLua
             return LuaDll.lua_rawget(luaState, absIndex);
         }
 
+        private static void RawSetField(IntPtr luaState, int tableIndex, string key)
+        {
+            int absIndex = LuaDll.lua_absindex(luaState, tableIndex);
+            LuaDll.lua_pushstring(luaState, key);
+            LuaDll.lua_rawset(luaState, absIndex);
+        }
+
         private static string BuildMethodSignature(string methodName, string[] parameterTypeNames)
         {
             if (parameterTypeNames == null || parameterTypeNames.Length == 0)
@@ -338,7 +352,7 @@ namespace NovaLua
 
                 PushTypeTable(luaState, type);
                 LuaDll.lua_pushvalue(luaState, -1);
-                LuaDll.lua_setfield(luaState, 1, typeName); // cache in assembly table
+                RawSetField(luaState, 1, typeName); // cache in assembly table
                 return 1;
             }
             catch (Exception ex)
