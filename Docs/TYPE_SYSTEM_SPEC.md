@@ -91,19 +91,36 @@ CSharp['Assembly-CSharp'].Demo                 -- 无 namespace 的全局类型
 |------|------|
 | 无 namespace + 合法程序集/类型名 | `CSharp.{assembly}.{TypeName}` |
 | **有 namespace** | `CSharp.{assembly}['{Namespace}.{TypeName}']`（**必须**） |
+| **嵌套类型** | `CSharp.{assembly}['{OuterFullName}+{NestedClassName}']`（**必须**括号，`+` 分隔，见 §2.3） |
 | 含特殊字符 | 对应用括号键 `['...']` |
 
 ### 2.3 命名空间与嵌套类型
 
 - **命名空间**在 `typeFullName` 中以 `.` 连接：`MyGame.UI.Panel` 表示 namespace `MyGame.UI` 下的类 `Panel`。
 - 访问时整段作为程序集表键（§2.2），**不得**写成 `CSharp.asm.MyGame.UI.Panel`。
-- **嵌套类型**在 `typeFullName` 中继续用 `.` 连接外层与内层类名：
+- **嵌套类型**在 `typeFullName` 中使用 **`+`** 连接外层类型全名与内层类名，与 CLR 反射 / `Type.FullName` 一致：
 
 ```
-TopClass.NestedClass     -- 对应 C# TopClass 内的 NestedClass
+{OuterFullName}+{NestedClassName}
 ```
 
-> **实现注记：** CLR 反射/IL 元数据中嵌套类型常用 `TopClass+NestedClass`（`+` 分隔）。解析时由 native 将 Lua 的 `.` 形式映射到 Il2Cpp/反射全名；类型表 `__fullname` 字段统一存 Lua 规范名（`.` 形式）。
+| 场景 | `typeFullName` 示例 |
+|------|---------------------|
+| 无 namespace 的一层嵌套 | `TopClass+NestedClass` |
+| 含 namespace 的外层 + 嵌套 | `MyGame.UI.Outer+Inner` |
+| 多层嵌套 | `Outer+Inner+DeepNested`（每级一层 `+`） |
+
+```lua
+-- 必须（括号键；'+' 非合法标识符）
+CSharp.AC['TopClass+NestedClass']
+CSharp.AC['MyGame.UI.Outer+Inner']
+
+-- 禁止：用 '.' 连接嵌套内外层（与 namespace 的 '.' 混淆，查找困难）
+CSharp.AC['Outer.Inner']
+CSharp.AC['MyGame.UI.Outer.Inner']
+```
+
+规则：**`.` 仅用于 namespace**；**嵌套层级一律用 `+`**。类型表 `__fullname` 字段存上述字符串（与 CLR 嵌套名一致，不做 `.` ↔ `+` 转换）。
 
 ### 2.4 类型描述符（type descriptor）
 
@@ -218,7 +235,7 @@ Lua 侧获取 C# **类型表**（`typeTable`，见 §3.1）的入口如下。除
 
 | 途径 | 适用类型 | Lua 示例 | 说明 |
 |------|----------|----------|------|
-| `CSharp[assemblyName][typeFullName]` | class、struct、enum、delegate、interface、嵌套类型、**未闭合泛型定义** | `CSharp.AC.Demo`<br>`CSharp.AC['MyGame.UI.Panel']`<br>`CSharp.AC['Outer.Inner']`<br>`CSharp.mscorlib['System.Collections.Generic.List\`1']` | 程序集表 `__index` 懒解析；键为 §2.2–§2.3 规定的 `typeFullName` |
+| `CSharp[assemblyName][typeFullName]` | class、struct、enum、delegate、interface、嵌套类型、**未闭合泛型定义** | `CSharp.AC.Demo`<br>`CSharp.AC['MyGame.UI.Panel']`<br>`CSharp.AC['Outer+Inner']`<br>`CSharp.mscorlib['System.Collections.Generic.List\`1']` | 程序集表 `__index` 懒解析；键为 §2.2–§2.3 规定的 `typeFullName` |
 | `novalua.make_generic_type` | **闭合泛型** | `novalua.make_generic_type(ListDef, novalua.types.int32)` | 实参见 §2.5；返回类型表 |
 | `novalua.make_szarray_type` | **单维向量数组** `T[]` | `novalua.make_szarray_type(novalua.types.int32)` | 元素类型见 §2.4 |
 | `novalua.make_mdarray_type` | **多维数组** `T[,…]` | `novalua.make_mdarray_type(novalua.types.int32, 2)` | `rank ≥ 1` |
@@ -245,14 +262,16 @@ assembly.__index(typeFullName)
 
 `EnsureCSharpRoot` **仅在宿主启动时调用一次**；之后 C# 侧通过 `lua_getglobal("CSharp")` 取得根表（须为 table）。程序集/类型 `__index` 新建项后 **rawset** 写入父表，避免重复走元方法。
 
-#### 2.9.2 嵌套类型名映射
+#### 2.9.2 嵌套类型名
 
-| Lua `typeFullName` | CLR 反射名 |
-|--------------------|------------|
-| `Outer.Inner` | `Outer+Inner` |
-| `MyNs.Outer.Inner` | `MyNs.Outer+Inner` |
+`typeFullName` 与 CLR 一致，格式为 `{OuterFullName}+{NestedClassName}`（多级嵌套重复 `+`）。**不接受**以 `.` 连接嵌套层级的别名。
 
-类型表 `__fullname` **统一存 Lua 规范名**（`.` 分隔嵌套）。解析时 native 依次尝试：`GetType(luaName)` → `GetType(clrNestedName)` → 扫描程序集 `GetLuaTypeFullName(type) == luaName`。
+| `typeFullName`（Lua 键 = `__fullname`） | 说明 |
+|----------------------------------------|------|
+| `Outer+Inner` | 全局命名空间下的嵌套类 |
+| `MyGame.UI.Outer+Inner` | 含 namespace 的外层类 + 嵌套类 |
+
+解析时 native 直接使用该字符串调用 `Assembly.GetType(typeFullName)`（及 Il2Cpp 等价路径）；**不做** `.` → `+` 的兼容映射。
 
 #### 2.9.3 类型表元数据（解析用）
 
@@ -606,8 +625,8 @@ local demo = CSharp.AC.Demo()
 local panelType = CSharp.AC['MyGame.UI.Panel']
 local panel = panelType()
 
--- 嵌套类型
-local innerType = CSharp.AC['Outer.Inner']
+-- 嵌套类型（'+' 分隔，必须括号）
+local innerType = CSharp.AC['Outer+Inner']
 
 -- struct（与 class 相同访问路径）
 local vecType = CSharp['UnityEngine.CoreModule']['UnityEngine.Vector3']
@@ -655,7 +674,7 @@ run_i32(demo, 20)
 | `novalua.make_szarray_type` + intern | ✅ | 待实现 |
 | `novalua.make_mdarray_type` + intern | ✅ | 待实现 |
 | typeArg：类型表 + mscorlib 字符串（§2.4） | ✅ | 部分 |
-| 嵌套类型 `.` ↔ CLR `+` 映射（§2.9.2） | ✅ | 待实现 |
+| 嵌套类型 `+` 命名（§2.3、§2.9.2） | ✅ | 待实现 |
 | `RegisterType` 预注册（`typeFullName` 键） | ✅ | — |
 | 类型表 `__typeid` 反查闭合泛型/数组 | ✅ | 待实现 |
 

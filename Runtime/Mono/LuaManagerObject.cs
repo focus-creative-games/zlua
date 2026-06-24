@@ -31,6 +31,7 @@ namespace NovaLua
         private static readonly LuaCSFunction InstanceNewIndexCallback = InstanceNewIndex;
         private static readonly LuaCSFunction StaticTypeIndexCallback = StaticTypeIndex;
         private static readonly LuaCSFunction StaticTypeNewIndexCallback = StaticTypeNewIndex;
+        private static readonly LuaCSFunction TypeTableToStringCallback = TypeTableToString;
 
         private static int _nextMethodId = 1;
         private static int _nextAssemblyId = 1;
@@ -155,7 +156,7 @@ namespace NovaLua
             PushInstanceMetatable(luaState, type);
             LuaDll.lua_setfield(luaState, typeTableIndex, "__instance_mt");
 
-            LuaDll.lua_createtable(luaState, 0, 3);
+            LuaDll.lua_createtable(luaState, 0, 4);
             LuaCSFunction ctorCb = CreateTypeInstance;
             CallbackRefs.Add(ctorCb);
             IntPtr ctorFn = Marshal.GetFunctionPointerForDelegate(ctorCb);
@@ -174,6 +175,11 @@ namespace NovaLua
             LuaDll.lua_pushinteger(luaState, typeId);
             LuaDll.lua_pushcclosure(luaState, staticNewIndexFn, 1);
             LuaDll.lua_setfield(luaState, -2, "__newindex");
+
+            CallbackRefs.Add(TypeTableToStringCallback);
+            IntPtr toStringFn = Marshal.GetFunctionPointerForDelegate(TypeTableToStringCallback);
+            LuaDll.lua_pushcfunction(luaState, toStringFn);
+            LuaDll.lua_setfield(luaState, -2, "__tostring");
 
             LuaDll.lua_setmetatable(luaState, typeTableIndex);
 
@@ -240,6 +246,19 @@ namespace NovaLua
             IntPtr gcFn = Marshal.GetFunctionPointerForDelegate(gcCb);
             LuaDll.lua_pushcfunction(luaState, gcFn);
             LuaDll.lua_setfield(luaState, mtIndex, "__gc");
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int TypeTableToString(IntPtr luaState)
+        {
+            LuaDataType fullNameType = RawGetField(luaState, 1, "__fullname");
+            if (fullNameType != LuaDataType.String)
+            {
+                LuaDll.lua_pop(luaState, 1);
+                LuaDll.lua_pushstring(luaState, string.Empty);
+            }
+
+            return 1;
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
@@ -870,7 +889,7 @@ namespace NovaLua
             string cacheKey = assembly.FullName + "::" + luaTypeName;
             if (TypeCache.TryGetValue(cacheKey, out type))
             {
-                return type != null;
+                return true;
             }
 
             type = assembly.GetType(luaTypeName, false);
