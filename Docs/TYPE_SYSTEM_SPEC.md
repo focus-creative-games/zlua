@@ -151,21 +151,22 @@ typeArg 可为 **字符串**，此时**仅接受 mscorlib 程序集中类型的 
 
 ```lua
 -- genericBaseType：类型表；genericParamType：字符串或类型表
+local ListDef = CSharp.mscorlib['System.Collections.Generic.List`1']
 local List_int = novalua.make_generic_type(
-    CSharp.mscorlib['System.Collections.Generic.List'],
+    ListDef,
     novalua.types.int32                    -- 等价于 "System.Int32"
 )
 
 -- 类型实参亦可为类型表或嵌套构造结果
 local Dict_str_int = novalua.make_generic_type(
-    CSharp.mscorlib['System.Collections.Generic.Dictionary'],
+    CSharp.mscorlib['System.Collections.Generic.Dictionary`2'],
     novalua.types.string,
     novalua.types.int32
 )
 
 -- 元素类型为数组的闭合泛型
 local List_int_arr = novalua.make_generic_type(
-    CSharp.mscorlib['System.Collections.Generic.List'],
+    ListDef,
     novalua.make_szarray_type(novalua.types.int32)
 )
 ```
@@ -211,6 +212,61 @@ local t = novalua.typeof(CSharp.AC.Demo)
 
 记录 **mscorlib** 常见基元与常用类型的 CLR 全名字符串，可直接作为 §2.4.2 的 typeArg。例如 `novalua.types.int32` 的值为 `"System.Int32"`。
 
+### 2.9 类型获取途径总览
+
+Lua 侧获取 C# **类型表**（`typeTable`，见 §3.1）的入口如下。除 §2.4 规定的 typeArg 外，**凡需“类型对象”参与成员访问、构造、签名的场景，均使用类型表**。
+
+| 途径 | 适用类型 | Lua 示例 | 说明 |
+|------|----------|----------|------|
+| `CSharp[assemblyName][typeFullName]` | class、struct、enum、delegate、interface、嵌套类型、**未闭合泛型定义** | `CSharp.AC.Demo`<br>`CSharp.AC['MyGame.UI.Panel']`<br>`CSharp.AC['Outer.Inner']`<br>`CSharp.mscorlib['System.Collections.Generic.List\`1']` | 程序集表 `__index` 懒解析；键为 §2.2–§2.3 规定的 `typeFullName` |
+| `novalua.make_generic_type` | **闭合泛型** | `novalua.make_generic_type(ListDef, novalua.types.int32)` | 实参见 §2.5；返回类型表 |
+| `novalua.make_szarray_type` | **单维向量数组** `T[]` | `novalua.make_szarray_type(novalua.types.int32)` | 元素类型见 §2.4 |
+| `novalua.make_mdarray_type` | **多维数组** `T[,…]` | `novalua.make_mdarray_type(novalua.types.int32, 2)` | `rank ≥ 1` |
+| `LuaMonoAppDomain.RegisterType`（可选） | 任意已加载 `Type` | C# 侧 `RegisterType(typeof(Demo))` | **预注册**到 `CSharp[assembly]`，键为 `typeFullName`；不替代懒加载 |
+
+**不通过 `CSharp[...]` 直接解析的类型：**
+
+- **闭合泛型**（如 `List<int>`）——须 `make_generic_type`。
+- **数组类型**（`int[]`、`int[,]`）——须 `make_szarray_type` / `make_mdarray_type`（或作为泛型实参嵌套构造）。
+
+**Intern：** `make_generic_type` / `make_szarray_type` / `make_mdarray_type` 对相同实参多次调用须返回**同一**类型表（native 侧 registry intern）。
+
+#### 2.9.1 懒加载与缓存
+
+```
+CSharp.__index(asmName)
+  → rawget 命中？返回
+  → 否则解析 Assembly，创建程序集表，rawset 缓存
+
+assembly.__index(typeFullName)
+  → rawget 命中？返回
+  → 否则 CLR 解析 Type，PushTypeTable，rawset 缓存
+```
+
+`EnsureCSharpRoot` **仅在宿主启动时调用一次**；之后 C# 侧通过 `lua_getglobal("CSharp")` 取得根表（须为 table）。程序集/类型 `__index` 新建项后 **rawset** 写入父表，避免重复走元方法。
+
+#### 2.9.2 嵌套类型名映射
+
+| Lua `typeFullName` | CLR 反射名 |
+|--------------------|------------|
+| `Outer.Inner` | `Outer+Inner` |
+| `MyNs.Outer.Inner` | `MyNs.Outer+Inner` |
+
+类型表 `__fullname` **统一存 Lua 规范名**（`.` 分隔嵌套）。解析时 native 依次尝试：`GetType(luaName)` → `GetType(clrNestedName)` → 扫描程序集 `GetLuaTypeFullName(type) == luaName`。
+
+#### 2.9.3 类型表元数据（解析用）
+
+除 §3.1 所列字段外，实现侧增加：
+
+| 字段 | 说明 |
+|------|------|
+| `__typeid` | Mono：内部 `Type` 注册 id；用于闭合泛型、数组等无法仅凭 `__fullname` 字符串反查的类型 |
+| `__assembly` | 定义所在程序集简单名（无 `.dll`） |
+| `__fullname` | Lua 规范全名（§2.3、§2.9.2） |
+| `__name` | 短名（不含命名空间/外层类） |
+
+`novalua.make_*_type` 与 `CSharp` 懒加载产出的类型表结构**相同**，均可作 typeArg（§2.4.1）。
+
 ---
 
 ## 3. 类型表与元表结构
@@ -222,8 +278,9 @@ local t = novalua.typeof(CSharp.AC.Demo)
 ```
 T  (类型表，Lua 可见静态成员 + 元数据字段)
 ├─ __assembly      : string
-├─ __fullname      : string
+├─ __fullname      : string      -- Lua 规范全名（§2.3、§2.9.2）
 ├─ __name          : string
+├─ __typeid        : integer     -- 实现用；闭合泛型/数组等反查 Type（§2.9.3）
 ├─ __instance_mt   : table     → 实例元表 IMT（§3.2）
 ├─ __klass         : lightuserdata (Il2Cpp) / typeId (Mono)  [实现用]
 ├─ StaticField     : 快速字段访问或 closure
@@ -548,22 +605,33 @@ local demo = CSharp.AC.Demo()
 -- 含 namespace 的类型：必须括号
 local panelType = CSharp.AC['MyGame.UI.Panel']
 local panel = panelType()
+
+-- 嵌套类型
+local innerType = CSharp.AC['Outer.Inner']
+
+-- struct（与 class 相同访问路径）
+local vecType = CSharp['UnityEngine.CoreModule']['UnityEngine.Vector3']
+
+-- 未闭合泛型定义（键含 ` 与 arity）
+local ListDef = CSharp.mscorlib['System.Collections.Generic.List`1']
+
+-- 闭合泛型
+local ListInt = novalua.make_generic_type(ListDef, novalua.types.int32)
+local list = ListInt()
+
+-- szarray / mdarray 类型
+local IntArray = novalua.make_szarray_type(novalua.types.int32)
+local IntMatrix = novalua.make_mdarray_type(novalua.types.int32, 2)
+
+-- 元素为数组的闭合泛型
+local ListIntArr = novalua.make_generic_type(ListDef, novalua.make_szarray_type(novalua.types.int32))
+
 demo:SetX(10)
 print(demo:GetX())
 
--- 泛型
-local ListInt = novalua.make_generic_type(
-    CSharp.mscorlib['System.Collections.Generic.List'],
-    novalua.types.int32
-)
-local list = ListInt()
-
--- 数组
-local IntArray = novalua.make_szarray_type(novalua.types.int32)
+-- 数组实例（见 §7）
 local arr = novalua.new_szarray_by_szarray_type(IntArray, 4)
 print(#arr)
-local bytes = novalua.to_bytes(arr)
-local t = novalua.to_table(arr)
 
 -- 显式重载（见 METHOD_OVERLOAD_SPEC.md）
 local sig = novalua.signature(novalua.types.int32)
@@ -575,17 +643,33 @@ run_i32(demo, 20)
 
 ## 13. 实现清单（参考）
 
-- [ ] `CSharp` 根表 + 程序集/类型懒加载
-- [ ] 程序集 `__index`：无 namespace 类型支持点号；**有 namespace 类型仅接受整段 `typeFullName` 括号键**
-- [ ] 类型表元数据字段 `__assembly` / `__fullname` / `__name` / `__instance_mt`
+### 13.1 类型获取（§2.9）
+
+| 项 | Mono | Il2Cpp |
+|----|------|--------|
+| `CSharp` 根表 + 程序集懒加载 | ✅ | ✅ |
+| 程序集 `__index` + rawset 缓存 | ✅ | ✅ |
+| `CSharp[assembly][typeFullName]`：class / struct / enum / 嵌套 | ✅ | 部分 |
+| `CSharp[...]`：未闭合泛型定义（`` ` `` 键） | ✅ | 部分 |
+| `novalua.make_generic_type` + intern | ✅ | 待实现 |
+| `novalua.make_szarray_type` + intern | ✅ | 待实现 |
+| `novalua.make_mdarray_type` + intern | ✅ | 待实现 |
+| typeArg：类型表 + mscorlib 字符串（§2.4） | ✅ | 部分 |
+| 嵌套类型 `.` ↔ CLR `+` 映射（§2.9.2） | ✅ | 待实现 |
+| `RegisterType` 预注册（`typeFullName` 键） | ✅ | — |
+| 类型表 `__typeid` 反查闭合泛型/数组 | ✅ | 待实现 |
+
+### 13.2 成员绑定与元表
+
+- [x] `CSharp` 根表 + 程序集/类型懒加载（Mono）
+- [x] 程序集 `__index`：无 namespace 类型支持点号；**有 namespace 类型仅接受整段 `typeFullName` 括号键**
+- [ ] 类型表元数据字段 `__assembly` / `__fullname` / `__name` / `__typeid` / `__instance_mt`
 - [ ] `staticMap` 与 `instanceMap` 双表 + `SMT` / `IMT` 分离
 - [ ] Bind 期扁平注册继承的 static 成员
 - [ ] 实例 `__index` 继承查找 + promotion
 - [ ] 构造 `__call`（无继承查找）+ overload dispatch
-- [ ] `make_generic_type` / `make_szarray_type` / `make_mdarray_type`（typeArg 校验见 §2.4）
 - [ ] `new_szarray_*` / `new_mdarray_*`
 - [ ] szarray `__len`
 - [ ] 泛型方法 `make_generic_inst` + `inflatedMap`
-- [ ] 嵌套类型 `.` ↔ CLR `+` 映射
 - [ ] Il2Cpp 字段/无参属性快速路径（§8）
 - [ ] Mono 语义对齐

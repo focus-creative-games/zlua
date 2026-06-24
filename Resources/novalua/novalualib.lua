@@ -16,6 +16,14 @@ function novalua.make_generic_type(genericType, ...)
     return __novalua_make_generic_type(genericType, ...)
 end
 
+function novalua.make_szarray_type(elementType)
+    return __novalua_make_szarray_type(elementType)
+end
+
+function novalua.make_mdarray_type(elementType, rank)
+    return __novalua_make_mdarray_type(elementType, rank)
+end
+
 function novalua.to_bytes(szarray)
     return __novalua_to_bytes(szarray)
 end
@@ -50,6 +58,7 @@ novalua.types = {
     short = "System.Int16",
     ushort = "System.UInt16",
     int = "System.Int32",
+    int32 = "System.Int32",
     uint = "System.UInt32",
     long = "System.Int64",
     ulong = "System.UInt64",

@@ -16,6 +16,8 @@ namespace NovaLua
         private static readonly Dictionary<string, int> AssemblyIds = new Dictionary<string, int>(StringComparer.Ordinal);
         private static readonly Dictionary<string, Assembly> AssemblyByLuaName = new Dictionary<string, Assembly>(StringComparer.Ordinal);
         private static readonly Dictionary<string, Type> TypeCache = new Dictionary<string, Type>(StringComparer.Ordinal);
+        private static readonly Dictionary<Type, int> TypeTableRefs = new Dictionary<Type, int>();
+        private static readonly Assembly Mscorlib = typeof(object).Assembly;
 
         private static readonly List<LuaCSFunction> CallbackRefs = new List<LuaCSFunction>();
         private static readonly LuaCSFunction CSharpIndexCallback = ResolveAssemblyIndex;
@@ -23,6 +25,8 @@ namespace NovaLua
         private static readonly LuaCSFunction NovaLuaTypeOfCallback = NovaLuaTypeOf;
         private static readonly LuaCSFunction NovaLuaCreateSignatureCallback = NovaLuaCreateSignature;
         private static readonly LuaCSFunction NovaLuaMakeGenericTypeCallback = NovaLuaMakeGenericType;
+        private static readonly LuaCSFunction NovaLuaMakeSzArrayTypeCallback = NovaLuaMakeSzArrayType;
+        private static readonly LuaCSFunction NovaLuaMakeMdArrayTypeCallback = NovaLuaMakeMdArrayType;
         private static readonly LuaCSFunction InstanceIndexCallback = InstanceIndex;
         private static readonly LuaCSFunction InstanceNewIndexCallback = InstanceNewIndex;
         private static readonly LuaCSFunction StaticTypeIndexCallback = StaticTypeIndex;
@@ -55,6 +59,8 @@ namespace NovaLua
             LuaDllExtension.RegisterCallback(luaState, "__novalua_typeof", NovaLuaTypeOfCallback);
             LuaDllExtension.RegisterCallback(luaState, "__novalua_create_signature", NovaLuaCreateSignatureCallback);
             LuaDllExtension.RegisterCallback(luaState, "__novalua_make_generic_type", NovaLuaMakeGenericTypeCallback);
+            LuaDllExtension.RegisterCallback(luaState, "__novalua_make_szarray_type", NovaLuaMakeSzArrayTypeCallback);
+            LuaDllExtension.RegisterCallback(luaState, "__novalua_make_mdarray_type", NovaLuaMakeMdArrayTypeCallback);
         }
 
         public void RegisterType(Type type)
@@ -65,8 +71,8 @@ namespace NovaLua
             {
                 GetCSharpRoot(luaState); // stack top: CSharp table
                 PushAssemblyTable(luaState, type.Assembly); // stack top: assembly table
-                PushTypeTable(luaState, type);
-                LuaDll.lua_setfield(luaState, -2, type.Name); // assembly[type.Name] = typeTable
+                PushInternedTypeTable(luaState, type);
+                RawSetField(luaState, -2, GetLuaTypeFullName(type));
                 LuaDll.lua_pop(luaState, 1); // pop assembly table
             }
             finally
@@ -131,12 +137,14 @@ namespace NovaLua
             LuaDll.lua_createtable(luaState, 0, 16);
             int typeTableIndex = LuaDll.lua_absindex(luaState, -1);
 
-            LuaDll.lua_pushstring(luaState, type.Assembly.GetName().Name);
+            LuaDll.lua_pushstring(luaState, NormalizeAssemblyName(type.Assembly.GetName().Name));
             LuaDll.lua_setfield(luaState, typeTableIndex, "__assembly");
-            LuaDll.lua_pushstring(luaState, type.FullName ?? type.Name);
+            LuaDll.lua_pushstring(luaState, GetLuaTypeFullName(type));
             LuaDll.lua_setfield(luaState, typeTableIndex, "__fullname");
             LuaDll.lua_pushstring(luaState, type.Name);
             LuaDll.lua_setfield(luaState, typeTableIndex, "__name");
+            LuaDll.lua_pushinteger(luaState, typeId);
+            LuaDll.lua_setfield(luaState, typeTableIndex, "__typeid");
 
             foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.Static))
             {
@@ -350,7 +358,7 @@ namespace NovaLua
                     return 0;
                 }
 
-                PushTypeTable(luaState, type);
+                PushInternedTypeTable(luaState, type);
                 LuaDll.lua_pushvalue(luaState, -1);
                 RawSetField(luaState, 1, typeName); // cache in assembly table
                 return 1;
@@ -396,12 +404,11 @@ namespace NovaLua
                 List<string> parameterNames = new List<string>();
                 for (int i = 2; i <= top; i++)
                 {
-                    string typeName = ReadTypeNameFromTypeTable(luaState, i);
-                    if (string.IsNullOrWhiteSpace(typeName))
+                    if (!TryResolveTypeArg(luaState, i, out Type argType))
                     {
                         return LuaDllExtension.error(luaState, $"novalua.create_signature arg{i - 1} is not a type");
                     }
-                    parameterNames.Add(typeName);
+                    parameterNames.Add(argType.FullName);
                 }
 
                 string signature = BuildMethodSignature(methodName, parameterNames.ToArray());
@@ -419,58 +426,87 @@ namespace NovaLua
         {
             try
             {
-                string genericTypeName = ReadTypeNameFromTypeTable(luaState, 1);
-                string genericAssemblyName = ReadAssemblyNameFromTypeTable(luaState, 1);
-                if (string.IsNullOrWhiteSpace(genericTypeName) || string.IsNullOrWhiteSpace(genericAssemblyName))
+                if (!TryResolveTypeArg(luaState, 1, out Type genericType))
                 {
                     return LuaDllExtension.error(luaState, "novalua.make_generic_type expects generic type table as first arg");
                 }
 
-                Assembly assembly = ResolveAssembly(NormalizeAssemblyName(genericAssemblyName));
-                if (assembly == null)
+                if (!genericType.IsGenericTypeDefinition)
                 {
-                    return LuaDllExtension.error(luaState, $"assembly not found: {genericAssemblyName}");
-                }
-
-                Type genericType = assembly.GetType(genericTypeName, false);
-                if (genericType == null)
-                {
-                    return LuaDllExtension.error(luaState, $"generic type not found: {genericTypeName}");
+                    return LuaDllExtension.error(luaState, $"type is not a generic definition: {GetLuaTypeFullName(genericType)}");
                 }
 
                 int top = LuaDll.lua_gettop(luaState);
                 Type[] genericArgs = new Type[Math.Max(top - 1, 0)];
                 for (int i = 2; i <= top; i++)
                 {
-                    string argTypeName = ReadTypeNameFromTypeTable(luaState, i);
-                    string argAssemblyName = ReadAssemblyNameFromTypeTable(luaState, i);
-                    if (string.IsNullOrWhiteSpace(argTypeName) || string.IsNullOrWhiteSpace(argAssemblyName))
+                    if (!TryResolveTypeArg(luaState, i, out Type argType))
                     {
                         return LuaDllExtension.error(luaState, $"generic arg {i - 1} is not a type");
-                    }
-
-                    Assembly argAssembly = ResolveAssembly(NormalizeAssemblyName(argAssemblyName));
-                    if (argAssembly == null)
-                    {
-                        return LuaDllExtension.error(luaState, $"assembly not found: {argAssemblyName}");
-                    }
-
-                    Type argType = argAssembly.GetType(argTypeName, false);
-                    if (argType == null)
-                    {
-                        return LuaDllExtension.error(luaState, $"type not found: {argTypeName}");
                     }
 
                     genericArgs[i - 2] = argType;
                 }
 
+                if (genericArgs.Length != genericType.GetGenericArguments().Length)
+                {
+                    return LuaDllExtension.error(luaState,
+                        $"generic arg count mismatch: expected {genericType.GetGenericArguments().Length}, got {genericArgs.Length}");
+                }
+
                 Type closedType = genericType.MakeGenericType(genericArgs);
-                PushTypeTable(luaState, closedType);
+                PushInternedTypeTable(luaState, closedType);
                 return 1;
             }
             catch (Exception ex)
             {
                 return LuaDllExtension.error(luaState, $"novalua make_generic_type error: {ex}");
+            }
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int NovaLuaMakeSzArrayType(IntPtr luaState)
+        {
+            try
+            {
+                if (!TryResolveTypeArg(luaState, 1, out Type elementType))
+                {
+                    return LuaDllExtension.error(luaState, "novalua.make_szarray_type expects element type");
+                }
+
+                Type arrayType = elementType.MakeArrayType();
+                PushInternedTypeTable(luaState, arrayType);
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                return LuaDllExtension.error(luaState, $"novalua make_szarray_type error: {ex}");
+            }
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int NovaLuaMakeMdArrayType(IntPtr luaState)
+        {
+            try
+            {
+                if (!TryResolveTypeArg(luaState, 1, out Type elementType))
+                {
+                    return LuaDllExtension.error(luaState, "novalua.make_mdarray_type expects element type");
+                }
+
+                int rank = (int)LuaDll.lua_tointeger(luaState, 2);
+                if (rank < 1)
+                {
+                    return LuaDllExtension.error(luaState, "novalua.make_mdarray_type rank must be >= 1");
+                }
+
+                Type arrayType = elementType.MakeArrayType(rank);
+                PushInternedTypeTable(luaState, arrayType);
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                return LuaDllExtension.error(luaState, $"novalua make_mdarray_type error: {ex}");
             }
         }
 
@@ -829,19 +865,30 @@ namespace NovaLua
             return id;
         }
 
-        private static bool TryResolveType(Assembly assembly, string typeName, out Type type)
+        private static bool TryResolveType(Assembly assembly, string luaTypeName, out Type type)
         {
-            string cacheKey = assembly.FullName + "::" + typeName;
+            string cacheKey = assembly.FullName + "::" + luaTypeName;
             if (TypeCache.TryGetValue(cacheKey, out type))
             {
                 return type != null;
             }
 
-            type = assembly.GetType(typeName, false);
+            type = assembly.GetType(luaTypeName, false);
             if (type != null)
             {
                 TypeCache[cacheKey] = type;
                 return true;
+            }
+
+            string clrNestedName = ToClrNestedTypeName(luaTypeName);
+            if (!string.Equals(clrNestedName, luaTypeName, StringComparison.Ordinal))
+            {
+                type = assembly.GetType(clrNestedName, false);
+                if (type != null)
+                {
+                    TypeCache[cacheKey] = type;
+                    return true;
+                }
             }
 
             Type[] types;
@@ -857,7 +904,7 @@ namespace NovaLua
             for (int i = 0; i < types.Length; i++)
             {
                 Type candidate = types[i];
-                if (candidate != null && candidate.Name == typeName)
+                if (candidate != null && string.Equals(GetLuaTypeFullName(candidate), luaTypeName, StringComparison.Ordinal))
                 {
                     TypeCache[cacheKey] = candidate;
                     type = candidate;
@@ -1009,7 +1056,132 @@ namespace NovaLua
                 return string.Empty;
             }
 
+            if (assemblyName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            {
+                return assemblyName.Substring(0, assemblyName.Length - 4);
+            }
+
             return assemblyName;
+        }
+
+        private static string GetLuaTypeFullName(Type type)
+        {
+            if (type == null)
+            {
+                return string.Empty;
+            }
+
+            if (type.IsArray)
+            {
+                Type elementType = type.GetElementType();
+                string elementName = elementType != null ? GetLuaTypeFullName(elementType) : type.Name;
+                if (type.GetArrayRank() == 1)
+                {
+                    return elementName + "[]";
+                }
+
+                return elementName + "[" + new string(',', type.GetArrayRank() - 1) + "]";
+            }
+
+            if (type.IsNested)
+            {
+                return GetLuaTypeFullName(type.DeclaringType) + "." + type.Name;
+            }
+
+            if (!string.IsNullOrEmpty(type.Namespace))
+            {
+                return type.Namespace + "." + type.Name;
+            }
+
+            return type.Name;
+        }
+
+        private static string ToClrNestedTypeName(string luaTypeName)
+        {
+            if (string.IsNullOrEmpty(luaTypeName))
+            {
+                return luaTypeName;
+            }
+
+            int lastDot = luaTypeName.LastIndexOf('.');
+            if (lastDot <= 0)
+            {
+                return luaTypeName;
+            }
+
+            return luaTypeName.Substring(0, lastDot) + "+" + luaTypeName.Substring(lastDot + 1);
+        }
+
+        private static void PushInternedTypeTable(IntPtr luaState, Type type)
+        {
+            if (TypeTableRefs.TryGetValue(type, out int tableRef))
+            {
+                LuaDll.lua_rawgeti(luaState, LuaConsts.LuaRegistryIndex, tableRef);
+                return;
+            }
+
+            PushTypeTable(luaState, type);
+            LuaDll.lua_pushvalue(luaState, -1);
+            int newRef = LuaDll.luaL_ref(luaState, LuaConsts.LuaRegistryIndex);
+            TypeTableRefs[type] = newRef;
+        }
+
+        private static bool TryResolveTypeArg(IntPtr luaState, int index, out Type type)
+        {
+            type = null;
+            LuaDataType luaType = LuaDll.lua_type(luaState, index);
+            if (luaType == LuaDataType.String)
+            {
+                string typeName = LuaDllExtension.tostring(luaState, index);
+                if (string.IsNullOrWhiteSpace(typeName))
+                {
+                    return false;
+                }
+
+                type = Mscorlib.GetType(typeName, false);
+                return type != null && type.Assembly == Mscorlib;
+            }
+
+            if (luaType == LuaDataType.Table)
+            {
+                return TryResolveTypeFromTypeTable(luaState, index, out type);
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveTypeFromTypeTable(IntPtr luaState, int index, out Type type)
+        {
+            type = null;
+            LuaDataType idType = RawGetField(luaState, index, "__typeid");
+            if (idType == LuaDataType.Number)
+            {
+                int typeId = (int)LuaDll.lua_tointeger(luaState, -1);
+                LuaDll.lua_pop(luaState, 1);
+                if (Types.TryGetValue(typeId, out type))
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                LuaDll.lua_pop(luaState, 1);
+            }
+
+            string typeName = ReadTypeNameFromTypeTable(luaState, index);
+            string assemblyName = ReadAssemblyNameFromTypeTable(luaState, index);
+            if (string.IsNullOrWhiteSpace(typeName) || string.IsNullOrWhiteSpace(assemblyName))
+            {
+                return false;
+            }
+
+            Assembly assembly = ResolveAssembly(NormalizeAssemblyName(assemblyName));
+            if (assembly == null)
+            {
+                return false;
+            }
+
+            return TryResolveType(assembly, typeName, out type);
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
