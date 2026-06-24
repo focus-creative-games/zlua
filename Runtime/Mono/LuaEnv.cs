@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using UnityEngine;
 
@@ -9,11 +9,15 @@ namespace NovaLua
     public sealed class LuaEnv : IDisposable
     {
         private static readonly StringBuilder SharedBuilder = new StringBuilder();
+        private static readonly List<LuaCSFunction> ModuleLoaderCallbackRefs = new List<LuaCSFunction>();
+        private static readonly LuaCSFunction LoadModuleCallback = LoadModule;
+        private static LuaEnv s_activeEnv;
 
         private readonly List<int> _freePendingRefs = new List<int>();
         private readonly Dictionary<string, int> _moduleRefs = new Dictionary<string, int>();
         private readonly Dictionary<string, int> _moduleFunctionRefs = new Dictionary<string, int>();
         private bool _disposed;
+        private bool _moduleLoaderHooksInstalled;
 
         private Func<string, object> _moduleLoader;
 
@@ -35,6 +39,11 @@ namespace NovaLua
         public void SetModuleLoader(Func<string, object> moduleLoader)
         {
             _moduleLoader = moduleLoader;
+            s_activeEnv = this;
+            if (moduleLoader != null)
+            {
+                InstallModuleLoaderHooks();
+            }
         }
 
         public void EnsureModuleLoaded(string moduleName)
@@ -49,51 +58,21 @@ namespace NovaLua
                 throw new InvalidOperationException("Lua module loader is not configured.");
             }
 
-            object loaded = _moduleLoader(moduleName);
-            if (loaded == null)
-            {
-                throw new Exception($"Lua module '{moduleName}' cannot be loaded.");
-            }
-
             int oldTop = LuaDll.lua_gettop(LuaState);
             try
             {
-                int loadResult;
-                if (loaded is string source)
+                LuaDataType requireType = LuaDll.lua_getglobal(LuaState, "require");
+                if (requireType != LuaDataType.Function)
                 {
-                    if (string.IsNullOrEmpty(source))
-                    {
-                        throw new Exception($"Lua module '{moduleName}' cannot be loaded.");
-                    }
-
-                    loadResult = LuaDllExtension.loadstring(LuaState, source);
-                }
-                else if (loaded is byte[] bytes)
-                {
-                    if (bytes.Length == 0)
-                    {
-                        throw new Exception($"Lua module '{moduleName}' cannot be loaded.");
-                    }
-
-                    loadResult = LuaDllExtension.loadbuffer(LuaState, bytes, moduleName);
-                }
-                else
-                {
-                    throw new Exception(
-                        $"Lua module loader returned unsupported type '{loaded.GetType().FullName}' for module '{moduleName}'.");
+                    throw new InvalidOperationException("Lua global 'require' is not available.");
                 }
 
-                if (loadResult != 0)
-                {
-                    string error = LuaDllExtension.tostring(LuaState, -1);
-                    throw new Exception($"Error loading lua module '{moduleName}': {error}");
-                }
-
-                int execResult = LuaDll.lua_pcall(LuaState, 0, 1, 0);
+                LuaDll.lua_pushstring(LuaState, moduleName);
+                int execResult = LuaDll.lua_pcall(LuaState, 1, 1, 0);
                 if (execResult != 0)
                 {
                     string error = LuaDllExtension.tostring(LuaState, -1);
-                    throw new Exception($"Error executing lua module '{moduleName}': {error}");
+                    throw new Exception($"Error requiring lua module '{moduleName}': {error}");
                 }
 
                 LuaDataType returnType = LuaDll.lua_type(LuaState, -1);
@@ -296,27 +275,140 @@ namespace NovaLua
             LuaDllExtension.RegisterCallback(LuaState, "print", Print);
         }
 
+        private void InstallModuleLoaderHooks()
+        {
+            if (_moduleLoaderHooksInstalled)
+            {
+                return;
+            }
+
+            ModuleLoaderCallbackRefs.Add(LoadModuleCallback);
+            LuaDllExtension.RegisterCallback(LuaState, "__novalua_load_module", LoadModuleCallback);
+
+            const string installSearcherChunk = @"
+local function novalua_module_searcher(modname)
+    local src = __novalua_load_module(modname)
+    if src == nil then
+        return nil
+    end
+    local chunk, err = load(src, '@' .. modname:gsub('%.', '/') .. '.lua')
+    if not chunk then
+        error(err, 2)
+    end
+    return chunk
+end
+
+table.insert(package.searchers, 2, novalua_module_searcher)
+";
+            DoStringIgnoreResult(installSearcherChunk);
+            _moduleLoaderHooksInstalled = true;
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int LoadModule(IntPtr luaState)
+        {
+            LuaEnv env = s_activeEnv;
+            if (env == null || env._moduleLoader == null)
+            {
+                LuaDll.lua_pushnil(luaState);
+                return 1;
+            }
+
+            string moduleName = LuaDllExtension.tostring(luaState, 1);
+            if (string.IsNullOrWhiteSpace(moduleName))
+            {
+                LuaDll.lua_pushnil(luaState);
+                return 1;
+            }
+
+            object loaded;
+            try
+            {
+                loaded = env._moduleLoader(moduleName);
+            }
+            catch (Exception ex)
+            {
+                return LuaDllExtension.error(luaState, $"moduleLoader error for '{moduleName}': {ex.Message}");
+            }
+
+            if (loaded == null)
+            {
+                LuaDll.lua_pushnil(luaState);
+                return 1;
+            }
+
+            if (loaded is string source)
+            {
+                if (string.IsNullOrEmpty(source))
+                {
+                    LuaDll.lua_pushnil(luaState);
+                    return 1;
+                }
+
+                LuaDll.lua_pushstring(luaState, source);
+                return 1;
+            }
+
+            if (loaded is byte[] bytes)
+            {
+                if (bytes.Length == 0)
+                {
+                    LuaDll.lua_pushnil(luaState);
+                    return 1;
+                }
+
+                LuaDll.lua_pushstring(luaState, Encoding.UTF8.GetString(bytes));
+                return 1;
+            }
+
+            return LuaDllExtension.error(luaState,
+                $"moduleLoader returned unsupported type '{loaded.GetType().FullName}' for '{moduleName}'");
+        }
+
         public void LoadBuiltinGlobals()
         {
-            TextAsset globals = Resources.Load<TextAsset>("novalua/globals.lua");
-            string source = globals != null ? globals.text : null;
-            if (string.IsNullOrWhiteSpace(source))
-            {
-                throw new Exception("novalua built-in globals not found: Resources/novalua/globals.lua or Packages/com.code-philosophy.novalua/Resources/novalua/globals.lua");
-            }
-            DoStringIgnoreResult(source);
+            DoStringIgnoreResult(NovaLuaBuiltinScriptLoader.Load("globals.lua"));
         }
 
         public void LoadBuiltinNovaLuaLib()
         {
-            TextAsset lib = Resources.Load<TextAsset>("novalua/novalualib.lua");
-            string source = lib != null ? lib.text : null;
-            if (string.IsNullOrWhiteSpace(source))
+            DoStringIgnoreResult(NovaLuaBuiltinScriptLoader.Load("novalualib.lua"));
+        }
+
+        public void EnsureBuiltinNovaLuaLib()
+        {
+            if (HasNovaLuaTypesTable())
             {
-                throw new Exception("novalua built-in library not found: Resources/novalua/novalualib.lua or Packages/com.code-philosophy.novalua/Resources/novalua/novalualib.lua");
+                return;
             }
 
-            DoStringIgnoreResult(source);
+            LoadBuiltinNovaLuaLib();
+            if (!HasNovaLuaTypesTable())
+            {
+                throw new Exception("novalua.types was not initialized after loading novalualib.lua");
+            }
+        }
+
+        private bool HasNovaLuaTypesTable()
+        {
+            int oldTop = LuaDll.lua_gettop(LuaState);
+            try
+            {
+                LuaDataType novaluaType = LuaDll.lua_getglobal(LuaState, "novalua");
+                if (novaluaType != LuaDataType.Table)
+                {
+                    LuaDll.lua_settop(LuaState, oldTop);
+                    return false;
+                }
+
+                LuaDataType typesType = LuaDll.lua_getfield(LuaState, -1, "types");
+                LuaDll.lua_settop(LuaState, oldTop);
+                return typesType == LuaDataType.Table;
+            }
+            finally
+            {
+                LuaDll.lua_settop(LuaState, oldTop);
+            }
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
@@ -363,6 +455,11 @@ namespace NovaLua
 
                 LuaDll.lua_close(LuaState);
                 LuaState = IntPtr.Zero;
+            }
+
+            if (s_activeEnv == this)
+            {
+                s_activeEnv = null;
             }
 
             _disposed = true;

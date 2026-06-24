@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace NovaLua
 {
@@ -856,6 +857,12 @@ namespace NovaLua
                 return cached;
             }
 
+            if (string.Equals(luaAssemblyName, "mscorlib", StringComparison.Ordinal))
+            {
+                AssemblyByLuaName[luaAssemblyName] = Mscorlib;
+                return Mscorlib;
+            }
+
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 string normalized = NormalizeAssemblyName(assembly.GetName().Name);
@@ -897,17 +904,6 @@ namespace NovaLua
             {
                 TypeCache[cacheKey] = type;
                 return true;
-            }
-
-            string clrNestedName = ToClrNestedTypeName(luaTypeName);
-            if (!string.Equals(clrNestedName, luaTypeName, StringComparison.Ordinal))
-            {
-                type = assembly.GetType(clrNestedName, false);
-                if (type != null)
-                {
-                    TypeCache[cacheKey] = type;
-                    return true;
-                }
             }
 
             Type[] types;
@@ -1102,9 +1098,35 @@ namespace NovaLua
                 return elementName + "[" + new string(',', type.GetArrayRank() - 1) + "]";
             }
 
+            if (type.IsGenericType && !type.IsGenericTypeDefinition)
+            {
+                Type genericDef = type.GetGenericTypeDefinition();
+                string baseName = GetLuaTypeFullName(genericDef);
+                Type[] genericArgs = type.GetGenericArguments();
+                if (genericArgs.Length == 0)
+                {
+                    return baseName;
+                }
+
+                var sb = new StringBuilder(baseName.Length + genericArgs.Length * 24);
+                sb.Append(baseName).Append('[');
+                for (int i = 0; i < genericArgs.Length; i++)
+                {
+                    if (i > 0)
+                    {
+                        sb.Append(',');
+                    }
+
+                    sb.Append(GetLuaTypeFullName(genericArgs[i]));
+                }
+
+                sb.Append(']');
+                return sb.ToString();
+            }
+
             if (type.IsNested)
             {
-                return GetLuaTypeFullName(type.DeclaringType) + "." + type.Name;
+                return GetLuaTypeFullName(type.DeclaringType) + "+" + type.Name;
             }
 
             if (!string.IsNullOrEmpty(type.Namespace))
@@ -1113,22 +1135,6 @@ namespace NovaLua
             }
 
             return type.Name;
-        }
-
-        private static string ToClrNestedTypeName(string luaTypeName)
-        {
-            if (string.IsNullOrEmpty(luaTypeName))
-            {
-                return luaTypeName;
-            }
-
-            int lastDot = luaTypeName.LastIndexOf('.');
-            if (lastDot <= 0)
-            {
-                return luaTypeName;
-            }
-
-            return luaTypeName.Substring(0, lastDot) + "+" + luaTypeName.Substring(lastDot + 1);
         }
 
         private static void PushInternedTypeTable(IntPtr luaState, Type type)

@@ -1,4 +1,0 @@
-
-function __novaluaErrorHandler(msg)
-    return debug.traceback(msg, 2)
-end

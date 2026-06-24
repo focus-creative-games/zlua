@@ -26,6 +26,7 @@ namespace NovaLua
             if (_luaEnv != null)
             {
                 _luaEnv.SetModuleLoader(moduleLoader);
+                _luaEnv.EnsureBuiltinNovaLuaLib();
                 return;
             }
 
@@ -34,7 +35,7 @@ namespace NovaLua
             _managerObject = new LuaManagerObject(_luaEnv);
             _luaEnv.LoadBuiltinGlobals();
             _managerObject.RegisterNovaLuaApi();
-            _luaEnv.LoadBuiltinNovaLuaLib();
+            _luaEnv.EnsureBuiltinNovaLuaLib();
         }
 
         public static void Shutdown()

@@ -18,6 +18,7 @@ namespace novalua
     static lua_State* s_L = nullptr;
     static Il2CppDelegate* s_ModuleLoader = nullptr;
     static const MethodInfo* s_moduleLoaderInvoker = nullptr;
+    static bool s_moduleLoaderHooksInstalled = false;
     static std::unordered_map<std::string, int> s_ModuleRefs;
     static std::unordered_map<std::string, int> s_ModuleFunctionRefs;
 
@@ -45,6 +46,91 @@ namespace novalua
         return 0;
     }
 
+    static std::string TryLoadModuleSource(const char* moduleName)
+    {
+        if (s_ModuleLoader == nullptr || moduleName == nullptr || moduleName[0] == '\0')
+            return std::string();
+
+        Il2CppString* moduleNameStr = il2cpp::vm::String::New(moduleName);
+        void* params[1] = { moduleNameStr };
+        Il2CppException* exc = nullptr;
+        const MethodInfo* invoke = il2cpp::vm::Runtime::GetDelegateInvoke(((Il2CppObject*)s_ModuleLoader)->klass);
+        Il2CppObject* result = il2cpp::vm::Runtime::Invoke(invoke, s_ModuleLoader, params, &exc);
+        if (exc != nullptr)
+            il2cpp::vm::Exception::Raise(exc);
+
+        if (result == nullptr)
+            return std::string();
+        if (result->klass->byval_arg.type == IL2CPP_TYPE_STRING)
+        {
+            Il2CppString* sourceStr = (Il2CppString*)result;
+            return il2cpp::utils::StringUtils::Utf16ToUtf8(
+                il2cpp::utils::StringUtils::GetChars(sourceStr),
+                il2cpp::utils::StringUtils::GetLength(sourceStr));
+        }
+        if (result->klass->byval_arg.type == IL2CPP_TYPE_SZARRAY && result->klass->rank == 1 &&
+            result->klass->element_class->byval_arg.type == IL2CPP_TYPE_I1)
+        {
+            Il2CppArray* charArray = (Il2CppArray*)result;
+            return std::string((char*)il2cpp::vm::Array::GetFirstElementAddress(charArray), charArray->max_length);
+        }
+
+        LuaEnv::RaiseLuaException("Lua module loader must return a string or byte array");
+        return std::string();
+    }
+
+    static int NovaLuaLoadModule(lua_State* L)
+    {
+        const char* moduleName = luaL_optstring(L, 1, nullptr);
+        if (moduleName == nullptr || moduleName[0] == '\0')
+        {
+            lua_pushnil(L);
+            return 1;
+        }
+
+        std::string source = TryLoadModuleSource(moduleName);
+        if (source.empty())
+        {
+            lua_pushnil(L);
+            return 1;
+        }
+
+        lua_pushlstring(L, source.c_str(), source.size());
+        return 1;
+    }
+
+    static void InstallModuleLoaderHooks()
+    {
+        if (s_moduleLoaderHooksInstalled || s_L == nullptr)
+            return;
+
+        lua_pushcfunction(s_L, NovaLuaLoadModule);
+        lua_setglobal(s_L, "__novalua_load_module");
+
+        const char* installSearcherChunk = R"(
+if rawget(_G, '__novalua_module_searcher_installed') then
+    return
+end
+_G.__novalua_module_searcher_installed = true
+
+local function novalua_module_searcher(modname)
+    local src = __novalua_load_module(modname)
+    if src == nil then
+        return nil
+    end
+    local chunk, err = load(src, '@' .. modname:gsub('%.', '/') .. '.lua')
+    if not chunk then
+        error(err, 2)
+    end
+    return chunk
+end
+
+table.insert(package.searchers, 2, novalua_module_searcher)
+)";
+        LuaEnv::DoStringIgnoreResult(installSearcherChunk);
+        s_moduleLoaderHooksInstalled = true;
+    }
+
     void LuaEnv::RegisterRoots()
     {
         il2cpp::gc::GarbageCollector::RegisterRoot((char*)&s_ModuleLoader, sizeof(s_ModuleLoader));
@@ -59,9 +145,10 @@ namespace novalua
         s_ModuleLoader = moduleLoader;
         s_moduleLoaderInvoker = il2cpp::vm::Runtime::GetDelegateInvoke(((Il2CppObject*)s_ModuleLoader)->klass);
         IL2CPP_ASSERT(s_moduleLoaderInvoker);
-        
+
         if (s_L != nullptr)
         {
+            InstallModuleLoaderHooks();
             return;
         }
 
@@ -70,10 +157,11 @@ namespace novalua
         {
             RaiseLuaException("Failed to create lua state");
         }
-        
+
         luaL_openlibs(s_L);
         RegisterPrintCallback();
         ObjectRegistry::EnsureObjectCache(s_L);
+        InstallModuleLoaderHooks();
     }
 
     void LuaEnv::Shutdown()
@@ -94,6 +182,7 @@ namespace novalua
         lua_close(s_L);
         s_L = nullptr;
         s_ModuleLoader = nullptr;
+        s_moduleLoaderHooksInstalled = false;
     }
 
     lua_State* LuaEnv::GetState()
@@ -113,31 +202,14 @@ namespace novalua
             RaiseLuaException("Lua module loader is not configured");
         }
 
-        Il2CppString* moduleNameStr = il2cpp::vm::String::New(moduleName);
-        void* params[1] = { moduleNameStr };
-        Il2CppException* exc = nullptr;
-        const MethodInfo* invoke = il2cpp::vm::Runtime::GetDelegateInvoke(((Il2CppObject*)s_ModuleLoader)->klass);
-        Il2CppObject* result = il2cpp::vm::Runtime::Invoke(invoke, s_ModuleLoader, params, &exc);
-        if (exc != nullptr)
-            il2cpp::vm::Exception::Raise(exc);
-
-        if (result == nullptr)
-            return std::string();
-        if (result->klass->byval_arg.type == IL2CPP_TYPE_STRING)
+        std::string source = TryLoadModuleSource(moduleName);
+        if (source.empty())
         {
-            Il2CppString* sourceStr = (Il2CppString*)result;
-            return il2cpp::utils::StringUtils::Utf16ToUtf8(
-                il2cpp::utils::StringUtils::GetChars(sourceStr),
-                il2cpp::utils::StringUtils::GetLength(sourceStr));
-        }
-        else if (result->klass->byval_arg.type == IL2CPP_TYPE_SZARRAY && result->klass->rank == 1 && result->klass->element_class->byval_arg.type == IL2CPP_TYPE_I1)
-
-        {
-            Il2CppArray* charArray = (Il2CppArray*)result;
-            return std::string((char*)il2cpp::vm::Array::GetFirstElementAddress(charArray), charArray->max_length);
+            std::string msg = std::string("Lua module '") + moduleName + "' cannot be loaded.";
+            RaiseLuaException(msg.c_str());
         }
 
-        RaiseLuaException("Lua module loader must return a string or byte array");
+        return source;
     }
 
     void LuaEnv::EnsureModuleLoaded(const char* moduleName)
@@ -148,26 +220,23 @@ namespace novalua
         if (s_ModuleRefs.find(moduleName) != s_ModuleRefs.end())
             return;
 
-        std::string source = LoadModuleSource(moduleName);
-        if (source.empty())
+        if (s_ModuleLoader == nullptr)
         {
-            std::string msg = std::string("Lua module '") + moduleName + "' cannot be loaded.";
-            RaiseLuaException(msg.c_str());
+            RaiseLuaException("Lua module loader is not configured");
         }
 
         const int oldTop = lua_gettop(s_L);
-        if (luaL_loadbufferx(s_L, source.c_str(), source.size(), moduleName, nullptr) != LUA_OK)
+        if (lua_getglobal(s_L, "require") != LUA_TFUNCTION)
         {
-            const char* err = lua_tostring(s_L, -1);
-            std::string msg = std::string("Error loading lua module '") + moduleName + "': " + (err ? err : "");
             lua_settop(s_L, oldTop);
-            RaiseLuaException(msg.c_str());
+            RaiseLuaException("Lua global 'require' is not available.");
         }
 
-        if (lua_pcall(s_L, 0, 1, 0) != LUA_OK)
+        lua_pushstring(s_L, moduleName);
+        if (lua_pcall(s_L, 1, 1, 0) != LUA_OK)
         {
             const char* err = lua_tostring(s_L, -1);
-            std::string msg = std::string("Error executing lua module '") + moduleName + "': " + (err ? err : "");
+            std::string msg = std::string("Error requiring lua module '") + moduleName + "': " + (err ? err : "");
             lua_settop(s_L, oldTop);
             RaiseLuaException(msg.c_str());
         }

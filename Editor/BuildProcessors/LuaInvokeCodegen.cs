@@ -222,10 +222,8 @@ namespace NovaLua.BuildProcessors
 
         private static void WriteBuiltinScriptsInc(string generatedDir)
         {
-            string globalsPath = Path.Combine("Packages", Settings.PackageName, "Resources", "novalua", "globals.lua");
-            string libPath = Path.Combine("Packages", Settings.PackageName, "Resources", "novalua", "novalualib.lua");
-            globalsPath = Path.GetFullPath(globalsPath);
-            libPath = Path.GetFullPath(libPath);
+            string globalsPath = Settings.GetLuaLibScriptPath("globals.lua");
+            string libPath = Settings.GetLuaLibScriptPath("novalualib.lua");
 
             var sb = new StringBuilder();
             sb.AppendLine(EmbedLua("kNovaLuaGlobalsLua", File.Exists(globalsPath) ? File.ReadAllText(globalsPath, Encoding.UTF8) : ""));

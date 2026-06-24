@@ -84,6 +84,9 @@ namespace NovaLua
         }
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern void lua_pushnil(IntPtr luaState);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void lua_pushvalue(IntPtr luaState, int index);
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]

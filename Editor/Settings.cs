@@ -77,6 +77,11 @@ namespace NovaLua
 
         public static string NovaLuaDataPathInPackage => $"Packages/{PackageName}/NovaLua~";
 
+        public static string LuaLibPathInPackage => $"{NovaLuaDataPathInPackage}/lualib";
+
+        public static string GetLuaLibScriptPath(string fileName) =>
+            Path.GetFullPath(Path.Combine(LuaLibPathInPackage, fileName));
+
         public static string Libil2cppCppPathInPackage
         {
             get
