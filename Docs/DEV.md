@@ -22,10 +22,17 @@
   - string类型
   - class类型
   - value类型
+  - 枚举类型
   - array类型
   - 特殊类型：指针、函数指针、TypedReference
-  - in/out/ref 类型
+  - in/out/ref 类型（见 `MARSHAL_SPEC.md` §3、`LIB_SPEC.md` §6）
   - LuaMarshalAs规则
+- 杂项功能
+  - novalaulib
+    - typeof
+    - new_ref
+    - make_generic_type
+    - make_szarray_type
 - 性能优化
   - 优化成员和属性访问
   - 将简单的int X {get; set;}之类的Property访问重构为字段访问

@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace NovaLua
+namespace ZLua
 {
     public static class LuaDllExtension
     {

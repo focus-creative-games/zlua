@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine.Scripting;
 
-namespace NovaLua
+namespace ZLua
 {
     public static class LuaIl2CppAppDomain
     {

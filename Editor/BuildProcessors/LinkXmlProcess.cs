@@ -30,7 +30,7 @@ using UnityEditor.Build.Reporting;
 using UnityEditor.UnityLinker;
 using UnityEngine;
 
-namespace NovaLua.BuildProcessors
+namespace ZLua.BuildProcessors
 {
     public class LinkXmlProcess : IUnityLinkerProcessor
     {

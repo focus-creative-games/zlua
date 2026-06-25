@@ -1,6 +1,6 @@
 using System;
 
-namespace NovaLua
+namespace ZLua
 {
     public sealed class LuaMethod : IDisposable
     {
@@ -19,12 +19,23 @@ namespace NovaLua
 
         public void Dispose()
         {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        ~LuaMethod()
+        {
+            Dispose(false);
+        }
+
+        private void Dispose(bool disposing)
+        {
             if (_disposed)
             {
                 return;
             }
 
-            _env.AddPendingRef(RefIndex);
+            _env?.AddPendingRef(RefIndex);
             _disposed = true;
         }
     }

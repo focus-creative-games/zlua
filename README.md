@@ -1,8 +1,8 @@
-# NovaLua
+# ZLua
 
-NovaLua是一个针对Unity Il2Cpp 极致优化的现代原生lua方案。
+ZLua是一个针对Unity Il2Cpp 极致优化的现代原生lua方案。
 
-## 为什么选择NovaLua
+## 为什么选择ZLua
 
 - 极致易用简洁优雅，统一了c#与lua双向调用。把Lua当作另一种`Native`，开创性清晰提出 `[LuaInvoke]`、`[LuaCallback]`、 `[LuaMarshalAs]`的概念。对开发者完全屏蔽了底层复杂易错的Lua的操作。
 - 极致高效。在il2cpp中内嵌lua，绕开lua与c#之间低效的C#交互接口，在c++层面让il2cpp和lua虚拟机直接相互操作，数倍甚至十部以上优化了c#与lua之间的调用开销。
@@ -36,7 +36,7 @@ NovaLua是一个针对Unity Il2Cpp 极致优化的现代原生lua方案。
 
 ## 示例
 
-示例项目 [NovaLua-Demo](https://github.com/focus-creative-games/novalua-demo)。
+示例项目 [ZLua-Demo](https://github.com/focus-creative-games/zlua-demo)。
 
 极致简单：
 
@@ -56,7 +56,7 @@ public class Bootstrap : MonoBehaviour
     }
     
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-    private static void InitNovaLuaOnStartup()
+    private static void InitZLuaOnStartup()
     {
         LuaAppDomain.Initialize(LoadLuaModule);
     }
@@ -163,12 +163,12 @@ end
 local function test_overload_signature()
     print("[test_overload_signature] start")
     local demo = CSharp.AC.Demo()
-    local sig_i32 = novalua.signature(novalua.types.int32)
-    local run_i32 = novalua.get_method(demo, "Run", sig_i32, false)
+    local sig_i32 = zlua.signature(zlua.types.int32)
+    local run_i32 = zlua.get_method(demo, "Run", sig_i32, false)
     run_i32(demo, 10)
     print("After Run(int):", demo:GetX())
 
-    novalua.register_method("run_i32", run_i32)
+    zlua.register_method("run_i32", run_i32)
     demo:run_i32(20)
     print("After run_i32 alias:", demo:GetX())
 end
@@ -199,13 +199,13 @@ return {
 
 ## 许可证
 
-NovaLua 采用 MIT 许可证发布，欢迎自由使用、修改和分发。
+ZLua 采用 MIT 许可证发布，欢迎自由使用、修改和分发。
 
 ## 联系我们
 
 如有问题、建议或错误报告，请在用以下方式联系我们：
 
 - GitHub 上提交 Issue
-- 邮件联系维护者：`novalua#code-philosophy.com`
-- QQ群 **NovaLua交流群**： 824793773
+- 邮件联系维护者：`zlua#code-philosophy.com`
+- QQ群 **ZLua交流群**： 824793773
 - discord频道 `https://discord.gg/htmr44jW6A`

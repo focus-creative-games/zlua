@@ -21,7 +21,7 @@
 using UnityEditor;
 using UnityEngine.UIElements;
 
-namespace NovaLua
+namespace ZLua
 {
     public class SettingsProvider : UnityEditor.SettingsProvider
     {
@@ -40,7 +40,7 @@ namespace NovaLua
 
 
         private SerializedObject _serializedObject;
-        public SettingsProvider() : base("Project/NovaLua", SettingsScope.Project)
+        public SettingsProvider() : base("Project/ZLua", SettingsScope.Project)
         {
         }
 

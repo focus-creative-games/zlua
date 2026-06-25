@@ -1,0 +1,16 @@
+{
+    "name": "ZLua.Il2Cpp",
+    "rootNamespace": "NovaLlua",
+    "references": [
+        "GUID:3167dc7e1d2ee214bb989969ab9b286c"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

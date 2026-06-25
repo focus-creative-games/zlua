@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
-namespace NovaLua
+namespace ZLua
 {
     public static class LuaInvokeFunctions
     {

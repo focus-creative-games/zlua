@@ -4,7 +4,7 @@
 
 ### 使用方式
 
-- 类比于 P/Invoke、 MonoPInvokeCallback, MarshalAs， novalua 有同样对应的概念 L/Invoke、MonoLuaCallback, LuaMarshalAs
+- 类比于 P/Invoke、 MonoPInvokeCallback, MarshalAs， zlua 有同样对应的概念 L/Invoke、MonoLuaCallback, LuaMarshalAs
 - c# 与 lua 之间交互是高度统一的：
   - c#可以调用 标记为 `[LuaInvoke]` 的static c#函数，调用lua函数
   - 所有c#类都通过lazy register的方式，使用时自动注册到lua环境。类型访问、元表与成员规则见 **`TYPE_SYSTEM_SPEC.md`**（含命名空间类型须 `CSharp.{asm}['Ns.Type']` 括号访问）。通过类型表访问静态成员、通过 `obj:Method()` 调用实例成员，语义与 C# 一致。
@@ -22,7 +22,7 @@
 
 ## 实现
 
-### novalua 库
+### zlua 库
 
 见[LIB_SPEC](./LIB_SPEC.md)。
 
@@ -59,10 +59,10 @@ c#类中可能存在同名函数，如 `void Run(int x)` 和 `void Run(string x)
 3. **运行时签名**：`get_method` 查找后缓存或 `register_method` 注册。
 
 ```lua
-local sig_i32 = novalua.signature(novalua.types.int32)
-local run_i32 = novalua.get_method(obj, "Run", sig_i32, false)
+local sig_i32 = zlua.signature(zlua.types.int32)
+local run_i32 = zlua.get_method(obj, "Run", sig_i32, false)
 run_i32(obj, 10)
-novalua.register_method("run_i32", run_i32)
+zlua.register_method("run_i32", run_i32)
 obj:run_i32(10)
 ```
 
@@ -72,22 +72,22 @@ obj:run_i32(10)
 
 ## Mono 和 Il2Cpp 实现
 
-为了最大化正式发布时的运行效率，实现了两套代码，分别为 NovaLua.Mono和NovaLua.Il2Cpp。Editor下使用NovaLua.Mono中的实现，正式发布时使用NovaLua.Il2Cpp中实现。
+为了最大化正式发布时的运行效率，实现了两套代码，分别为 ZLua.Mono和ZLua.Il2Cpp。Editor下使用ZLua.Mono中的实现，正式发布时使用ZLua.Il2Cpp中实现。
 
-LuaInvokeAttriubte、MonoLuaCallbackAttribute、LuaMarshalAsAttribute这些类在NovaLua.Common模块中定义。
+LuaInvokeAttriubte、MonoLuaCallbackAttribute、LuaMarshalAsAttribute这些类在ZLua.Common模块中定义。
 
-NovaLua.Common中定义了 LuaAppDomain 门面类，它会将真正实现转发到 NovaLua.Mono中的LuaMonoAppDomain或 NovaLua.Il2Cpp中的LuaIl2CppAppDomain。
+ZLua.Common中定义了 LuaAppDomain 门面类，它会将真正实现转发到 ZLua.Mono中的LuaMonoAppDomain或 ZLua.Il2Cpp中的LuaIl2CppAppDomain。
 
 ```csharp
-namespace NovaLua
+namespace ZLua
 {
     public class LuaAppDomain
     {
         public static void Initialize(Func<string, string> moduleLoader)
         {
-            string assemblyName = Application.isEditor ? "NovaLua.Mono" : "NovaLua.Il2Cpp";
+            string assemblyName = Application.isEditor ? "ZLua.Mono" : "ZLua.Il2Cpp";
             Assembly assembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == assemblyName);
-            string typeName = Application.isEditor ? "NovaLua.LuaMonoAppDomain" : "NovaLua.LuaIl2CppAppDomain";
+            string typeName = Application.isEditor ? "ZLua.LuaMonoAppDomain" : "ZLua.LuaIl2CppAppDomain";
             assembly.GetType(typeName).GetMethod("Initialize", BindingFlags.Public | BindingFlags.Static)
                 .Invoke(null, new object[] { moduleLoader });
         }
@@ -95,9 +95,9 @@ namespace NovaLua
 }
 ```
 
-### NovaLua.Il2Cpp 的实现
+### ZLua.Il2Cpp 的实现
 
-在C#层面，Il2Cpp版本实现在 NovaLua.Il2Cpp 程序集内，仅有一个非常薄的实现：
+在C#层面，Il2Cpp版本实现在 ZLua.Il2Cpp 程序集内，仅有一个非常薄的实现：
 
 ```csharp
     public static class LuaIl2CppAppDomain
@@ -112,12 +112,12 @@ namespace NovaLua
     }
 ```
 
-与NovaLua.Mono对应的代码， 全部在c++层实现。
+与ZLua.Mono对应的代码， 全部在c++层实现。
 
 我们需要修改Unity的原始libil2cpp代码：
 
 - `libil2cpp/lua` 为 lua源码（当前使用lua 5.4）。这个我们已经手动添加了。
-- `libil2cpp/novalua`目录为 novalua的源码目录
+- `libil2cpp/zlua`目录为 zlua的源码目录
 
-以上代码unity在构建时会自动将它加入编译，最终将lua、novalua及libil2cpp及il2cpp生成的c++代码静态编译到同一个二进制模块（.a或.dll或.so）。
+以上代码unity在构建时会自动将它加入编译，最终将lua、zlua及libil2cpp及il2cpp生成的c++代码静态编译到同一个二进制模块（.a或.dll或.so）。
 

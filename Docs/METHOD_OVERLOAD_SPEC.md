@@ -1,4 +1,4 @@
-# NovaLua 方法重载规范
+# ZLua 方法重载规范
 
 本文档描述 **C# 方法重载** 在 Lua 侧的解析与调用策略，适用于 **Il2Cpp（Player）** 与 **Mono（Editor）**。与 `DESIGN_SPEC.md`、`TYPE_SYSTEM_SPEC.md`、`MARSHAL_SPEC.md` 衔接。
 
@@ -34,7 +34,7 @@ flowchart LR
 
 1. **默认名 + dispatch**（§3）：仅当存在多个同名重载时，默认名绑定分派闭包；单重重载仍直接绑定桥接闭包。
 2. **别名**（§5）：`[LuaAlias]` 或 XML，类内唯一，O(1) 查表。
-3. **运行时签名**（§6）：`novalua.signature` + `novalua.get_method`，查找后**缓存**或 `novalua.register_method` 注册别名。
+3. **运行时签名**（§6）：`zlua.signature` + `zlua.get_method`，查找后**缓存**或 `zlua.register_method` 注册别名。
 
 **不推荐：** 将签名字符串作为元表键做 `obj[sig](...)` 查找——每次经字符串键解析，低效，**不保留、不文档化**。
 
@@ -99,27 +99,27 @@ no overload for Demo.Run matching (number); candidates: Run(System.Int32), Run(S
 
 ## 4. 签名字符串规范（仅参数，不含方法名）
 
-### 4.1 `novalua.signature`
+### 4.1 `zlua.signature`
 
 ```lua
-local sig = novalua.signature(novalua.types.int32)
+local sig = zlua.signature(zlua.types.int32)
 -- sig == "(System.Int32)"
 
-local sig0 = novalua.signature()
+local sig0 = zlua.signature()
 -- sig0 == "()"
 
-local sig2 = novalua.signature(novalua.types.int32, novalua.types.string)
+local sig2 = zlua.signature(zlua.types.int32, zlua.types.string)
 -- sig2 == "(System.Int32,System.String)"
 ```
 
 **约定：**
 
-- 参数为 **C# 参数类型** 的 type 对象（`novalua.types.*` 或 `novalua.typeof(...)`）。
+- 参数为 **C# 参数类型** 的 type 对象（`zlua.types.*` 或 `zlua.typeof(...)`）。
 - **不包含** 方法名。
 - 格式：括号包裹、逗号分隔的 **`Type.FullName`** 列表；无参为 `()`。
 - 数组写为 `System.Int32[]`；泛型写为 `System.Collections.Generic.List\`1[[System.Int32]]` 等 Codegen 统一格式（与生成元数据一致）。
 
-底层 C 回调名可为 `__novalua_create_signature`；Lua 侧封装为 `novalua.signature`。
+底层 C 回调名可为 `__zlua_create_signature`；Lua 侧封装为 `zlua.signature`。
 
 ### 4.2 内部查找键（实现用，非 Lua 元表键）
 
@@ -169,16 +169,16 @@ public void Run(int value) { ... }
 
 ## 6. 运行时 API
 
-### 6.1 `novalua.get_method`
+### 6.1 `zlua.get_method`
 
 ```lua
 local demo = CSharp.AC.Demo()
-local sig_i32 = novalua.signature(novalua.types.int32)
+local sig_i32 = zlua.signature(zlua.types.int32)
 
-local run_i32 = novalua.get_method(demo, "Run", sig_i32, false)
+local run_i32 = zlua.get_method(demo, "Run", sig_i32, false)
 run_i32(demo, 10)   -- 实例方法：点号调用，首参为 self
 
-local add = novalua.get_method(CSharp.AC.Demo, "Add", novalua.signature(novalua.types.int32, novalua.types.int32), true)
+local add = zlua.get_method(CSharp.AC.Demo, "Add", zlua.signature(zlua.types.int32, zlua.types.int32), true)
 add(3, 5)           -- 静态方法
 ```
 
@@ -202,20 +202,20 @@ add(3, 5)           -- 静态方法
 
 ```lua
 -- 模块加载时一次查找，多处复用
-local Run_i32 = novalua.get_method(CSharp.AC.Demo, "Run", novalua.signature(novalua.types.int32), false)
+local Run_i32 = zlua.get_method(CSharp.AC.Demo, "Run", zlua.signature(zlua.types.int32), false)
 
 local function call_run(demo, v)
     Run_i32(demo, v)
 end
 ```
 
-### 6.3 `novalua.register_method`
+### 6.3 `zlua.register_method`
 
 将 `get_method` 得到的 closure 注册为类型元表上的**别名**，便于 `obj:alias(...)` 语法糖：
 
 ```lua
-local run_i32 = novalua.get_method(demo, "Run", novalua.signature(novalua.types.int32), false)
-novalua.register_method("run_i32", run_i32)
+local run_i32 = zlua.get_method(demo, "Run", zlua.signature(zlua.types.int32), false)
+zlua.register_method("run_i32", run_i32)
 demo:run_i32(20)
 ```
 
@@ -231,18 +231,18 @@ demo:run_i32(20)
 
 **不得**将静态 closure 注册到实例元表，或反之；违反时注册期/运行时报错。
 
-### 6.4 `novalua.types`
+### 6.4 `zlua.types`
 
-内置常用类型，等价于 `novalua.typeof(CSharp....)`，例如：
+内置常用类型，等价于 `zlua.typeof(CSharp....)`，例如：
 
 ```lua
-novalua.types.int32
-novalua.types.string
-novalua.types.boolean
+zlua.types.int32
+zlua.types.string
+zlua.types.boolean
 -- ...
 ```
 
-（`corlibtypes` 为旧称，统一为 `novalua.types`。）
+（`corlibtypes` 为旧称，统一为 `zlua.types`。）
 
 ---
 
@@ -294,9 +294,9 @@ demo:Run("ab")
 demo:run_str("xyz")
 
 -- 显式绑定 int 重载并注册
-local sig_i32 = novalua.signature(novalua.types.int32)
-local run_i32 = novalua.get_method(demo, "Run", sig_i32, false)
-novalua.register_method("run_i32", run_i32)
+local sig_i32 = zlua.signature(zlua.types.int32)
+local run_i32 = zlua.get_method(demo, "Run", sig_i32, false)
+zlua.register_method("run_i32", run_i32)
 demo:run_i32(20)
 ```
 
@@ -304,9 +304,9 @@ demo:run_i32(20)
 
 ## 10. 实现清单（参考）
 
-- [ ] `novalua.signature` 仅编码参数类型
-- [ ] `novalua.get_method(target, methodName, signature, is_static)`
-- [ ] `novalua.register_method(aliasName, closure)`
+- [ ] `zlua.signature` 仅编码参数类型
+- [ ] `zlua.get_method(target, methodName, signature, is_static)`
+- [ ] `zlua.register_method(aliasName, closure)`
 - [ ] 多重重载时默认名改为 dispatch closure
 - [ ] `[LuaAlias]` + XML 合并与唯一性校验
 - [ ] 元表**不**暴露签名字符串键给 `__index`

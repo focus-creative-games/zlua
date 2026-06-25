@@ -7,7 +7,7 @@ using UnityEngine;
 
 #if UNITY_2023_1_OR_NEWER && (UNITY_IOS || UNITY_TVOS || UNITY_VISIONOS)
 
-namespace NovaLua.BuildProcessors
+namespace ZLua.BuildProcessors
 {
     public static class AddLil2cppSourceCodeToXcodeproj2022OrNewer
     {

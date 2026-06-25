@@ -1,0 +1,20 @@
+{
+    "name": "ZLua.Editor",
+    "rootNamespace": "NovaLlua",
+    "references": [
+        "GUID:2c8a9df12a2f4ef47b715e3b8e5d9f23",
+        "GUID:3167dc7e1d2ee214bb989969ab9b286c",
+        "GUID:07bad59cd91cf784fa4cdff03fcd5501"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

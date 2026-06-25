@@ -23,7 +23,7 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
-namespace NovaLua.BuildProcessors
+namespace ZLua.BuildProcessors
 {
     internal class InstallLocal : IPreprocessBuildWithReport
     {
@@ -38,17 +38,17 @@ namespace NovaLua.BuildProcessors
             var installerController = new LocalInstaller();
             if (!installerController.HasInstalledToLocal())
             {
-                Debug.LogWarning($"[CheckSettings] NovaLua is not installed, start install NovaLua..");
+                Debug.LogWarning($"[CheckSettings] ZLua is not installed, start install ZLua..");
                 installerController.InstallLocal();
             }
             if (installerController.NeedReinstallAfterUpdatePackage())
             {
-                Debug.LogWarning($"[CheckSettings] NovaLua package updated, start reinstall NovaLua..");
+                Debug.LogWarning($"[CheckSettings] ZLua package updated, start reinstall ZLua..");
                 installerController.InstallLocal();
             }
             if (!installerController.HasInstalledToLocal() || installerController.NeedReinstallAfterUpdatePackage())
             {
-                throw new Exception($"[CheckSettings] Failed to install NovaLua, please check the log for details.");
+                throw new Exception($"[CheckSettings] Failed to install ZLua, please check the log for details.");
             }
         }
     }

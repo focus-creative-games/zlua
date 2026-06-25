@@ -1,0 +1,3 @@
+<linker>
+  <assembly fullname="ZLua.Il2Cpp" preserve="all"/>
+</linker>

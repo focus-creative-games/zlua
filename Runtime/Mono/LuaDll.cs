@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace NovaLua
+namespace ZLua
 {
     [UnmanagedFunctionPointer(LuaDll.CALLING_CONVENTION)]
     public delegate int LuaCSFunction(IntPtr luaState);
@@ -190,6 +190,9 @@ namespace NovaLua
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern IntPtr lua_touserdata(IntPtr luaState, int index);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern IntPtr lua_topointer(IntPtr luaState, int index);
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern IntPtr lua_tolstring(IntPtr luaState, int index, out UIntPtr strLen);

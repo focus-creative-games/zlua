@@ -11,10 +11,10 @@ using UnityEditor;
 using UnityEditor.Compilation;
 using MethodAttributes = dnlib.DotNet.MethodAttributes;
 using MethodImplAttributes = dnlib.DotNet.MethodImplAttributes;
-using NovaLua;
+using ZLua;
 using UnityEngine;
 
-namespace NovaLua
+namespace ZLua
 {
     [InitializeOnLoad]
     internal static class LuaInvokeWeaver
@@ -463,7 +463,7 @@ namespace NovaLua
             for (int i = 0; i < method.CustomAttributes.Count; i++)
             {
                 CustomAttribute attr = method.CustomAttributes[i];
-                if (IsAttribute(attr, "NovaLua", nameof(LuaInvokeAttribute)))
+                if (IsAttribute(attr, "ZLua", nameof(LuaInvokeAttribute)))
                 {
                     return attr;
                 }

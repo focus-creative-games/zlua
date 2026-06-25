@@ -6,15 +6,15 @@ using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 
-namespace NovaLua
+namespace ZLua
 {
     public class LuaAppDomain
     {
         public static void Initialize(Func<string, object> moduleLoader)
         {
-            string assemblyName = Application.isEditor ? "NovaLua.Mono" : "NovaLua.Il2Cpp";
+            string assemblyName = Application.isEditor ? "ZLua.Mono" : "ZLua.Il2Cpp";
             Assembly assembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a => a.GetName().Name == assemblyName);
-            string typeName = Application.isEditor ? "NovaLua.LuaMonoAppDomain" : "NovaLua.LuaIl2CppAppDomain";
+            string typeName = Application.isEditor ? "ZLua.LuaMonoAppDomain" : "ZLua.LuaIl2CppAppDomain";
             assembly.GetType(typeName).GetMethod("Initialize", BindingFlags.Public | BindingFlags.Static)
                 .Invoke(null, new object[] { moduleLoader });
         }

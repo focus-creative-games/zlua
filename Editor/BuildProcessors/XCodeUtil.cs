@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using UnityEditor.Build;
 
-namespace NovaLua.BuildProcessors
+namespace ZLua.BuildProcessors
 {
 
 	public static class XCodeUtil

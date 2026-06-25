@@ -25,13 +25,13 @@ using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
 
-namespace NovaLua
+namespace ZLua
 {
 
 
     public class Settings : ScriptableObject
     {
-        [Tooltip("Enable NovaLua")]
+        [Tooltip("Enable ZLua")]
         public bool enable = true;
 
         private static Settings s_Instance;
@@ -64,20 +64,20 @@ namespace NovaLua
             }
         }
 
-        public static string InstallRootDir => Path.GetFullPath($"Library/NovaLua");
+        public static string InstallRootDir => Path.GetFullPath($"Library/ZLua");
 
         public static string GetPreservedLinkXmlPath()
         {
-            return Path.GetFullPath($"{NovaLuaDataPathInPackage}/link.xml");
+            return Path.GetFullPath($"{ZLuaDataPathInPackage}/link.xml");
         }
 
-        public static string SettingsPath => "ProjectSettings/NovaLua.asset";
+        public static string SettingsPath => "ProjectSettings/ZLua.asset";
 
-        public static string PackageName => "com.code-philosophy.novalua";
+        public static string PackageName => "com.code-philosophy.zlua";
 
-        public static string NovaLuaDataPathInPackage => $"Packages/{PackageName}/NovaLua~";
+        public static string ZLuaDataPathInPackage => $"Packages/{PackageName}/ZLua~";
 
-        public static string LuaLibPathInPackage => $"{NovaLuaDataPathInPackage}/lualib";
+        public static string LuaLibPathInPackage => $"{ZLuaDataPathInPackage}/lualib";
 
         public static string GetLuaLibScriptPath(string fileName) =>
             Path.GetFullPath(Path.Combine(LuaLibPathInPackage, fileName));
@@ -88,7 +88,7 @@ namespace NovaLua
             {
                 var unityVersion = new UnityVersion(Application.unityVersion);
                 string branch = unityVersion.isTuanjieEngine ? "tuanjie" : $"{unityVersion.major}";
-                return $"{NovaLuaDataPathInPackage}/libil2cpp-{branch}";
+                return $"{ZLuaDataPathInPackage}/libil2cpp-{branch}";
             }
         }
 
@@ -98,14 +98,14 @@ namespace NovaLua
 
         public static string LocalLibil2cppPath => $"{LocalIl2CppPath}/libil2cpp";
 
-        public static string LuaSrcPathInPackage => $"{NovaLuaDataPathInPackage}/lua5.4/src";
+        public static string LuaSrcPathInPackage => $"{ZLuaDataPathInPackage}/lua5.4/src";
 
         public static string LocalLuaSrcPath => $"{LocalLibil2cppPath}/lua";
 
-        public static string GeneratedNovaLuaPath => Path.GetFullPath(Path.Combine(LocalLibil2cppPath, "novalua", "generated"));
+        public static string GeneratedZLuaPath => Path.GetFullPath(Path.Combine(LocalLibil2cppPath, "zlua", "generated"));
 
-        public static string BuildWin64GeneratedNovaLuaPath =>
-            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "build-win64", "Il2CppOutputProject", "IL2CPP", "libil2cpp", "novalua", "generated"));
+        public static string BuildWin64GeneratedZLuaPath =>
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "build-win64", "Il2CppOutputProject", "IL2CPP", "libil2cpp", "zlua", "generated"));
 
         private static Settings LoadOrCreate()
         {

@@ -1,14 +1,14 @@
 {
-  "name": "com.code-philosophy.novalua",
+  "name": "com.code-philosophy.zlua",
   "version": "0.0.1-alpha",
-  "displayName": "NovaLua",
-  "description": "NovaLua is a high-performance, rock-solid, and elegantly designed modern Lua solution for Unity, ​​aggressively optimized​​ for IL2CPP and .NET.",
+  "displayName": "ZLua",
+  "description": "ZLua is a high-performance, rock-solid, and elegantly designed modern Lua solution for Unity, ​​aggressively optimized​​ for IL2CPP and .NET.",
   "category": "Scripting",
-  "documentationUrl": "https://www.novalua.com",
-  "changelogUrl": "https://github.com/focus-creative-games/novalua/commits/main/",
-  "licensesUrl": "https://github.com/focus-creative-games/novalua/blob/main/LICENSE",
+  "documentationUrl": "https://www.zlua.com",
+  "changelogUrl": "https://github.com/focus-creative-games/zlua/commits/main/",
+  "licensesUrl": "https://github.com/focus-creative-games/zlua/blob/main/LICENSE",
   "keywords": [
-    "novalua",
+    "zlua",
     "lua",
     "hot update",
     "hot fix",
@@ -17,7 +17,7 @@
   ],
   "author": {
     "name": "Code Philosophy",
-    "email": "novalua@code-philosophy.com",
+    "email": "zlua@code-philosophy.com",
     "url": "https://code-philosophy.com"
   }
 }

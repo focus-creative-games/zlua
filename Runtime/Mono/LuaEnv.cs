@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using UnityEngine;
 
-namespace NovaLua
+namespace ZLua
 {
     public sealed class LuaEnv : IDisposable
     {
@@ -33,7 +33,7 @@ namespace NovaLua
 
             LuaDll.luaL_openlibs(LuaState);
             RegisterCallbacks();
-            // LoadBuiltinNovaLuaLib();
+            // LoadBuiltinZLuaLib();
         }
 
         public void SetModuleLoader(Func<string, object> moduleLoader)
@@ -140,6 +140,11 @@ namespace NovaLua
             }
         }
 
+        public void ProcessPendingRefReleases()
+        {
+            ClearPendingRefs();
+        }
+
         public void DoStringIgnoreResult(string chunk)
         {
             int oldTop = LuaDll.lua_gettop(LuaState);
@@ -179,7 +184,7 @@ namespace NovaLua
         public void CallLuaGlobal(string functionName, Action<IntPtr> pushArgs = null)
         {
             int oldTop = LuaDll.lua_gettop(LuaState);
-            LuaDll.lua_getglobal(LuaState, "__novaluaErrorHandler");
+            LuaDll.lua_getglobal(LuaState, "__zluaErrorHandler");
             LuaDataType type = LuaDll.lua_getglobal(LuaState, functionName);
             if (type != LuaDataType.Function)
             {
@@ -208,7 +213,7 @@ namespace NovaLua
 
             try
             {
-                LuaDll.lua_getglobal(LuaState, "__novaluaErrorHandler");
+                LuaDll.lua_getglobal(LuaState, "__zluaErrorHandler");
                 int functionRef = GetOrCreateModuleFunctionRef(moduleName, methodName, key);
                 LuaDll.lua_rawgeti(LuaState, LuaConsts.LuaRegistryIndex, functionRef);
 
@@ -239,6 +244,7 @@ namespace NovaLua
             finally
             {
                 LuaDll.lua_settop(LuaState, oldTop);
+                ProcessPendingRefReleases();
             }
         }
 
@@ -283,11 +289,11 @@ namespace NovaLua
             }
 
             ModuleLoaderCallbackRefs.Add(LoadModuleCallback);
-            LuaDllExtension.RegisterCallback(LuaState, "__novalua_load_module", LoadModuleCallback);
+            LuaDllExtension.RegisterCallback(LuaState, "__zlua_load_module", LoadModuleCallback);
 
             const string installSearcherChunk = @"
-local function novalua_module_searcher(modname)
-    local src = __novalua_load_module(modname)
+local function zlua_module_searcher(modname)
+    local src = __zlua_load_module(modname)
     if src == nil then
         return nil
     end
@@ -298,7 +304,7 @@ local function novalua_module_searcher(modname)
     return chunk
 end
 
-table.insert(package.searchers, 2, novalua_module_searcher)
+table.insert(package.searchers, 2, zlua_module_searcher)
 ";
             DoStringIgnoreResult(installSearcherChunk);
             _moduleLoaderHooksInstalled = true;
@@ -367,35 +373,35 @@ table.insert(package.searchers, 2, novalua_module_searcher)
 
         public void LoadBuiltinGlobals()
         {
-            DoStringIgnoreResult(NovaLuaBuiltinScriptLoader.Load("globals.lua"));
+            DoStringIgnoreResult(ZLuaBuiltinScriptLoader.Load("globals.lua"));
         }
 
-        public void LoadBuiltinNovaLuaLib()
+        public void LoadBuiltinZLuaLib()
         {
-            DoStringIgnoreResult(NovaLuaBuiltinScriptLoader.Load("novalualib.lua"));
+            DoStringIgnoreResult(ZLuaBuiltinScriptLoader.Load("zlualib.lua"));
         }
 
-        public void EnsureBuiltinNovaLuaLib()
+        public void EnsureBuiltinZLuaLib()
         {
-            if (HasNovaLuaTypesTable())
+            if (HasZLuaTypesTable())
             {
                 return;
             }
 
-            LoadBuiltinNovaLuaLib();
-            if (!HasNovaLuaTypesTable())
+            LoadBuiltinZLuaLib();
+            if (!HasZLuaTypesTable())
             {
-                throw new Exception("novalua.types was not initialized after loading novalualib.lua");
+                throw new Exception("zlua.types was not initialized after loading zlualib.lua");
             }
         }
 
-        private bool HasNovaLuaTypesTable()
+        private bool HasZLuaTypesTable()
         {
             int oldTop = LuaDll.lua_gettop(LuaState);
             try
             {
-                LuaDataType novaluaType = LuaDll.lua_getglobal(LuaState, "novalua");
-                if (novaluaType != LuaDataType.Table)
+                LuaDataType zluaType = LuaDll.lua_getglobal(LuaState, "zlua");
+                if (zluaType != LuaDataType.Table)
                 {
                     LuaDll.lua_settop(LuaState, oldTop);
                     return false;
@@ -416,7 +422,7 @@ table.insert(package.searchers, 2, novalua_module_searcher)
         {
             int count = LuaDll.lua_gettop(luaState);
             SharedBuilder.Clear();
-            SharedBuilder.Append("[NovaLua] ");
+            SharedBuilder.Append("[ZLua] ");
             for (int i = 1; i <= count; i++)
             {
                 if (i > 1)

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace NovaLua
+namespace ZLua
 {
     public static class LuaMonoAppDomain
     {
@@ -14,7 +14,7 @@ namespace NovaLua
             {
                 if (_luaEnv == null)
                 {
-                    throw new InvalidOperationException("NovaLua is not initialized. Call LuaAppDomain.Initialize first.");
+                    throw new InvalidOperationException("ZLua is not initialized. Call LuaAppDomain.Initialize first.");
                 }
 
                 return _luaEnv;
@@ -26,7 +26,7 @@ namespace NovaLua
             if (_luaEnv != null)
             {
                 _luaEnv.SetModuleLoader(moduleLoader);
-                _luaEnv.EnsureBuiltinNovaLuaLib();
+                _luaEnv.EnsureBuiltinZLuaLib();
                 return;
             }
 
@@ -34,8 +34,8 @@ namespace NovaLua
             _luaEnv.SetModuleLoader(moduleLoader);
             _managerObject = new LuaManagerObject(_luaEnv);
             _luaEnv.LoadBuiltinGlobals();
-            _managerObject.RegisterNovaLuaApi();
-            _luaEnv.EnsureBuiltinNovaLuaLib();
+            _managerObject.RegisterZLuaApi();
+            _luaEnv.EnsureBuiltinZLuaLib();
         }
 
         public static void Shutdown()
@@ -73,11 +73,19 @@ namespace NovaLua
             return _luaEnv.RunLuaFunc<T>(moduleName, methodName, args);
         }
 
+        internal static void ProcessPendingRefReleases()
+        {
+            if (_luaEnv != null)
+            {
+                _luaEnv.ProcessPendingRefReleases();
+            }
+        }
+
         private static void EnsureInitialized()
         {
             if (_luaEnv == null)
             {
-                throw new InvalidOperationException("NovaLua is not initialized. Call LuaAppDomain.Initialize first.");
+                throw new InvalidOperationException("ZLua is not initialized. Call LuaAppDomain.Initialize first.");
             }
         }
     }

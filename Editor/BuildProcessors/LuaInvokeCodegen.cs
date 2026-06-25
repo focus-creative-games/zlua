@@ -11,7 +11,7 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
-namespace NovaLua.BuildProcessors
+namespace ZLua.BuildProcessors
 {
     internal sealed class LuaInvokeCodegen : IPreprocessBuildWithReport
     {
@@ -29,12 +29,12 @@ namespace NovaLua.BuildProcessors
 
             if (!new LocalInstaller().HasInstalledToLocal())
             {
-                Debug.LogWarning("[LuaInvokeCodegen] NovaLua local il2cpp is not installed; skip codegen.");
+                Debug.LogWarning("[LuaInvokeCodegen] ZLua local il2cpp is not installed; skip codegen.");
                 return;
             }
 
             var bindings = CollectBindings();
-            string generatedDir = Settings.GeneratedNovaLuaPath;
+            string generatedDir = Settings.GeneratedZLuaPath;
             Directory.CreateDirectory(generatedDir);
             WriteLuaInvokeSites(generatedDir, bindings);
             WriteBuiltinScriptsInc(generatedDir);
@@ -161,9 +161,9 @@ namespace NovaLua.BuildProcessors
             var header = new StringBuilder();
             header.AppendLine("#pragma once");
             header.AppendLine();
-            header.AppendLine("#include \"novalua/LuaInvokeRuntime.h\"");
+            header.AppendLine("#include \"zlua/LuaInvokeRuntime.h\"");
             header.AppendLine();
-            header.AppendLine("namespace novalua");
+            header.AppendLine("namespace zlua");
             header.AppendLine("{");
             foreach (LuaInvokeBindingInfo binding in bindings)
             {
@@ -177,13 +177,13 @@ namespace NovaLua.BuildProcessors
             var source = new StringBuilder();
             source.AppendLine("#include \"LuaInvokeSites.h\"");
             source.AppendLine();
-            source.AppendLine("#include \"novalua/LuaEnv.h\"");
-            source.AppendLine("#include \"novalua/LuaInvokeRuntime.h\"");
-            source.AppendLine("#include \"novalua/Marshaling.h\"");
+            source.AppendLine("#include \"zlua/LuaEnv.h\"");
+            source.AppendLine("#include \"zlua/LuaInvokeRuntime.h\"");
+            source.AppendLine("#include \"zlua/Marshaling.h\"");
             source.AppendLine();
             source.AppendLine("#include \"vm/InternalCalls.h\"");
             source.AppendLine();
-            source.AppendLine("namespace novalua");
+            source.AppendLine("namespace zlua");
             source.AppendLine("{");
 
             foreach (LuaInvokeBindingInfo binding in bindings)
@@ -223,12 +223,12 @@ namespace NovaLua.BuildProcessors
         private static void WriteBuiltinScriptsInc(string generatedDir)
         {
             string globalsPath = Settings.GetLuaLibScriptPath("globals.lua");
-            string libPath = Settings.GetLuaLibScriptPath("novalualib.lua");
+            string libPath = Settings.GetLuaLibScriptPath("zlualib.lua");
 
             var sb = new StringBuilder();
-            sb.AppendLine(EmbedLua("kNovaLuaGlobalsLua", File.Exists(globalsPath) ? File.ReadAllText(globalsPath, Encoding.UTF8) : ""));
+            sb.AppendLine(EmbedLua("kZLuaGlobalsLua", File.Exists(globalsPath) ? File.ReadAllText(globalsPath, Encoding.UTF8) : ""));
             sb.AppendLine();
-            sb.AppendLine(EmbedLua("kNovaLuaLibLua", File.Exists(libPath) ? File.ReadAllText(libPath, Encoding.UTF8) : ""));
+            sb.AppendLine(EmbedLua("kZLuaLibLua", File.Exists(libPath) ? File.ReadAllText(libPath, Encoding.UTF8) : ""));
 
             File.WriteAllText(Path.Combine(generatedDir, "BuiltinScripts.inc"), sb.ToString(), Encoding.UTF8);
         }
@@ -236,13 +236,13 @@ namespace NovaLua.BuildProcessors
         private static string EmbedLua(string name, string content)
         {
             var sb = new StringBuilder();
-            sb.Append("static const char ").Append(name).Append("[] = R\"novalua(").Append(content).Append(")novalua\";");
+            sb.Append("static const char ").Append(name).Append("[] = R\"zlua(").Append(content).Append(")zlua\";");
             return sb.ToString();
         }
 
         private static void TryMirrorGeneratedToBuildOutput(string generatedDir)
         {
-            string buildDir = Settings.BuildWin64GeneratedNovaLuaPath;
+            string buildDir = Settings.BuildWin64GeneratedZLuaPath;
             if (!Directory.Exists(Path.GetDirectoryName(buildDir)))
             {
                 return;

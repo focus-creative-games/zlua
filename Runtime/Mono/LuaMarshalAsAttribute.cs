@@ -1,6 +1,6 @@
 using System;
 
-namespace NovaLua
+namespace ZLua
 {
     public enum LuaMarshalType
     {

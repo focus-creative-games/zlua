@@ -1,6 +1,6 @@
 using System;
 
-namespace NovaLua
+namespace ZLua
 {
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
     public sealed class LuaInvokeAttribute : Attribute
