@@ -16,6 +16,8 @@ namespace ZLua
         private static readonly Dictionary<string, Assembly> AssemblyByLuaName = new Dictionary<string, Assembly>(StringComparer.Ordinal);
         private static readonly Dictionary<string, Type> TypeCache = new Dictionary<string, Type>(StringComparer.Ordinal);
         private static readonly Dictionary<Type, int> TypeTableRefs = new Dictionary<Type, int>();
+        private static readonly Dictionary<int, int> StaticMethodTableRefsByTypeId = new Dictionary<int, int>();
+        private static readonly Dictionary<int, int> InstanceMethodTableRefsByTypeId = new Dictionary<int, int>();
         private static readonly Assembly Mscorlib = typeof(object).Assembly;
 
         private static readonly List<LuaCSFunction> CallbackRefs = new List<LuaCSFunction>();
@@ -23,6 +25,8 @@ namespace ZLua
         private static readonly LuaCSFunction AssemblyTypeIndexCallback = ResolveAssemblyTypeIndex;
         private static readonly LuaCSFunction ZLuaTypeOfCallback = ZLuaTypeOf;
         private static readonly LuaCSFunction ZLuaCreateSignatureCallback = ZLuaCreateSignature;
+        private static readonly LuaCSFunction ZLuaGetMethodCallback = ZLuaGetMethod;
+        private static readonly LuaCSFunction ZLuaRegisterMethodCallback = ZLuaRegisterMethod;
         private static readonly LuaCSFunction ZLuaMakeGenericTypeCallback = ZLuaMakeGenericType;
         private static readonly LuaCSFunction ZLuaMakeSzArrayTypeCallback = ZLuaMakeSzArrayType;
         private static readonly LuaCSFunction ZLuaMakeMdArrayTypeCallback = ZLuaMakeMdArrayType;
@@ -31,12 +35,9 @@ namespace ZLua
         private static readonly LuaCSFunction ZLuaNewMdArrayByMdArrayTypeCallback = ZLuaNewMdArrayByMdArrayType;
         private static readonly LuaCSFunction ZLuaNewMdArrayBySpecCallback = ZLuaNewMdArrayBySpec;
         private static readonly LuaCSFunction ZLuaToDelegateCallback = ZLuaToDelegate;
+        private static readonly LuaCSFunction ZLuaToUserDataCallback = ZLuaToUserData;
         private static readonly LuaCSFunction ArrayInstanceLenCallback = ArrayInstanceLen;
         private static readonly LuaCSFunction DelegateInstanceCallCallback = DelegateInstanceCall;
-        private static readonly LuaCSFunction InstanceIndexCallback = InstanceIndex;
-        private static readonly LuaCSFunction InstanceNewIndexCallback = InstanceNewIndex;
-        private static readonly LuaCSFunction StaticTypeIndexCallback = StaticTypeIndex;
-        private static readonly LuaCSFunction StaticTypeNewIndexCallback = StaticTypeNewIndex;
         private static readonly LuaCSFunction TypeTableToStringCallback = TypeTableToString;
         private static readonly LuaCSFunction EnumCtorCallback = InvokeEnumCtor;
         private static readonly LuaCSFunction EnumCallCallback = InvokeEnumCall;
@@ -68,6 +69,8 @@ namespace ZLua
             IntPtr luaState = _luaEnv.LuaState;
             LuaDllExtension.RegisterCallback(luaState, "__zlua_typeof", ZLuaTypeOfCallback);
             LuaDllExtension.RegisterCallback(luaState, "__zlua_create_signature", ZLuaCreateSignatureCallback);
+            LuaDllExtension.RegisterCallback(luaState, "__zlua_get_method", ZLuaGetMethodCallback);
+            LuaDllExtension.RegisterCallback(luaState, "__zlua_register_method", ZLuaRegisterMethodCallback);
             LuaDllExtension.RegisterCallback(luaState, "__zlua_make_generic_type", ZLuaMakeGenericTypeCallback);
             LuaDllExtension.RegisterCallback(luaState, "__zlua_make_szarray_type", ZLuaMakeSzArrayTypeCallback);
             LuaDllExtension.RegisterCallback(luaState, "__zlua_make_mdarray_type", ZLuaMakeMdArrayTypeCallback);
@@ -76,6 +79,8 @@ namespace ZLua
             LuaDllExtension.RegisterCallback(luaState, "__zlua_new_mdarray_by_mdarray_type", ZLuaNewMdArrayByMdArrayTypeCallback);
             LuaDllExtension.RegisterCallback(luaState, "__zlua_new_mdarray_by_spec", ZLuaNewMdArrayBySpecCallback);
             LuaDllExtension.RegisterCallback(luaState, "__zlua_to_delegate", ZLuaToDelegateCallback);
+            LuaDllExtension.RegisterCallback(luaState, "__zlua_to_user_data", ZLuaToUserDataCallback);
+            TypeMemberLuaIndexer.EnsureLoaded(luaState);
         }
 
         public void RegisterType(Type type)
@@ -148,6 +153,8 @@ namespace ZLua
 
         private static void PushTypeTable(IntPtr luaState, Type type)
         {
+            TypeMethodRegistration.EnsureMethodAliasKeysValid(type);
+
             if (type.IsEnum)
             {
                 PushEnumTypeTable(luaState, type);
@@ -180,29 +187,31 @@ namespace ZLua
 
             int staticMetatableIndex = LuaDll.lua_gettop(luaState) + 1;
             LuaDll.lua_createtable(luaState, 0, 16);
-            TypeMethodRegistration.RegisterStaticMethods(luaState, staticMetatableIndex, type);
-            EventAccess.RegisterStaticEvents(luaState, staticMetatableIndex, type);
+
+            CreateMemberTablesOnStack(luaState, out int staticMethodTableIndex, out int staticGetterTableIndex, out int staticSetterTableIndex);
+            TypeFieldRegistration.RegisterFields(type, typeId);
+            TypePropertyRegistration.RegisterProperties(type, typeId);
+            PopulateStaticMemberTables(
+                luaState,
+                type,
+                typeId,
+                staticMethodTableIndex,
+                staticGetterTableIndex,
+                staticSetterTableIndex);
             TypeMethodRegistration.RegisterConstructors(luaState, staticMetatableIndex, type);
 
             PushInstanceMetatable(luaState, type, typeTableIndex);
             LuaDll.lua_setfield(luaState, typeTableIndex, "__instance_mt");
 
-            CallbackRefs.Add(StaticTypeIndexCallback);
-            IntPtr staticIndexFn = Marshal.GetFunctionPointerForDelegate(StaticTypeIndexCallback);
-            LuaDll.lua_pushinteger(luaState, typeId);
-            LuaDll.lua_pushcclosure(luaState, staticIndexFn, 1);
-            LuaDll.lua_setfield(luaState, staticMetatableIndex, "__index");
+            AttachStaticMetatable(
+                luaState,
+                staticMetatableIndex,
+                staticMethodTableIndex,
+                staticGetterTableIndex,
+                staticSetterTableIndex,
+                typeId);
 
-            CallbackRefs.Add(StaticTypeNewIndexCallback);
-            IntPtr staticNewIndexFn = Marshal.GetFunctionPointerForDelegate(StaticTypeNewIndexCallback);
-            LuaDll.lua_pushinteger(luaState, typeId);
-            LuaDll.lua_pushcclosure(luaState, staticNewIndexFn, 1);
-            LuaDll.lua_setfield(luaState, staticMetatableIndex, "__newindex");
-
-            CallbackRefs.Add(TypeTableToStringCallback);
-            IntPtr toStringFn = Marshal.GetFunctionPointerForDelegate(TypeTableToStringCallback);
-            LuaDll.lua_pushcfunction(luaState, toStringFn);
-            LuaDll.lua_setfield(luaState, staticMetatableIndex, "__tostring");
+            LuaDll.lua_pop(luaState, 3);
 
             LuaDll.lua_setmetatable(luaState, typeTableIndex);
 
@@ -222,7 +231,17 @@ namespace ZLua
 
             int staticMetatableIndex = LuaDll.lua_gettop(luaState) + 1;
             LuaDll.lua_createtable(luaState, 0, 16);
-            TypeMethodRegistration.RegisterStaticMethods(luaState, staticMetatableIndex, structType);
+
+            CreateMemberTablesOnStack(luaState, out int staticMethodTableIndex, out int staticGetterTableIndex, out int staticSetterTableIndex);
+            TypeFieldRegistration.RegisterFields(structType, typeId);
+            TypePropertyRegistration.RegisterProperties(structType, typeId);
+            PopulateStaticMemberTables(
+                luaState,
+                structType,
+                typeId,
+                staticMethodTableIndex,
+                staticGetterTableIndex,
+                staticSetterTableIndex);
             TypeMethodRegistration.RegisterConstructors(luaState, staticMetatableIndex, structType);
 
             CallbackRefs.Add(StructDefaultCallback);
@@ -231,7 +250,14 @@ namespace ZLua
             LuaDll.lua_pushcclosure(luaState, defaultFn, 1);
             LuaDll.lua_setfield(luaState, staticMetatableIndex, "_default");
 
-            AttachStaticMetatable(luaState, staticMetatableIndex, typeId);
+            AttachStaticMetatable(
+                luaState,
+                staticMetatableIndex,
+                staticMethodTableIndex,
+                staticGetterTableIndex,
+                staticSetterTableIndex,
+                typeId);
+            LuaDll.lua_pop(luaState, 3);
 
             PushValueTypeInstanceMetatable(luaState, structType, typeTableIndex, null);
             LuaDll.lua_setfield(luaState, typeTableIndex, "__instance_mt");
@@ -252,7 +278,9 @@ namespace ZLua
 
             int staticMetatableIndex = LuaDll.lua_gettop(luaState) + 1;
             LuaDll.lua_createtable(luaState, 0, 16);
-            RegisterEnumConstants(luaState, staticMetatableIndex, enumType);
+
+            CreateMemberTablesOnStack(luaState, out int staticMethodTableIndex, out int staticGetterTableIndex, out int staticSetterTableIndex);
+            RegisterEnumConstants(luaState, staticMethodTableIndex, enumType);
 
             CallbackRefs.Add(EnumCtorCallback);
             IntPtr ctorFn = Marshal.GetFunctionPointerForDelegate(EnumCtorCallback);
@@ -266,13 +294,89 @@ namespace ZLua
             LuaDll.lua_pushcclosure(luaState, callFn, 1);
             LuaDll.lua_setfield(luaState, staticMetatableIndex, "__call");
 
-            AttachStaticMetatable(luaState, staticMetatableIndex, typeId);
+            AttachStaticMetatable(
+                luaState,
+                staticMetatableIndex,
+                staticMethodTableIndex,
+                staticGetterTableIndex,
+                staticSetterTableIndex,
+                typeId);
+            LuaDll.lua_pop(luaState, 3);
 
             PushValueTypeInstanceMetatable(luaState, enumType, typeTableIndex, EnumInstanceToStringCallback);
             LuaDll.lua_setfield(luaState, typeTableIndex, "__instance_mt");
 
             LuaDll.lua_setmetatable(luaState, typeTableIndex);
             LuaDll.lua_settop(luaState, typeTableIndex);
+        }
+
+        private static void CreateMemberTablesOnStack(
+            IntPtr luaState,
+            out int methodTableIndex,
+            out int getterTableIndex,
+            out int setterTableIndex)
+        {
+            LuaDll.lua_createtable(luaState, 0, 16);
+            methodTableIndex = LuaDll.lua_absindex(luaState, -1);
+            LuaDll.lua_createtable(luaState, 0, 16);
+            getterTableIndex = LuaDll.lua_absindex(luaState, -1);
+            LuaDll.lua_createtable(luaState, 0, 8);
+            setterTableIndex = LuaDll.lua_absindex(luaState, -1);
+        }
+
+        private static void PopulateStaticMemberTables(
+            IntPtr luaState,
+            Type type,
+            int typeId,
+            int methodTableIndex,
+            int getterTableIndex,
+            int setterTableIndex)
+        {
+            TypeMethodRegistration.RegisterStaticMethods(luaState, methodTableIndex, type);
+            TypeFieldRegistration.BindGetterTable(luaState, getterTableIndex, typeId, isStatic: true);
+            TypeFieldRegistration.BindSetterTable(luaState, setterTableIndex, typeId, isStatic: true);
+            TypePropertyRegistration.BindGetterTable(luaState, getterTableIndex, typeId, isStatic: true);
+            TypePropertyRegistration.BindSetterTable(luaState, setterTableIndex, typeId, isStatic: true);
+            TypeEventRegistration.RegisterEvents(luaState, methodTableIndex, type, typeId);
+        }
+
+        private static void PopulateInstanceMemberTables(
+            IntPtr luaState,
+            Type type,
+            int typeId,
+            int methodTableIndex,
+            int getterTableIndex,
+            int setterTableIndex)
+        {
+            TypeMethodRegistration.RegisterInstanceMethods(luaState, methodTableIndex, type);
+            TypeFieldRegistration.BindGetterTable(luaState, getterTableIndex, typeId, isStatic: false);
+            TypeFieldRegistration.BindSetterTable(luaState, setterTableIndex, typeId, isStatic: false);
+            TypePropertyRegistration.BindGetterTable(luaState, getterTableIndex, typeId, isStatic: false);
+            TypePropertyRegistration.BindSetterTable(luaState, setterTableIndex, typeId, isStatic: false);
+            TypeEventRegistration.BindInstanceEventsToMethodTable(luaState, methodTableIndex, typeId);
+        }
+
+        private static void AttachStaticMetatable(
+            IntPtr luaState,
+            int staticMetatableIndex,
+            int methodTableIndex,
+            int getterTableIndex,
+            int setterTableIndex,
+            int typeId)
+        {
+            RetainMethodTableRef(luaState, StaticMethodTableRefsByTypeId, typeId, methodTableIndex);
+
+            TypeMemberLuaIndexer.BindStaticMetatable(
+                luaState,
+                staticMetatableIndex,
+                methodTableIndex,
+                getterTableIndex,
+                setterTableIndex);
+
+            CallbackRefs.Add(TypeTableToStringCallback);
+            IntPtr toStringFn = Marshal.GetFunctionPointerForDelegate(TypeTableToStringCallback);
+            LuaDll.lua_pushcfunction(luaState, toStringFn);
+            LuaDll.lua_setfield(luaState, staticMetatableIndex, "__tostring");
         }
 
         private static void WriteTypeMetadata(IntPtr luaState, int typeTableIndex, Type type, int typeId)
@@ -287,26 +391,6 @@ namespace ZLua
             LuaDll.lua_setfield(luaState, typeTableIndex, "__typeid");
         }
 
-        private static void AttachStaticMetatable(IntPtr luaState, int staticMetatableIndex, int typeId)
-        {
-            CallbackRefs.Add(StaticTypeIndexCallback);
-            IntPtr staticIndexFn = Marshal.GetFunctionPointerForDelegate(StaticTypeIndexCallback);
-            LuaDll.lua_pushinteger(luaState, typeId);
-            LuaDll.lua_pushcclosure(luaState, staticIndexFn, 1);
-            LuaDll.lua_setfield(luaState, staticMetatableIndex, "__index");
-
-            CallbackRefs.Add(StaticTypeNewIndexCallback);
-            IntPtr staticNewIndexFn = Marshal.GetFunctionPointerForDelegate(StaticTypeNewIndexCallback);
-            LuaDll.lua_pushinteger(luaState, typeId);
-            LuaDll.lua_pushcclosure(luaState, staticNewIndexFn, 1);
-            LuaDll.lua_setfield(luaState, staticMetatableIndex, "__newindex");
-
-            CallbackRefs.Add(TypeTableToStringCallback);
-            IntPtr toStringFn = Marshal.GetFunctionPointerForDelegate(TypeTableToStringCallback);
-            LuaDll.lua_pushcfunction(luaState, toStringFn);
-            LuaDll.lua_setfield(luaState, staticMetatableIndex, "__tostring");
-        }
-
         private static void PushValueTypeInstanceMetatable(IntPtr luaState, Type type, int typeTableIndex, LuaCSFunction toStringCallback)
         {
             LuaDll.lua_createtable(luaState, 0, 8);
@@ -315,21 +399,19 @@ namespace ZLua
             LuaDll.lua_pushvalue(luaState, typeTableIndex);
             LuaDll.lua_setfield(luaState, mtIndex, "__type");
 
-            TypeMethodRegistration.RegisterInstanceMethods(luaState, mtIndex, type);
-
             int instanceTypeId = GetOrCreateTypeId(type);
 
-            CallbackRefs.Add(InstanceIndexCallback);
-            IntPtr indexFn = Marshal.GetFunctionPointerForDelegate(InstanceIndexCallback);
-            LuaDll.lua_pushinteger(luaState, instanceTypeId);
-            LuaDll.lua_pushcclosure(luaState, indexFn, 1);
-            LuaDll.lua_setfield(luaState, mtIndex, "__index");
+            CreateMemberTablesOnStack(luaState, out int methodTableIndex, out int getterTableIndex, out int setterTableIndex);
+            PopulateInstanceMemberTables(luaState, type, instanceTypeId, methodTableIndex, getterTableIndex, setterTableIndex);
+            RetainMethodTableRef(luaState, InstanceMethodTableRefsByTypeId, instanceTypeId, methodTableIndex);
 
-            CallbackRefs.Add(InstanceNewIndexCallback);
-            IntPtr newIndexFn = Marshal.GetFunctionPointerForDelegate(InstanceNewIndexCallback);
-            LuaDll.lua_pushinteger(luaState, instanceTypeId);
-            LuaDll.lua_pushcclosure(luaState, newIndexFn, 1);
-            LuaDll.lua_setfield(luaState, mtIndex, "__newindex");
+            TypeMemberLuaIndexer.BindInstanceMetatable(
+                luaState,
+                mtIndex,
+                methodTableIndex,
+                getterTableIndex,
+                setterTableIndex);
+            LuaDll.lua_pop(luaState, 3);
 
             LuaCSFunction gcCb = ReleaseUserData;
             CallbackRefs.Add(gcCb);
@@ -347,7 +429,7 @@ namespace ZLua
             }
         }
 
-        private static void RegisterEnumConstants(IntPtr luaState, int metatableIndex, Type enumType)
+        private static void RegisterEnumConstants(IntPtr luaState, int methodTableIndex, Type enumType)
         {
             Type underlying = Enum.GetUnderlyingType(enumType);
             FieldInfo[] fields = enumType.GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly);
@@ -360,7 +442,7 @@ namespace ZLua
                 }
 
                 ValueTypeMarshaling.PushUnderlyingInteger(luaState, underlying, field.GetRawConstantValue());
-                LuaDll.lua_setfield(luaState, metatableIndex, field.Name);
+                LuaDll.lua_setfield(luaState, methodTableIndex, field.Name);
             }
         }
 
@@ -512,21 +594,19 @@ namespace ZLua
             LuaDll.lua_pushvalue(luaState, typeTableIndex);
             LuaDll.lua_setfield(luaState, mtIndex, "__type");
 
-            TypeMethodRegistration.RegisterInstanceMethods(luaState, mtIndex, type);
-
             int instanceTypeId = GetOrCreateTypeId(type);
 
-            CallbackRefs.Add(InstanceIndexCallback);
-            IntPtr indexFn = Marshal.GetFunctionPointerForDelegate(InstanceIndexCallback);
-            LuaDll.lua_pushinteger(luaState, instanceTypeId);
-            LuaDll.lua_pushcclosure(luaState, indexFn, 1);
-            LuaDll.lua_setfield(luaState, mtIndex, "__index");
+            CreateMemberTablesOnStack(luaState, out int methodTableIndex, out int getterTableIndex, out int setterTableIndex);
+            PopulateInstanceMemberTables(luaState, type, instanceTypeId, methodTableIndex, getterTableIndex, setterTableIndex);
+            RetainMethodTableRef(luaState, InstanceMethodTableRefsByTypeId, instanceTypeId, methodTableIndex);
 
-            CallbackRefs.Add(InstanceNewIndexCallback);
-            IntPtr newIndexFn = Marshal.GetFunctionPointerForDelegate(InstanceNewIndexCallback);
-            LuaDll.lua_pushinteger(luaState, instanceTypeId);
-            LuaDll.lua_pushcclosure(luaState, newIndexFn, 1);
-            LuaDll.lua_setfield(luaState, mtIndex, "__newindex");
+            TypeMemberLuaIndexer.BindInstanceMetatable(
+                luaState,
+                mtIndex,
+                methodTableIndex,
+                getterTableIndex,
+                setterTableIndex);
+            LuaDll.lua_pop(luaState, 3);
 
             if (type.IsArray && type.GetArrayRank() == 1)
             {
@@ -648,6 +728,19 @@ namespace ZLua
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int ZLuaToUserData(IntPtr luaState)
+        {
+            try
+            {
+                return OpaqueMarshaling.ToUserData(luaState, 1);
+            }
+            catch (Exception ex)
+            {
+                return LuaDllExtension.error(luaState, $"zlua to_user_data error: {ex.Message}");
+            }
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int TypeTableToString(IntPtr luaState)
         {
             LuaDataType fullNameType = RawGetField(luaState, 1, "__fullname");
@@ -704,6 +797,11 @@ namespace ZLua
             }
         }
 
+        internal static LuaDataType RawGetFieldPublic(IntPtr luaState, int tableIndex, string key)
+        {
+            return RawGetField(luaState, tableIndex, key);
+        }
+
         private static LuaDataType RawGetField(IntPtr luaState, int tableIndex, string key)
         {
             int absIndex = LuaDll.lua_absindex(luaState, tableIndex);
@@ -718,14 +816,281 @@ namespace ZLua
             LuaDll.lua_rawset(luaState, absIndex);
         }
 
-        private static string BuildMethodSignature(string methodName, string[] parameterTypeNames)
+        private static string BuildParameterSignature(IReadOnlyList<Type> parameterTypes)
         {
-            if (parameterTypeNames == null || parameterTypeNames.Length == 0)
+            if (parameterTypes == null || parameterTypes.Count == 0)
             {
-                return methodName + "()";
+                return "()";
             }
 
-            return methodName + "(" + string.Join(",", parameterTypeNames) + ")";
+            return "(" + string.Join(",", parameterTypes.Select(GetLuaTypeFullName)) + ")";
+        }
+
+        internal static string FormatParameterSignature(ParameterInfo[] parameters)
+        {
+            if (parameters == null || parameters.Length == 0)
+            {
+                return "()";
+            }
+
+            return "(" + string.Join(",", parameters.Select(p => GetLuaTypeFullName(p.ParameterType))) + ")";
+        }
+
+        private static bool TryResolveTargetType(IntPtr luaState, int index, out Type type)
+        {
+            type = null;
+            LuaDataType luaType = LuaDll.lua_type(luaState, index);
+            if (luaType == LuaDataType.Table)
+            {
+                return TryResolveTypeFromTypeTable(luaState, index, out type);
+            }
+
+            if (luaType == LuaDataType.UserData)
+            {
+                if (TryGetUserDataTarget(luaState, index, out object target) && target != null)
+                {
+                    type = target.GetType();
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int ZLuaGetMethod(IntPtr luaState)
+        {
+            try
+            {
+                if (LuaDll.lua_gettop(luaState) < 4)
+                {
+                    return LuaDllExtension.error(luaState, "zlua.get_method expects (target, methodName, signature, is_static)");
+                }
+
+                if (!TryResolveTargetType(luaState, 1, out Type targetType))
+                {
+                    return LuaDllExtension.error(luaState, "zlua.get_method expects userdata or type table as target");
+                }
+
+                string methodName = LuaDllExtension.tostring(luaState, 2);
+                if (string.IsNullOrWhiteSpace(methodName))
+                {
+                    return LuaDllExtension.error(luaState, "zlua.get_method expects method name");
+                }
+
+                string signature = LuaDllExtension.tostring(luaState, 3);
+                if (signature == null)
+                {
+                    return LuaDllExtension.error(luaState, "zlua.get_method expects signature string");
+                }
+
+                bool isStatic = LuaDll.lua_toboolean(luaState, 4) != 0;
+
+                int oldTop = LuaDll.lua_gettop(luaState);
+                PushInternedTypeTable(luaState, targetType);
+                LuaDll.lua_settop(luaState, oldTop);
+
+                if (!TypeMethodRegistration.TryFindMethodByParameterSignature(
+                        targetType,
+                        methodName,
+                        signature,
+                        isStatic,
+                        out MethodInfo method))
+                {
+                    return LuaDllExtension.error(
+                        luaState,
+                        $"zlua: no overload for {GetLuaTypeFullName(targetType)}.{methodName} matching {signature}");
+                }
+
+                TypeMethodRegistration.PushRegisteredMethodClosure(luaState, method, isStatic);
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                return LuaDllExtension.error(luaState, $"zlua get_method error: {ex}");
+            }
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int ZLuaRegisterMethod(IntPtr luaState)
+        {
+            try
+            {
+                if (LuaDll.lua_gettop(luaState) < 3)
+                {
+                    return LuaDllExtension.error(
+                        luaState,
+                        "zlua.register_method expects (static_class_mt_or_obj, aliasName, methodOrClosure)");
+                }
+
+                string aliasName = LuaDllExtension.tostring(luaState, 2);
+                if (string.IsNullOrWhiteSpace(aliasName))
+                {
+                    return LuaDllExtension.error(luaState, "zlua.register_method expects alias name");
+                }
+
+                LuaDataType closureType = LuaDll.lua_type(luaState, 3);
+                if (closureType != LuaDataType.Function)
+                {
+                    return LuaDllExtension.error(luaState, "zlua.register_method expects callable closure");
+                }
+
+                int methodTableRef;
+                LuaDataType targetLuaType = LuaDll.lua_type(luaState, 1);
+                if (targetLuaType == LuaDataType.Table)
+                {
+                    if (!TryResolveTypeFromTypeTable(luaState, 1, out Type clrType))
+                    {
+                        return LuaDllExtension.error(
+                            luaState,
+                            "zlua.register_method expects type table as first argument");
+                    }
+
+                    int oldTop = LuaDll.lua_gettop(luaState);
+                    PushInternedTypeTable(luaState, clrType);
+                    LuaDll.lua_settop(luaState, oldTop);
+
+                    if (!TryResolveStaticMethodTableRef(luaState, 1, out methodTableRef))
+                    {
+                        return LuaDllExtension.error(
+                            luaState,
+                            $"zlua: static method table not found for {GetLuaTypeFullName(clrType)}");
+                    }
+                }
+                else if (targetLuaType == LuaDataType.UserData)
+                {
+                    if (!TryGetUserDataTarget(luaState, 1, out object target) || target == null)
+                    {
+                        return LuaDllExtension.error(
+                            luaState,
+                            "zlua.register_method expects userdata instance");
+                    }
+
+                    int oldTop = LuaDll.lua_gettop(luaState);
+                    PushInternedTypeTable(luaState, target.GetType());
+                    LuaDll.lua_settop(luaState, oldTop);
+
+                    if (!TryResolveInstanceMethodTableRef(luaState, 1, out methodTableRef))
+                    {
+                        return LuaDllExtension.error(
+                            luaState,
+                            $"zlua: instance method table not found for {GetLuaTypeFullName(target.GetType())}");
+                    }
+                }
+                else
+                {
+                    return LuaDllExtension.error(
+                        luaState,
+                        "zlua.register_method expects type table or userdata instance");
+                }
+
+                if (!TryRegisterMethodAlias(luaState, methodTableRef, aliasName, closureStackIndex: 3))
+                {
+                    return LuaDllExtension.error(luaState, $"zlua: method alias already exists: {aliasName}");
+                }
+
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                return LuaDllExtension.error(luaState, $"zlua register_method error: {ex}");
+            }
+        }
+
+        private static void RetainMethodTableRef(
+            IntPtr luaState,
+            Dictionary<int, int> refsByTypeId,
+            int typeId,
+            int methodTableIndex)
+        {
+            if (refsByTypeId.ContainsKey(typeId))
+            {
+                return;
+            }
+
+            int absIndex = LuaDll.lua_absindex(luaState, methodTableIndex);
+            if (LuaDll.lua_type(luaState, absIndex) != LuaDataType.Table)
+            {
+                throw new InvalidOperationException(
+                    $"zlua: expected methodTable for type id {typeId}, got {LuaDll.lua_type(luaState, absIndex)}");
+            }
+
+            LuaDll.lua_pushvalue(luaState, absIndex);
+            refsByTypeId[typeId] = LuaDll.luaL_ref(luaState, LuaConsts.LuaRegistryIndex);
+        }
+
+        private static bool TryReadTypeIdFromTypeTable(IntPtr luaState, int typeTableIndex, out int typeId)
+        {
+            typeId = 0;
+            LuaDataType idType = RawGetField(luaState, typeTableIndex, "__typeid");
+            if (idType != LuaDataType.Number)
+            {
+                LuaDll.lua_pop(luaState, 1);
+                return false;
+            }
+
+            typeId = (int)LuaDll.lua_tointeger(luaState, -1);
+            LuaDll.lua_pop(luaState, 1);
+            return Types.ContainsKey(typeId);
+        }
+
+        private static bool TryResolveStaticMethodTableRef(IntPtr luaState, int typeTableIndex, out int methodTableRef)
+        {
+            methodTableRef = 0;
+            if (!TryReadTypeIdFromTypeTable(luaState, typeTableIndex, out int typeId))
+            {
+                return false;
+            }
+
+            return StaticMethodTableRefsByTypeId.TryGetValue(typeId, out methodTableRef) && methodTableRef != 0;
+        }
+
+        private static bool TryResolveInstanceMethodTableRef(IntPtr luaState, int userdataIndex, out int methodTableRef)
+        {
+            methodTableRef = 0;
+            if (LuaDll.lua_getmetatable(luaState, userdataIndex) == 0)
+            {
+                return false;
+            }
+
+            int metatableIndex = LuaDll.lua_absindex(luaState, -1);
+            LuaDataType typeFieldType = RawGetField(luaState, metatableIndex, "__type");
+            if (typeFieldType != LuaDataType.Table)
+            {
+                LuaDll.lua_pop(luaState, 1);
+                return false;
+            }
+
+            int typeTableIndex = LuaDll.lua_absindex(luaState, -1);
+            bool resolved = TryReadTypeIdFromTypeTable(luaState, typeTableIndex, out int typeId)
+                && InstanceMethodTableRefsByTypeId.TryGetValue(typeId, out methodTableRef)
+                && methodTableRef != 0;
+            LuaDll.lua_pop(luaState, 2);
+            return resolved;
+        }
+
+        private static bool TryRegisterMethodAlias(
+            IntPtr luaState,
+            int methodTableRef,
+            string aliasName,
+            int closureStackIndex)
+        {
+            LuaDll.lua_rawgeti(luaState, LuaConsts.LuaRegistryIndex, methodTableRef);
+            int methodTableIndex = LuaDll.lua_absindex(luaState, -1);
+
+            LuaDll.lua_pushstring(luaState, aliasName);
+            if (LuaDll.lua_rawget(luaState, methodTableIndex) != LuaDataType.Nil)
+            {
+                LuaDll.lua_pop(luaState, 2);
+                return false;
+            }
+
+            LuaDll.lua_pop(luaState, 1);
+            LuaDll.lua_pushstring(luaState, aliasName);
+            LuaDll.lua_pushvalue(luaState, closureStackIndex);
+            LuaDll.lua_rawset(luaState, methodTableIndex);
+            LuaDll.lua_pop(luaState, 1);
+            return true;
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
@@ -751,6 +1116,8 @@ namespace ZLua
                     return 0;
                 }
 
+                TypeMethodRegistration.EnsureMethodAliasKeysValid(type);
+
                 PushInternedTypeTable(luaState, type);
                 LuaDll.lua_pushvalue(luaState, -1);
                 RawSetField(luaState, 1, typeName); // cache in assembly table
@@ -758,7 +1125,10 @@ namespace ZLua
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"zlua ResolveAssemblyTypeIndex error: {ex}");
+                // __index 回调约定栈：(assemblyTable, key)。注册失败时须丢弃部分压栈的临时表，避免污染 Lua 栈。
+                LuaDll.lua_settop(luaState, 2);
+                string message = ex is InvalidOperationException ? ex.Message : $"zlua ResolveAssemblyTypeIndex error: {ex}";
+                return LuaDllExtension.error(luaState, message);
             }
         }
 
@@ -787,30 +1157,25 @@ namespace ZLua
         {
             try
             {
-                string methodName = LuaDllExtension.tostring(luaState, 1);
-                if (string.IsNullOrWhiteSpace(methodName))
-                {
-                    return LuaDllExtension.error(luaState, "zlua.create_signature expects method name");
-                }
-
                 int top = LuaDll.lua_gettop(luaState);
-                List<string> parameterNames = new List<string>();
-                for (int i = 2; i <= top; i++)
+                List<Type> parameterTypes = new List<Type>(Math.Max(top, 0));
+                for (int i = 1; i <= top; i++)
                 {
                     if (!TryResolveTypeArg(luaState, i, out Type argType))
                     {
-                        return LuaDllExtension.error(luaState, $"zlua.create_signature arg{i - 1} is not a type");
+                        return LuaDllExtension.error(luaState, $"zlua.signature arg{i} is not a type");
                     }
-                    parameterNames.Add(argType.FullName);
+
+                    parameterTypes.Add(argType);
                 }
 
-                string signature = BuildMethodSignature(methodName, parameterNames.ToArray());
+                string signature = BuildParameterSignature(parameterTypes);
                 LuaDll.lua_pushstring(luaState, signature);
                 return 1;
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"zlua create_signature error: {ex}");
+                return LuaDllExtension.error(luaState, $"zlua signature error: {ex}");
             }
         }
 
@@ -1032,39 +1397,39 @@ namespace ZLua
         {
             if (!ArrayMarshaling.TryGetConsecutiveTableLength(luaState, lowboundsIndex, out int lowboundsLength, out string lowboundsError))
             {
-                return LuaDllExtension.error(luaState, $"zlua.new_mdarray_* lowbounds: {lowboundsError}");
+                LuaCallbackBoundary.Throw($"zlua.new_mdarray_* lowbounds: {lowboundsError}");
             }
 
             if (!ArrayMarshaling.TryGetConsecutiveTableLength(luaState, sizesIndex, out int sizesLength, out string sizesError))
             {
-                return LuaDllExtension.error(luaState, $"zlua.new_mdarray_* sizes: {sizesError}");
+                LuaCallbackBoundary.Throw($"zlua.new_mdarray_* sizes: {sizesError}");
             }
 
             if (lowboundsLength != rank)
             {
-                return LuaDllExtension.error(luaState, $"zlua.new_mdarray_* lowbounds length must be {rank}");
+                LuaCallbackBoundary.Throw($"zlua.new_mdarray_* lowbounds length must be {rank}");
             }
 
             if (sizesLength != rank)
             {
-                return LuaDllExtension.error(luaState, $"zlua.new_mdarray_* sizes length must be {rank}");
+                LuaCallbackBoundary.Throw($"zlua.new_mdarray_* sizes length must be {rank}");
             }
 
             if (!ArrayMarshaling.TryReadIntSequence(luaState, lowboundsIndex, rank, out int[] lowerBounds, out string readLowboundsError))
             {
-                return LuaDllExtension.error(luaState, $"zlua.new_mdarray_* lowbounds: {readLowboundsError}");
+                LuaCallbackBoundary.Throw($"zlua.new_mdarray_* lowbounds: {readLowboundsError}");
             }
 
             if (!ArrayMarshaling.TryReadIntSequence(luaState, sizesIndex, rank, out int[] sizes, out string readSizesError))
             {
-                return LuaDllExtension.error(luaState, $"zlua.new_mdarray_* sizes: {readSizesError}");
+                LuaCallbackBoundary.Throw($"zlua.new_mdarray_* sizes: {readSizesError}");
             }
 
             for (int i = 0; i < sizes.Length; i++)
             {
                 if (sizes[i] < 0)
                 {
-                    return LuaDllExtension.error(luaState, "zlua.new_mdarray_* sizes must be >= 0");
+                    LuaCallbackBoundary.Throw("zlua.new_mdarray_* sizes must be >= 0");
                 }
             }
 
@@ -1096,239 +1461,6 @@ namespace ZLua
             string value = LuaDllExtension.tostring(luaState, -1);
             LuaDll.lua_pop(luaState, 1);
             return value;
-        }
-
-        [MonoLuaCallback(typeof(LuaCSFunction))]
-        private static int InstanceIndex(IntPtr luaState)
-        {
-            try
-            {
-                int typeId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
-                if (!Types.TryGetValue(typeId, out Type type))
-                {
-                    return LuaDllExtension.error(luaState, $"zlua: type id {typeId} not found");
-                }
-
-                string key = LuaDllExtension.tostring(luaState, 2);
-                if (string.IsNullOrEmpty(key))
-                {
-                    return 0;
-                }
-
-                if (LuaDll.lua_getmetatable(luaState, 1) != 0)
-                {
-                    LuaDataType methodType = RawGetField(luaState, -1, key);
-                    if (methodType != LuaDataType.Nil)
-                    {
-                        // stack: userdata, key, metatable, method
-                        LuaDll.lua_remove(luaState, -2);
-                        return 1;
-                    }
-                    LuaDll.lua_pop(luaState, 2);
-                }
-
-                if (!TryGetUserDataTarget(luaState, 1, out object target))
-                {
-                    return LuaDllExtension.error(luaState, "zlua: invalid userdata for member access");
-                }
-
-                for (Type current = type; current != null; current = current.BaseType)
-                {
-                    FieldInfo field = current.GetField(key, BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-                    if (field != null)
-                    {
-                        return PushReturn(luaState, field.FieldType, field.GetValue(target));
-                    }
-                }
-
-                PropertyInfo property = PropertyAccess.FindInstanceProperty(type, key);
-                if (property != null)
-                {
-                    return PropertyAccess.PushPropertyGet(luaState, property, target);
-                }
-
-                if (EventAccess.TryPushInstanceEvent(luaState, type, key, target))
-                {
-                    return 1;
-                }
-
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                return LuaDllExtension.error(luaState, $"zlua InstanceIndex error: {ex}");
-            }
-        }
-
-        [MonoLuaCallback(typeof(LuaCSFunction))]
-        private static int InstanceNewIndex(IntPtr luaState)
-        {
-            try
-            {
-                int typeId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
-                if (!Types.TryGetValue(typeId, out Type type))
-                {
-                    return LuaDllExtension.error(luaState, $"zlua: type id {typeId} not found");
-                }
-
-                string key = LuaDllExtension.tostring(luaState, 2);
-                if (string.IsNullOrEmpty(key))
-                {
-                    return LuaDllExtension.error(luaState, "zlua: invalid field name");
-                }
-
-                if (!TryGetUserDataTarget(luaState, 1, out object target))
-                {
-                    return LuaDllExtension.error(luaState, "zlua: invalid userdata for field assignment");
-                }
-
-                FieldInfo field = type.GetField(key, BindingFlags.Public | BindingFlags.Instance);
-                if (field != null)
-                {
-                    if (field.IsInitOnly || field.IsLiteral)
-                    {
-                        return LuaDllExtension.error(luaState, $"zlua: cannot assign to read-only field {type.Name}.{key}");
-                    }
-
-                    object value;
-                    try
-                    {
-                        value = ReadValue(luaState, 3, field.FieldType);
-                    }
-                    catch (Exception ex)
-                    {
-                        return LuaDllExtension.error(luaState, $"zlua: field arg error: {ex.Message}");
-                    }
-
-                    field.SetValue(target, value);
-                    return 0;
-                }
-
-                PropertyInfo property = PropertyAccess.FindInstanceProperty(type, key);
-                if (property != null)
-                {
-                    return PropertyAccess.SetPropertyValue(luaState, property, target, 3);
-                }
-
-                return LuaDllExtension.error(luaState, $"zlua: instance member not found: {type.Name}.{key}");
-            }
-            catch (Exception ex)
-            {
-                return LuaDllExtension.error(luaState, $"zlua InstanceNewIndex error: {ex}");
-            }
-        }
-
-        [MonoLuaCallback(typeof(LuaCSFunction))]
-        private static int StaticTypeIndex(IntPtr luaState)
-        {
-            try
-            {
-                int typeId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
-                if (!Types.TryGetValue(typeId, out Type type))
-                {
-                    return LuaDllExtension.error(luaState, $"zlua: type id {typeId} not found");
-                }
-
-                string key = LuaDllExtension.tostring(luaState, 2);
-                if (string.IsNullOrEmpty(key))
-                {
-                    return 0;
-                }
-
-                if (!(type.IsEnum && string.Equals(key, "_ctor", StringComparison.Ordinal)))
-                {
-                    for (Type current = type; current != null; current = current.BaseType)
-                    {
-                        FieldInfo field = current.GetField(key, BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly);
-                        if (field != null)
-                        {
-                            if (type.IsEnum)
-                            {
-                                return PushEnumFieldValue(luaState, field);
-                            }
-
-                            return PushReturn(luaState, field.FieldType, field.GetValue(null));
-                        }
-                    }
-
-                    PropertyInfo property = PropertyAccess.FindStaticProperty(type, key);
-                    if (property != null)
-                    {
-                        return PropertyAccess.PushPropertyGet(luaState, property, null);
-                    }
-                }
-
-                if (LuaDll.lua_getmetatable(luaState, 1) != 0)
-                {
-                    LuaDataType methodType = RawGetField(luaState, -1, key);
-                    if (methodType != LuaDataType.Nil)
-                    {
-                        LuaDll.lua_remove(luaState, -2);
-                        return 1;
-                    }
-
-                    LuaDll.lua_pop(luaState, 1);
-                }
-
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                return LuaDllExtension.error(luaState, $"zlua StaticTypeIndex error: {ex}");
-            }
-        }
-
-        [MonoLuaCallback(typeof(LuaCSFunction))]
-        private static int StaticTypeNewIndex(IntPtr luaState)
-        {
-            try
-            {
-                int typeId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
-                if (!Types.TryGetValue(typeId, out Type type))
-                {
-                    return LuaDllExtension.error(luaState, $"zlua: type id {typeId} not found");
-                }
-
-                string key = LuaDllExtension.tostring(luaState, 2);
-                if (string.IsNullOrEmpty(key))
-                {
-                    return LuaDllExtension.error(luaState, "zlua: invalid field name");
-                }
-
-                FieldInfo field = type.GetField(key, BindingFlags.Public | BindingFlags.Static);
-                if (field != null)
-                {
-                    if (field.IsLiteral)
-                    {
-                        return LuaDllExtension.error(luaState, $"zlua: cannot assign to const field {type.Name}.{key}");
-                    }
-
-                    object value;
-                    try
-                    {
-                        value = ReadValue(luaState, 3, field.FieldType);
-                    }
-                    catch (Exception ex)
-                    {
-                        return LuaDllExtension.error(luaState, $"zlua: field arg error: {ex.Message}");
-                    }
-
-                    field.SetValue(null, value);
-                    return 0;
-                }
-
-                PropertyInfo property = PropertyAccess.FindStaticProperty(type, key);
-                if (property != null)
-                {
-                    return PropertyAccess.SetPropertyValue(luaState, property, null, 3);
-                }
-
-                return LuaDllExtension.error(luaState, $"zlua: member not found: {key}");
-            }
-            catch (Exception ex)
-            {
-                return LuaDllExtension.error(luaState, $"zlua StaticTypeNewIndex error: {ex}");
-            }
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
@@ -1510,7 +1642,7 @@ namespace ZLua
             return assemblyName;
         }
 
-        private static string GetLuaTypeFullName(Type type)
+        internal static string GetLuaTypeFullName(Type type)
         {
             if (type == null)
             {

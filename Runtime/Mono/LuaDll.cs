@@ -162,6 +162,9 @@ namespace ZLua
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern int lua_error(IntPtr luaState);
 
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern void luaL_where(IntPtr luaState, int level);
+
         // lua_tointeger / lua_tonumber 在 Lua 5.4 是宏，真实导出是 *_x 版本。
         [DllImport(LUA_DLL, EntryPoint = "lua_tointegerx", CallingConvention = CALLING_CONVENTION)]
         private static extern long lua_tointegerx(IntPtr luaState, int index, IntPtr isNum);
@@ -196,5 +199,8 @@ namespace ZLua
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern IntPtr lua_tolstring(IntPtr luaState, int index, out UIntPtr strLen);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern IntPtr lua_pushlstring(IntPtr luaState, IntPtr data, UIntPtr length);
     }
 }

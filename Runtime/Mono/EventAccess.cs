@@ -12,11 +12,16 @@ namespace ZLua
     /// </summary>
     internal static class EventAccess
     {
-        private sealed class EventBinding
+        internal sealed class EventBinding
         {
             internal EventInfo Event;
             internal bool IsStatic;
+            internal MethodInfo AddMethod;
+            internal MethodInfo RemoveMethod;
             internal MethodInfo RaiseMethod;
+            internal LuaCSFunction FastAdd;
+            internal LuaCSFunction FastRemove;
+            internal LuaCSFunction FastFire;
         }
 
         private readonly struct EventSubscriptionKey : IEquatable<EventSubscriptionKey>
@@ -58,47 +63,7 @@ namespace ZLua
         private static readonly List<LuaCSFunction> CallbackRefs = new List<LuaCSFunction>();
         private static int _nextEventId = 1;
 
-        internal static void RegisterStaticEvents(IntPtr luaState, int metatableIndex, Type type)
-        {
-            HashSet<string> registered = new HashSet<string>(StringComparer.Ordinal);
-            for (Type current = type; current != null; current = current.BaseType)
-            {
-                EventInfo[] events = current.GetEvents(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly);
-                Array.Sort(events, (a, b) => string.CompareOrdinal(a.Name, b.Name));
-                for (int i = 0; i < events.Length; i++)
-                {
-                    EventInfo eventInfo = events[i];
-                    if (!registered.Add(eventInfo.Name))
-                    {
-                        continue;
-                    }
-
-                    PushEventTable(luaState, GetOrRegisterEventId(eventInfo, isStatic: true));
-                    LuaDll.lua_setfield(luaState, metatableIndex, eventInfo.Name);
-                }
-            }
-        }
-
-        internal static bool TryPushInstanceEvent(IntPtr luaState, Type type, string name, object target)
-        {
-            for (Type current = type; current != null; current = current.BaseType)
-            {
-                EventInfo eventInfo = current.GetEvent(
-                    name,
-                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-                if (eventInfo == null)
-                {
-                    continue;
-                }
-
-                PushEventTable(luaState, GetOrRegisterEventId(eventInfo, isStatic: false));
-                return true;
-            }
-
-            return false;
-        }
-
-        private static int GetOrRegisterEventId(EventInfo eventInfo, bool isStatic)
+        internal static int RegisterEventBinding(EventInfo eventInfo, bool isStatic)
         {
             (int, bool) key = (eventInfo.MetadataToken, isStatic);
             if (EventIdCache.TryGetValue(key, out int eventId))
@@ -111,19 +76,7 @@ namespace ZLua
             return eventId;
         }
 
-        private static int RegisterEvent(EventInfo eventInfo, bool isStatic)
-        {
-            int eventId = _nextEventId++;
-            Events[eventId] = new EventBinding
-            {
-                Event = eventInfo,
-                IsStatic = isStatic,
-                RaiseMethod = ResolveRaiseMethod(eventInfo, isStatic),
-            };
-            return eventId;
-        }
-
-        private static void PushEventTable(IntPtr luaState, int eventId)
+        internal static void PushEventTable(IntPtr luaState, int eventId)
         {
             LuaDll.lua_createtable(luaState, 0, 3);
 
@@ -138,33 +91,6 @@ namespace ZLua
                 PushEventCallback(luaState, eventId, EventFire);
                 LuaDll.lua_setfield(luaState, -2, "fire");
             }
-        }
-
-        private static MethodInfo ResolveRaiseMethod(EventInfo eventInfo, bool isStatic)
-        {
-            MethodInfo raiseMethod = eventInfo.GetRaiseMethod(nonPublic: false);
-            if (raiseMethod != null)
-            {
-                return raiseMethod;
-            }
-
-            Type declaringType = eventInfo.DeclaringType;
-            if (declaringType == null)
-            {
-                return null;
-            }
-
-            BindingFlags flags = BindingFlags.Public | BindingFlags.DeclaredOnly
-                | (isStatic ? BindingFlags.Static : BindingFlags.Instance);
-            return declaringType.GetMethod("Raise" + eventInfo.Name, flags);
-        }
-
-        private static void PushEventCallback(IntPtr luaState, int eventId, LuaCSFunction callback)
-        {
-            CallbackRefs.Add(callback);
-            IntPtr fn = Marshal.GetFunctionPointerForDelegate(callback);
-            LuaDll.lua_pushinteger(luaState, eventId);
-            LuaDll.lua_pushcclosure(luaState, fn, 1);
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
@@ -184,20 +110,31 @@ namespace ZLua
         {
             try
             {
-                if (!TryResolveBinding(luaState, out EventBinding binding, out object target, out int argStartIndex, requireHandler: false))
+                int eventId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
+                if (!Events.TryGetValue(eventId, out EventBinding binding))
                 {
-                    return LuaDllExtension.error(luaState, "zlua: invalid event fire invocation");
+                    LuaCallbackBoundary.Throw("zlua: invalid event fire invocation");
+                }
+
+                if (binding.FastFire != null)
+                {
+                    return binding.FastFire(luaState);
+                }
+
+                if (!TryResolveBinding(luaState, binding, out object target, out int argStartIndex, requireHandler: false))
+                {
+                    LuaCallbackBoundary.Throw("zlua: invalid event fire invocation");
                 }
 
                 MethodInfo raiseMethod = binding.RaiseMethod;
                 if (raiseMethod == null)
                 {
-                    return LuaDllExtension.error(luaState, $"zlua: event {binding.Event.Name} has no raise method");
+                    LuaCallbackBoundary.Throw($"zlua: event {binding.Event.Name} has no raise method");
                 }
 
                 if (!TypeMethodRegistration.TryBuildArguments(luaState, raiseMethod, argStartIndex, out object[] args))
                 {
-                    return LuaDllExtension.error(luaState, BuildEventArgumentError(binding.Event, raiseMethod));
+                    LuaCallbackBoundary.Throw(BuildEventArgumentError(binding.Event, raiseMethod));
                 }
 
                 object result = raiseMethod.Invoke(target, args);
@@ -205,7 +142,7 @@ namespace ZLua
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"zlua event fire error: {ex.InnerException?.Message ?? ex.Message}");
+                return LuaCallbackBoundary.ToLuaError(luaState, ex);
             }
         }
 
@@ -214,65 +151,78 @@ namespace ZLua
             try
             {
                 int eventId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
-                if (!TryResolveBinding(luaState, out EventBinding binding, out object target, out int handlerIndex, requireHandler: true))
+                if (!Events.TryGetValue(eventId, out EventBinding binding))
                 {
-                    return LuaDllExtension.error(luaState, "zlua: invalid event subscription");
+                    LuaCallbackBoundary.Throw("zlua: invalid event subscription");
+                }
+
+                if (!TryResolveBinding(luaState, binding, out object target, out int handlerIndex, requireHandler: true))
+                {
+                    LuaCallbackBoundary.Throw("zlua: invalid event subscription");
                 }
 
                 Type handlerType = binding.Event.EventHandlerType;
-                Delegate handler;
                 if (LuaDll.lua_type(luaState, handlerIndex) == LuaDataType.Function)
                 {
                     IntPtr functionPointer = LuaDll.lua_topointer(luaState, handlerIndex);
                     if (functionPointer == IntPtr.Zero)
                     {
-                        return LuaDllExtension.error(luaState, $"zlua: event {binding.Event.Name} handler is not a valid Lua function");
+                        LuaCallbackBoundary.Throw($"zlua: event {binding.Event.Name} handler is not a valid Lua function");
                     }
 
                     EventSubscriptionKey key = new EventSubscriptionKey(target, eventId, functionPointer);
                     if (isAdd)
                     {
-                        if (!EventHandlerCache.TryGetValue(key, out handler))
+                        if (!EventHandlerCache.TryGetValue(key, out Delegate handler))
                         {
                             handler = ReadEventHandler(luaState, handlerIndex, handlerType, binding.Event.Name);
                             if (handler == null)
                             {
-                                return LuaDllExtension.error(luaState, $"zlua: event {binding.Event.Name} handler cannot be nil");
+                                LuaCallbackBoundary.Throw($"zlua: event {binding.Event.Name} handler cannot be nil");
                             }
 
                             EventHandlerCache[key] = handler;
                         }
 
-                        binding.Event.AddEventHandler(target, handler);
+                        InvokeAddHandler(binding, target, handler);
                     }
                     else
                     {
-                        if (!EventHandlerCache.TryGetValue(key, out handler))
+                        if (!EventHandlerCache.TryGetValue(key, out Delegate handler))
                         {
-                            return LuaDllExtension.error(
-                                luaState,
+                            LuaCallbackBoundary.Throw(
                                 $"zlua: event {binding.Event.Name} handler was not registered through get");
                         }
 
-                        binding.Event.RemoveEventHandler(target, handler);
+                        InvokeRemoveHandler(binding, target, handler);
                         EventHandlerCache.Remove(key);
                     }
                 }
                 else
                 {
-                    handler = ReadEventHandler(luaState, handlerIndex, handlerType, binding.Event.Name);
+                    if (isAdd && binding.FastAdd != null)
+                    {
+                        return binding.FastAdd(luaState);
+                    }
+
+                    if (!isAdd && binding.FastRemove != null)
+                    {
+                        return binding.FastRemove(luaState);
+                    }
+
+                    Delegate handler = ReadEventHandler(luaState, handlerIndex, handlerType, binding.Event.Name);
                     if (handler == null)
                     {
-                        return LuaDllExtension.error(luaState, $"zlua: event {binding.Event.Name} handler cannot be nil");
+                        LuaCallbackBoundary.Throw($"zlua: event {binding.Event.Name} handler cannot be nil");
                     }
 
                     if (isAdd)
                     {
-                        binding.Event.AddEventHandler(target, handler);
+                        InvokeAddHandler(binding, target, handler);
                     }
                     else
                     {
-                        binding.Event.RemoveEventHandler(target, handler);
+                        InvokeRemoveHandler(binding, target, handler);
                     }
                 }
 
@@ -280,9 +230,30 @@ namespace ZLua
             }
             catch (Exception ex)
             {
-                string verb = isAdd ? "add" : "remove";
-                return LuaDllExtension.error(luaState, $"zlua event {verb} error: {ex.InnerException?.Message ?? ex.Message}");
+                return LuaCallbackBoundary.ToLuaError(luaState, ex);
             }
+        }
+
+        private static void InvokeAddHandler(EventBinding binding, object target, Delegate handler)
+        {
+            if (binding.AddMethod != null)
+            {
+                binding.AddMethod.Invoke(target, new object[] { handler });
+                return;
+            }
+
+            binding.Event.AddEventHandler(target, handler);
+        }
+
+        private static void InvokeRemoveHandler(EventBinding binding, object target, Delegate handler)
+        {
+            if (binding.RemoveMethod != null)
+            {
+                binding.RemoveMethod.Invoke(target, new object[] { handler });
+                return;
+            }
+
+            binding.Event.RemoveEventHandler(target, handler);
         }
 
         private static Delegate ReadEventHandler(IntPtr luaState, int handlerIndex, Type handlerType, string eventName)
@@ -303,20 +274,13 @@ namespace ZLua
 
         private static bool TryResolveBinding(
             IntPtr luaState,
-            out EventBinding binding,
+            EventBinding binding,
             out object target,
             out int handlerOrArgStartIndex,
             bool requireHandler)
         {
-            binding = null;
             target = null;
             handlerOrArgStartIndex = 0;
-
-            int eventId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
-            if (!Events.TryGetValue(eventId, out binding))
-            {
-                return false;
-            }
 
             if (binding.IsStatic)
             {
@@ -358,6 +322,75 @@ namespace ZLua
         private static bool TryGetUserDataTarget(IntPtr luaState, int index, out object target)
         {
             return ValueTypeMarshaling.TryGetBoxedTarget(luaState, index, out target);
+        }
+
+        private static int RegisterEvent(EventInfo eventInfo, bool isStatic)
+        {
+            int eventId = _nextEventId++;
+            MethodInfo raiseMethod = ResolveRaiseMethod(eventInfo, isStatic);
+            MethodInfo addMethod = eventInfo.GetAddMethod(nonPublic: false);
+            MethodInfo removeMethod = eventInfo.GetRemoveMethod(nonPublic: false);
+
+            EventBinding binding = new EventBinding
+            {
+                Event = eventInfo,
+                IsStatic = isStatic,
+                AddMethod = addMethod,
+                RemoveMethod = removeMethod,
+                RaiseMethod = raiseMethod,
+            };
+
+            if (LuaToCSharpEventBridgeFactory.CanFastEvent(eventInfo, isStatic))
+            {
+                if (LuaToCSharpEventBridgeFactory.TryCreateAdd(eventInfo, isStatic, out LuaCSFunction fastAdd))
+                {
+                    binding.FastAdd = fastAdd;
+                    CallbackRefs.Add(fastAdd);
+                }
+
+                if (LuaToCSharpEventBridgeFactory.TryCreateRemove(eventInfo, isStatic, out LuaCSFunction fastRemove))
+                {
+                    binding.FastRemove = fastRemove;
+                    CallbackRefs.Add(fastRemove);
+                }
+
+                if (raiseMethod != null
+                    && LuaToCSharpEventBridgeFactory.TryCreateFire(eventInfo, raiseMethod, isStatic, out LuaCSFunction fastFire))
+                {
+                    binding.FastFire = fastFire;
+                    CallbackRefs.Add(fastFire);
+                }
+            }
+
+            Events[eventId] = binding;
+            return eventId;
+        }
+
+        private static MethodInfo ResolveRaiseMethod(EventInfo eventInfo, bool isStatic)
+        {
+            MethodInfo raiseMethod = eventInfo.GetRaiseMethod(nonPublic: false);
+            if (raiseMethod != null)
+            {
+                return raiseMethod;
+            }
+
+            Type declaringType = eventInfo.DeclaringType;
+            if (declaringType == null)
+            {
+                return null;
+            }
+
+            BindingFlags flags = BindingFlags.Public | BindingFlags.DeclaredOnly
+                | (isStatic ? BindingFlags.Static : BindingFlags.Instance);
+            return declaringType.GetMethod("Raise" + eventInfo.Name, flags);
+        }
+
+        private static void PushEventCallback(IntPtr luaState, int eventId, LuaCSFunction callback)
+        {
+            CallbackRefs.Add(callback);
+            IntPtr fn = Marshal.GetFunctionPointerForDelegate(callback);
+            LuaDll.lua_pushinteger(luaState, eventId);
+            LuaDll.lua_pushcclosure(luaState, fn, 1);
         }
 
         private static string BuildEventArgumentError(EventInfo eventInfo, MethodBase method)

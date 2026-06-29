@@ -11,6 +11,13 @@ namespace ZLua
 
         public int RefIndex { get; }
 
+        internal LuaEnv Env => _env;
+
+        internal void PushErrorHandlerToStack()
+        {
+            _env.PushErrorHandler(LuaState);
+        }
+
         internal LuaMethod(LuaEnv env, int refIndex)
         {
             _env = env;

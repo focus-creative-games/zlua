@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -9,16 +8,90 @@ namespace ZLua
 {
     internal static class DynamicBridgeFactory
     {
-        private static readonly ConcurrentDictionary<MethodInfo, Func<LuaMethod, Delegate>> FactoryCache =
-            new ConcurrentDictionary<MethodInfo, Func<LuaMethod, Delegate>>();
+        private readonly struct FactoryKey : IEquatable<FactoryKey>
+        {
+            internal readonly MethodInfo InvokeMethod;
+            internal readonly Type DelegateType;
 
-        private static readonly MethodInfo InvokeVoidWithArgsMethod = typeof(LuaCallInvoker).GetMethod(
-            nameof(LuaCallInvoker.InvokeVoidWithArgs),
-            BindingFlags.NonPublic | BindingFlags.Static);
+            internal FactoryKey(MethodInfo invokeMethod, Type delegateType)
+            {
+                InvokeMethod = invokeMethod;
+                DelegateType = delegateType;
+            }
 
-        private static readonly MethodInfo InvokeWithArgsMethod = typeof(LuaCallInvoker).GetMethod(
-            nameof(LuaCallInvoker.InvokeWithArgs),
-            BindingFlags.NonPublic | BindingFlags.Static);
+            public bool Equals(FactoryKey other)
+            {
+                return InvokeMethod == other.InvokeMethod && DelegateType == other.DelegateType;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is FactoryKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return ((InvokeMethod?.MetadataToken ?? 0) * 397)
+                        ^ (DelegateType?.MetadataToken ?? 0);
+                }
+            }
+        }
+
+        private static readonly ConcurrentDictionary<FactoryKey, Func<LuaMethod, Delegate>> FactoryCache =
+            new ConcurrentDictionary<FactoryKey, Func<LuaMethod, Delegate>>();
+
+        private static readonly MethodInfo LuaGetTop = typeof(LuaDll).GetMethod(
+            nameof(LuaDll.lua_gettop),
+            new[] { typeof(IntPtr) });
+
+        private static readonly MethodInfo LuaSetTop = typeof(LuaDll).GetMethod(
+            nameof(LuaDll.lua_settop),
+            new[] { typeof(IntPtr), typeof(int) });
+
+        private static readonly MethodInfo LuaRawGetI = typeof(LuaDll).GetMethod(
+            nameof(LuaDll.lua_rawgeti),
+            new[] { typeof(IntPtr), typeof(int), typeof(long) });
+
+        private static readonly MethodInfo LuaPCall = typeof(LuaDll).GetMethod(
+            nameof(LuaDll.lua_pcall),
+            new[] { typeof(IntPtr), typeof(int), typeof(int), typeof(int) });
+
+        private static readonly MethodInfo EnterManagedPcall = typeof(LuaPrintBuffer).GetMethod(
+            nameof(LuaPrintBuffer.EnterManagedPcall),
+            BindingFlags.Public | BindingFlags.Static);
+
+        private static readonly MethodInfo LeaveManagedPcall = typeof(LuaPrintBuffer).GetMethod(
+            nameof(LuaPrintBuffer.LeaveManagedPcall),
+            BindingFlags.Public | BindingFlags.Static);
+
+        private static readonly MethodInfo PushErrorHandlerToStack = typeof(LuaMethod).GetMethod(
+            nameof(LuaMethod.PushErrorHandlerToStack),
+            BindingFlags.NonPublic | BindingFlags.Instance);
+
+        private static readonly MethodInfo ToStringMethod = typeof(LuaDllExtension).GetMethod(
+            nameof(LuaDllExtension.tostring),
+            new[] { typeof(IntPtr), typeof(int) });
+
+        private static readonly PropertyInfo LuaStateProperty = typeof(LuaMethod).GetProperty(nameof(LuaMethod.LuaState));
+        private static readonly PropertyInfo RefIndexProperty = typeof(LuaMethod).GetProperty(nameof(LuaMethod.RefIndex));
+
+        internal static void Warmup(Type delegateType)
+        {
+            if (delegateType == null || !typeof(Delegate).IsAssignableFrom(delegateType))
+            {
+                return;
+            }
+
+            MethodInfo invokeMethod = delegateType.GetMethod("Invoke");
+            if (invokeMethod == null)
+            {
+                return;
+            }
+
+            EnsureFactory(invokeMethod, delegateType);
+        }
 
         internal static Delegate CreateDelegate(Type delegateType, LuaMethod target)
         {
@@ -38,8 +111,15 @@ namespace ZLua
                 throw new InvalidOperationException($"Delegate type '{delegateType.FullName}' has no Invoke method.");
             }
 
-            Func<LuaMethod, Delegate> factory = FactoryCache.GetOrAdd(invokeMethod, _ => CompileFactory(invokeMethod, delegateType));
+            Func<LuaMethod, Delegate> factory = EnsureFactory(invokeMethod, delegateType);
             return factory(target);
+        }
+
+        private static Func<LuaMethod, Delegate> EnsureFactory(MethodInfo invokeMethod, Type delegateType)
+        {
+            return FactoryCache.GetOrAdd(
+                new FactoryKey(invokeMethod, delegateType),
+                _ => CompileFactory(invokeMethod, delegateType));
         }
 
         private static Func<LuaMethod, Delegate> CompileFactory(MethodInfo invokeMethod, Type delegateType)
@@ -58,56 +138,98 @@ namespace ZLua
             ParameterExpression[] argExprs = parameters
                 .Select(p => Expression.Parameter(p.ParameterType, p.Name))
                 .ToArray();
-            Type[] paramTypes = Array.ConvertAll(parameters, p => p.ParameterType);
             Type returnType = invokeMethod.ReturnType;
 
-            ParameterExpression argsVar = Expression.Variable(typeof(object[]), "args");
-            var statements = new List<Expression>
+            ParameterExpression luaStateVar = Expression.Parameter(typeof(IntPtr), "L");
+            ParameterExpression oldTopVar = Expression.Parameter(typeof(int), "oldTop");
+            ParameterExpression pcallResultVar = Expression.Parameter(typeof(int), "pcallResult");
+            ParameterExpression functionTypeVar = Expression.Parameter(typeof(LuaDataType), "functionType");
+
+            Expression getLuaState = Expression.Assign(
+                luaStateVar,
+                Expression.Property(targetParam, LuaStateProperty));
+            Expression saveTop = Expression.Assign(oldTopVar, Expression.Call(LuaGetTop, luaStateVar));
+
+            var invokeStatements = new System.Collections.Generic.List<Expression>
             {
-                Expression.Assign(argsVar, Expression.NewArrayBounds(typeof(object), Expression.Constant(parameters.Length))),
+                Expression.Call(targetParam, PushErrorHandlerToStack),
+                Expression.Assign(
+                    functionTypeVar,
+                    Expression.Call(
+                        LuaRawGetI,
+                        luaStateVar,
+                        Expression.Constant(LuaConsts.LuaRegistryIndex),
+                        Expression.Convert(
+                            Expression.Property(targetParam, RefIndexProperty),
+                            typeof(long)))),
+                Expression.IfThen(
+                    Expression.NotEqual(
+                        functionTypeVar,
+                        Expression.Constant(LuaDataType.Function)),
+                    Expression.Throw(
+                        Expression.New(
+                            typeof(InvalidOperationException).GetConstructor(new[] { typeof(string) }),
+                            Expression.Constant("Lua function reference is invalid.")))),
             };
 
             for (int i = 0; i < parameters.Length; i++)
             {
-                Expression boxedValue = argExprs[i];
-                if (parameters[i].ParameterType.IsValueType)
-                {
-                    boxedValue = Expression.Convert(boxedValue, typeof(object));
-                }
-                else
-                {
-                    boxedValue = Expression.TypeAs(boxedValue, typeof(object));
-                }
-
-                statements.Add(Expression.Assign(Expression.ArrayAccess(argsVar, Expression.Constant(i)), boxedValue));
+                invokeStatements.Add(CSharpToLuaBridgeExpressionBuilder.BuildPushArgument(
+                    luaStateVar,
+                    argExprs[i],
+                    parameters[i].ParameterType));
             }
 
-            Expression bodyExpression;
+            int nArgs = parameters.Length;
+            int nRet = returnType == typeof(void) ? 0 : 1;
+            invokeStatements.Add(Expression.Assign(
+                pcallResultVar,
+                Expression.Call(
+                    LuaPCall,
+                    luaStateVar,
+                    Expression.Constant(nArgs),
+                    Expression.Constant(nRet),
+                    Expression.Add(oldTopVar, Expression.Constant(1)))));
+
+            invokeStatements.Add(Expression.IfThen(
+                Expression.NotEqual(pcallResultVar, Expression.Constant(0)),
+                Expression.Throw(
+                    Expression.New(
+                        typeof(Exception).GetConstructor(new[] { typeof(string) }),
+                        Expression.Call(ToStringMethod, luaStateVar, Expression.Constant(-1))))));
+
+            Expression returnExpression;
             if (returnType == typeof(void))
             {
-                statements.Add(Expression.Call(
-                    InvokeVoidWithArgsMethod,
-                    targetParam,
-                    Expression.Constant(paramTypes),
-                    argsVar));
-                bodyExpression = Expression.Block(new[] { argsVar }, statements);
+                returnExpression = Expression.Empty();
             }
             else
             {
-                MethodCallExpression call = Expression.Call(
-                    InvokeWithArgsMethod,
-                    targetParam,
-                    Expression.Constant(returnType),
-                    Expression.Constant(paramTypes),
-                    argsVar);
-                Expression result = returnType.IsValueType
-                    ? Expression.Unbox(call, returnType)
-                    : Expression.Convert(call, returnType);
-                statements.Add(result);
-                bodyExpression = Expression.Block(new[] { argsVar }, statements);
+                returnExpression = CSharpToLuaBridgeExpressionBuilder.BuildPopReturn(
+                    luaStateVar,
+                    invokeMethod,
+                    returnType);
             }
 
-            LambdaExpression innerDelegate = Expression.Lambda(delegateType, bodyExpression, argExprs);
+            Expression tryBody = Expression.Block(
+                invokeStatements.Concat(new[] { returnExpression }));
+
+            Expression body = Expression.Block(
+                new[] { luaStateVar, oldTopVar, pcallResultVar, functionTypeVar },
+                Expression.TryFinally(
+                    Expression.Block(
+                        getLuaState,
+                        saveTop,
+                        Expression.Call(EnterManagedPcall),
+                        tryBody),
+                    Expression.Block(
+                        Expression.Call(LuaSetTop, luaStateVar, oldTopVar),
+                        Expression.Call(LeaveManagedPcall))));
+
+            LambdaExpression innerDelegate = Expression.Lambda(
+                delegateType,
+                body,
+                argExprs);
             LambdaExpression factory = Expression.Lambda<Func<LuaMethod, Delegate>>(
                 Expression.Convert(innerDelegate, typeof(Delegate)),
                 targetParam);

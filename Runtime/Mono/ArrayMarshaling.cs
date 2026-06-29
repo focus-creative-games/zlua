@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 
 namespace ZLua
 {
@@ -64,6 +65,48 @@ namespace ZLua
             }
 
             return true;
+        }
+
+        internal static void CoerceSetValueArguments(Array array, MethodBase method, object[] args)
+        {
+            if (array == null || method == null || args == null || args.Length == 0)
+            {
+                return;
+            }
+
+            if (method.Name != nameof(Array.SetValue) || method.DeclaringType != typeof(Array))
+            {
+                return;
+            }
+
+            Type elementType = array.GetType().GetElementType();
+            if (elementType == null || args[0] == null)
+            {
+                return;
+            }
+
+            args[0] = CoerceToElementType(args[0], elementType);
+        }
+
+        internal static object CoerceToElementType(object value, Type elementType)
+        {
+            if (value == null || elementType == null)
+            {
+                return value;
+            }
+
+            if (elementType.IsInstanceOfType(value))
+            {
+                return value;
+            }
+
+            if (elementType.IsEnum)
+            {
+                Type underlyingType = Enum.GetUnderlyingType(elementType);
+                return Enum.ToObject(elementType, Convert.ChangeType(value, underlyingType));
+            }
+
+            return Convert.ChangeType(value, elementType);
         }
 
         internal static bool TryGetConsecutiveTableLength(IntPtr luaState, int index, out int length, out string error)

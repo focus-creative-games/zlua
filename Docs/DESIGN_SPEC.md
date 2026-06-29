@@ -62,9 +62,11 @@ c#类中可能存在同名函数，如 `void Run(int x)` 和 `void Run(string x)
 local sig_i32 = zlua.signature(zlua.types.int32)
 local run_i32 = zlua.get_method(obj, "Run", sig_i32, false)
 run_i32(obj, 10)
-zlua.register_method("run_i32", run_i32)
+zlua.register_method(obj, "run_i32", run_i32)
 obj:run_i32(10)
 ```
+
+`register_method` 第一个参数为**类型表**（静态别名）或**对象实例**（实例别名），写入对应 `methodTable`；详见 `LIB_SPEC.md` §9.3。
 
 **不推荐** `obj[sig](obj, ...)` 按签名字符串键查找。
 

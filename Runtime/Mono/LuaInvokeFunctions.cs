@@ -10,19 +10,30 @@ namespace ZLua
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Run(params object[] args)
         {
-            (string moduleName, string methodName) = ResolveCallerLuaTarget();
+            (string moduleName, string methodName, MethodInfo invokeMethod) = ResolveCallerLuaTarget();
+            if (invokeMethod != null)
+            {
+                LuaMonoAppDomain.RunLuaFunc(invokeMethod, moduleName, methodName, args);
+                return;
+            }
+
             LuaMonoAppDomain.RunLuaFunc(moduleName, methodName, args);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static T Run<T>(params object[] args)
         {
-            (string moduleName, string methodName) = ResolveCallerLuaTarget();
+            (string moduleName, string methodName, MethodInfo invokeMethod) = ResolveCallerLuaTarget();
+            if (invokeMethod != null)
+            {
+                return LuaMonoAppDomain.RunLuaFunc<T>(invokeMethod, moduleName, methodName, args);
+            }
+
             return LuaMonoAppDomain.RunLuaFunc<T>(moduleName, methodName, args);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static (string moduleName, string methodName) ResolveCallerLuaTarget()
+        private static (string moduleName, string methodName, MethodInfo invokeMethod) ResolveCallerLuaTarget()
         {
             MethodBase caller = new StackTrace().GetFrame(2)?.GetMethod();
             if (caller == null)
@@ -41,7 +52,7 @@ namespace ZLua
                 throw new InvalidOperationException("[LuaInvoke] requires module and function names in editor mode.");
             }
 
-            return (attr.Module, attr.Function);
+            return (attr.Module, attr.Function, caller as MethodInfo);
         }
     }
 }

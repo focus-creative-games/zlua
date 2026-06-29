@@ -168,7 +168,7 @@ local function test_overload_signature()
     run_i32(demo, 10)
     print("After Run(int):", demo:GetX())
 
-    zlua.register_method("run_i32", run_i32)
+    zlua.register_method(demo, "run_i32", run_i32)
     demo:run_i32(20)
     print("After run_i32 alias:", demo:GetX())
 end

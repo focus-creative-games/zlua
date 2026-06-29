@@ -4,12 +4,8 @@ function zlua.typeof(typeTable)
     return __zlua_typeof(typeTable)
 end
 
-function zlua.create_signature(methodName, ...)
-    return __zlua_create_signature(methodName, ...)
-end
-
-function zlua.signature(methodName, ...)
-    return zlua.create_signature(methodName, ...)
+function zlua.signature(...)
+    return __zlua_create_signature(...)
 end
 
 function zlua.make_generic_type(genericType, ...)
@@ -52,21 +48,16 @@ function zlua.to_delegate(func, delegateType)
     return __zlua_to_delegate(func, delegateType)
 end
 
-function zlua.get_method(obj, sig)
-    if type(obj) == "table" then
-        return obj[sig]
-    end
-    local mt = getmetatable(obj)
-    if mt and mt.__index and mt.__index[sig] then
-        return function(self, ...)
-            return mt.__index[sig](self, ...)
-        end
-    end
-    return nil
+function zlua.to_user_data(opaque)
+    return __zlua_to_user_data(opaque)
 end
 
-function zlua.register_method(obj, name, fn)
-    rawset(obj, name, fn)
+function zlua.get_method(target, methodName, signature, is_static)
+    return __zlua_get_method(target, methodName, signature, is_static)
+end
+
+function zlua.register_method(static_class_mt_or_obj, aliasName, methodOrClosure)
+    return __zlua_register_method(static_class_mt_or_obj, aliasName, methodOrClosure)
 end
 
 zlua.types = {

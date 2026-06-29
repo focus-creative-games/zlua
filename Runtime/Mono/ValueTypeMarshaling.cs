@@ -9,9 +9,17 @@ namespace ZLua
     /// </summary>
     internal static class ValueTypeMarshaling
     {
+        private static int _boxedValueMetatableRef;
+
         internal static bool IsStructType(Type type)
         {
-            return type.IsValueType && !type.IsEnum && !type.IsPrimitive;
+            return type.IsValueType
+                && !type.IsEnum
+                && !type.IsPrimitive
+                && !type.IsPointer
+                && !PointerMarshaling.IsFunctionPointerType(type)
+                && !PointerMarshaling.IsTypedReference(type)
+                && !PointerMarshaling.IsByRefLikeType(type);
         }
 
         internal static int PushBoxedInstance(IntPtr luaState, object instance, int typeTableIndex)
@@ -29,11 +37,106 @@ namespace ZLua
                 LuaDll.lua_pop(luaState, 1);
                 handle.Free();
                 Marshal.WriteIntPtr(userData, IntPtr.Zero);
-                return LuaDllExtension.error(luaState, "zlua: instance metatable missing");
+                LuaCallbackBoundary.Throw("zlua: instance metatable missing");
             }
 
             LuaDll.lua_setmetatable(luaState, -2);
             return 1;
+        }
+
+        internal static int PushBoxedValueUserData(IntPtr luaState, object boxedValue)
+        {
+            EnsureBoxedValueMetatable(luaState);
+            GCHandle handle = GCHandle.Alloc(boxedValue);
+            IntPtr handlePtr = GCHandle.ToIntPtr(handle);
+            IntPtr userData = LuaDll.lua_newuserdatauv(luaState, (UIntPtr)IntPtr.Size, 0);
+            Marshal.WriteIntPtr(userData, handlePtr);
+            LuaDll.lua_rawgeti(luaState, LuaConsts.LuaRegistryIndex, _boxedValueMetatableRef);
+            LuaDll.lua_setmetatable(luaState, -2);
+            return 1;
+        }
+
+        internal static object CopyBoxedStruct(object boxed, Type structType)
+        {
+            object copy = Activator.CreateInstance(structType);
+            FieldInfo[] fields = structType.GetFields(BindingFlags.Public | BindingFlags.Instance);
+            for (int i = 0; i < fields.Length; i++)
+            {
+                fields[i].SetValue(copy, fields[i].GetValue(boxed));
+            }
+
+            return copy;
+        }
+
+        internal static bool TryReadBoxedValueUserData(IntPtr luaState, int index, Type targetType, out object value)
+        {
+            value = null;
+            if (LuaDll.lua_type(luaState, index) != LuaDataType.UserData)
+            {
+                return false;
+            }
+
+            if (!TryGetBoxedTarget(luaState, index, out object boxed) || boxed == null)
+            {
+                return false;
+            }
+
+            Type runtimeType = boxed.GetType();
+            if (targetType.IsAssignableFrom(runtimeType))
+            {
+                value = boxed;
+                return true;
+            }
+
+            if (targetType.IsEnum && runtimeType == targetType)
+            {
+                value = boxed;
+                return true;
+            }
+
+            if (targetType.IsPrimitive || targetType == typeof(decimal))
+            {
+                try
+                {
+                    value = Convert.ChangeType(boxed, targetType);
+                    return true;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            if (targetType == typeof(string) && boxed is string)
+            {
+                value = boxed;
+                return true;
+            }
+
+            if (targetType == typeof(IntPtr) && boxed is IntPtr intPtr)
+            {
+                value = intPtr;
+                return true;
+            }
+
+            if (targetType == typeof(UIntPtr) && boxed is UIntPtr uintPtr)
+            {
+                value = uintPtr;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void EnsureBoxedValueMetatable(IntPtr luaState)
+        {
+            if (_boxedValueMetatableRef != 0)
+            {
+                return;
+            }
+
+            LuaDll.lua_createtable(luaState, 0, 0);
+            _boxedValueMetatableRef = LuaDll.luaL_ref(luaState, LuaConsts.LuaRegistryIndex);
         }
 
         internal static bool TryGetBoxedTarget(IntPtr luaState, int index, out object target)

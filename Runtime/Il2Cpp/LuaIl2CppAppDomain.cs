@@ -14,5 +14,9 @@ namespace ZLua
         {
             InitializeInternal(moduleLoader);
         }
+
+        internal static void ProcessPendingRefReleases()
+        {
+        }
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace ZLua
 {
@@ -36,6 +37,15 @@ namespace ZLua
             _luaEnv.LoadBuiltinGlobals();
             _managerObject.RegisterZLuaApi();
             _luaEnv.EnsureBuiltinZLuaLib();
+            WarmDelegateBridges();
+        }
+
+        private static void WarmDelegateBridges()
+        {
+            // Expression.Compile during native Lua callbacks can SIGSEGV on Unity Editor Mono.
+            DynamicBridgeFactory.Warmup(typeof(Action));
+            DynamicBridgeFactory.Warmup(typeof(Action<int>));
+            DynamicBridgeFactory.Warmup(typeof(Func<int, int>));
         }
 
         public static void Shutdown()
@@ -45,6 +55,7 @@ namespace ZLua
                 return;
             }
 
+            ProcessPendingRefReleases();
             _luaEnv.Dispose();
             _luaEnv = null;
             _managerObject = null;
@@ -67,10 +78,22 @@ namespace ZLua
             _luaEnv.RunLuaFunc(moduleName, methodName, args);
         }
 
+        public static void RunLuaFunc(MethodInfo invokeMethod, string moduleName, string methodName, params object[] args)
+        {
+            EnsureInitialized();
+            _luaEnv.RunLuaFunc(invokeMethod, moduleName, methodName, args);
+        }
+
         public static T RunLuaFunc<T>(string moduleName, string methodName, params object[] args)
         {
             EnsureInitialized();
             return _luaEnv.RunLuaFunc<T>(moduleName, methodName, args);
+        }
+
+        public static T RunLuaFunc<T>(MethodInfo invokeMethod, string moduleName, string methodName, params object[] args)
+        {
+            EnsureInitialized();
+            return _luaEnv.RunLuaFunc<T>(invokeMethod, moduleName, methodName, args);
         }
 
         internal static void ProcessPendingRefReleases()

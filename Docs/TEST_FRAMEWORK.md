@@ -278,7 +278,7 @@ Tests/Lua/cases/{suite}/tc_*.lua
 | `fail(msg?)` | 显式失败 |
 | `is_true(v)` / `is_false(v)` | 布尔 |
 | `equal(a, b)` / `not_equal(a, b)` | 相等 / 不等 |
-| `not_nil(v)` / `nil_(v)` | 空值 |
+| `not_nil(v)` / `is_nil(v)` | 空值 |
 | `expect_error(fn, pattern?)` | 期望 `pcall` 失败 |
 
 失败统一 `error(msg, 2)`；**不使用** Lua 原生 `assert()` 编写用例。

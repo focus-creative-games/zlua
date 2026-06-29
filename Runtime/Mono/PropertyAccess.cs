@@ -45,15 +45,8 @@ namespace ZLua
                 return 0;
             }
 
-            try
-            {
-                object value = getter.Invoke(target, null);
-                return TypeMethodRegistration.PushReturnValue(luaState, property.PropertyType, value);
-            }
-            catch (Exception ex)
-            {
-                return LuaDllExtension.error(luaState, $"zlua property get error: {ex.InnerException?.Message ?? ex.Message}");
-            }
+            object value = getter.Invoke(target, null);
+            return TypeMethodRegistration.PushReturnValue(luaState, property.PropertyType, value);
         }
 
         internal static int SetPropertyValue(IntPtr luaState, PropertyInfo property, object target, int valueIndex)
@@ -64,16 +57,26 @@ namespace ZLua
                 return LuaDllExtension.error(luaState, $"zlua: property is read-only: {property.Name}");
             }
 
+            object value;
             try
             {
-                object value = TypeMethodRegistration.ReadArgumentValue(luaState, valueIndex, property.PropertyType);
-                setter.Invoke(target, new[] { value });
-                return 0;
+                value = TypeMethodRegistration.ReadArgumentValue(luaState, valueIndex, property.PropertyType);
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"zlua property set error: {ex.Message}");
+                return LuaCallbackBoundary.ToLuaError(luaState, ex);
             }
+
+            try
+            {
+                setter.Invoke(target, new[] { value });
+            }
+            catch (Exception ex)
+            {
+                return LuaCallbackBoundary.ToLuaError(luaState, ex);
+            }
+
+            return 0;
         }
 
         private static bool IsParameterlessProperty(PropertyInfo property)

@@ -1,14 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
-using UnityEngine;
 
 namespace ZLua
 {
     public sealed class LuaEnv : IDisposable
     {
-        private static readonly StringBuilder SharedBuilder = new StringBuilder();
         private static readonly List<LuaCSFunction> ModuleLoaderCallbackRefs = new List<LuaCSFunction>();
         private static readonly LuaCSFunction LoadModuleCallback = LoadModule;
         private static LuaEnv s_activeEnv;
@@ -18,10 +17,13 @@ namespace ZLua
         private readonly Dictionary<string, int> _moduleFunctionRefs = new Dictionary<string, int>();
         private bool _disposed;
         private bool _moduleLoaderHooksInstalled;
+        private int _errorHandlerRef = -1;
 
         private Func<string, object> _moduleLoader;
 
         public IntPtr LuaState { get; private set; }
+
+        internal int ErrorHandlerRef => EnsureErrorHandlerRef();
 
         public LuaEnv()
         {
@@ -59,6 +61,7 @@ namespace ZLua
             }
 
             int oldTop = LuaDll.lua_gettop(LuaState);
+            LuaPrintBuffer.EnterManagedPcall();
             try
             {
                 LuaDataType requireType = LuaDll.lua_getglobal(LuaState, "require");
@@ -88,17 +91,29 @@ namespace ZLua
             finally
             {
                 LuaDll.lua_settop(LuaState, oldTop);
+                LuaPrintBuffer.LeaveManagedPcall();
             }
         }
 
         public void RunLuaFunc(string moduleName, string methodName, object[] args = null)
         {
-            RunLuaFuncInternal(moduleName, methodName, typeof(void), args);
+            RunLuaFuncInternal(null, moduleName, methodName, typeof(void), args);
+        }
+
+        public void RunLuaFunc(MethodInfo invokeMethod, string moduleName, string methodName, object[] args = null)
+        {
+            RunLuaFuncInternal(invokeMethod, moduleName, methodName, typeof(void), args);
         }
 
         public T RunLuaFunc<T>(string moduleName, string methodName, object[] args = null)
         {
-            object result = RunLuaFuncInternal(moduleName, methodName, typeof(T), args);
+            object result = RunLuaFuncInternal(null, moduleName, methodName, typeof(T), args);
+            return result == null ? default : (T)result;
+        }
+
+        public T RunLuaFunc<T>(MethodInfo invokeMethod, string moduleName, string methodName, object[] args = null)
+        {
+            object result = RunLuaFuncInternal(invokeMethod, moduleName, methodName, typeof(T), args);
             return result == null ? default : (T)result;
         }
 
@@ -142,110 +157,165 @@ namespace ZLua
 
         public void ProcessPendingRefReleases()
         {
-            ClearPendingRefs();
+            lock (_freePendingRefs)
+            {
+                if (_freePendingRefs.Count == 0)
+                {
+                    return;
+                }
+
+                foreach (int refIndex in _freePendingRefs)
+                {
+                    LuaDll.luaL_unref(LuaState, LuaConsts.LuaRegistryIndex, refIndex);
+                }
+
+                _freePendingRefs.Clear();
+            }
         }
 
         public void DoStringIgnoreResult(string chunk)
         {
             int oldTop = LuaDll.lua_gettop(LuaState);
-            int result = LuaDllExtension.dostring(LuaState, chunk);
-            if (result != 0)
+            LuaPrintBuffer.EnterManagedPcall();
+            try
             {
-                string error = LuaDllExtension.tostring(LuaState, -1);
-                LuaDll.lua_settop(LuaState, oldTop);
-                throw new Exception(error);
-            }
+                int result = LuaDllExtension.dostring(LuaState, chunk);
+                if (result != 0)
+                {
+                    string error = LuaDllExtension.tostring(LuaState, -1);
+                    LuaDll.lua_settop(LuaState, oldTop);
+                    throw new Exception(error);
+                }
 
-            LuaDll.lua_settop(LuaState, oldTop);
+                LuaDll.lua_settop(LuaState, oldTop);
+            }
+            finally
+            {
+                LuaPrintBuffer.LeaveManagedPcall();
+            }
         }
 
         public void LoadLuaChunk(string source, string chunkName = "chunk")
         {
             int oldTop = LuaDll.lua_gettop(LuaState);
-            int loadResult = LuaDllExtension.loadstring(LuaState, source);
-            if (loadResult != 0)
+            LuaPrintBuffer.EnterManagedPcall();
+            try
             {
-                string error = LuaDllExtension.tostring(LuaState, -1);
-                LuaDll.lua_settop(LuaState, oldTop);
-                throw new Exception($"Error loading lua chunk '{chunkName}': {error}");
-            }
+                int loadResult = LuaDllExtension.loadstring(LuaState, source);
+                if (loadResult != 0)
+                {
+                    string error = LuaDllExtension.tostring(LuaState, -1);
+                    LuaDll.lua_settop(LuaState, oldTop);
+                    throw new Exception($"Error loading lua chunk '{chunkName}': {error}");
+                }
 
-            int execResult = LuaDll.lua_pcall(LuaState, 0, LuaConsts.LuaMultiRet, 0);
-            if (execResult != 0)
+                int execResult = LuaDll.lua_pcall(LuaState, 0, LuaConsts.LuaMultiRet, 0);
+                if (execResult != 0)
+                {
+                    string error = LuaDllExtension.tostring(LuaState, -1);
+                    LuaDll.lua_settop(LuaState, oldTop);
+                    throw new Exception($"Error executing lua chunk '{chunkName}': {error}");
+                }
+
+                LuaDll.lua_settop(LuaState, oldTop);
+            }
+            finally
             {
-                string error = LuaDllExtension.tostring(LuaState, -1);
-                LuaDll.lua_settop(LuaState, oldTop);
-                throw new Exception($"Error executing lua chunk '{chunkName}': {error}");
+                LuaPrintBuffer.LeaveManagedPcall();
             }
-
-            LuaDll.lua_settop(LuaState, oldTop);
         }
 
         public void CallLuaGlobal(string functionName, Action<IntPtr> pushArgs = null)
         {
             int oldTop = LuaDll.lua_gettop(LuaState);
-            LuaDll.lua_getglobal(LuaState, "__zluaErrorHandler");
-            LuaDataType type = LuaDll.lua_getglobal(LuaState, functionName);
-            if (type != LuaDataType.Function)
+                LuaPrintBuffer.EnterManagedPcall();
+            try
             {
-                LuaDll.lua_settop(LuaState, oldTop);
-                throw new Exception($"Lua function '{functionName}' not found.");
-            }
+                PushErrorHandler(LuaState);
+                LuaDataType type = LuaDll.lua_getglobal(LuaState, functionName);
+                if (type != LuaDataType.Function)
+                {
+                    LuaDll.lua_settop(LuaState, oldTop);
+                    throw new Exception($"Lua function '{functionName}' not found.");
+                }
 
-            pushArgs?.Invoke(LuaState);
-            int nArgs = LuaDll.lua_gettop(LuaState) - oldTop - 2;
-            int err = LuaDll.lua_pcall(LuaState, nArgs, 0, oldTop + 1);
-            if (err != 0)
+                pushArgs?.Invoke(LuaState);
+                int nArgs = LuaDll.lua_gettop(LuaState) - oldTop - 2;
+                int err = LuaDll.lua_pcall(LuaState, nArgs, 0, oldTop + 1);
+                if (err != 0)
+                {
+                    string error = LuaDllExtension.tostring(LuaState, -1);
+                    LuaDll.lua_settop(LuaState, oldTop);
+                    throw new Exception(error);
+                }
+
+                LuaDll.lua_settop(LuaState, oldTop);
+            }
+            finally
             {
-                string error = LuaDllExtension.tostring(LuaState, -1);
-                LuaDll.lua_settop(LuaState, oldTop);
-                throw new Exception(error);
+                LuaPrintBuffer.LeaveManagedPcall();
             }
-
-            LuaDll.lua_settop(LuaState, oldTop);
         }
 
-        private object RunLuaFuncInternal(string moduleName, string methodName, Type returnType, object[] args)
+        private object RunLuaFuncInternal(MethodInfo invokeMethod, string moduleName, string methodName, Type returnType, object[] args)
         {
+            invokeMethod ??= LuaInvokeMethodRegistry.Resolve(moduleName, methodName);
+
             EnsureModuleLoaded(moduleName);
             int oldTop = LuaDll.lua_gettop(LuaState);
             string key = moduleName + "::" + methodName;
 
+            LuaPrintBuffer.EnterManagedPcall();
             try
             {
-                LuaDll.lua_getglobal(LuaState, "__zluaErrorHandler");
-                int functionRef = GetOrCreateModuleFunctionRef(moduleName, methodName, key);
-                LuaDll.lua_rawgeti(LuaState, LuaConsts.LuaRegistryIndex, functionRef);
-
-                if (args != null)
+                try
                 {
-                    for (int i = 0; i < args.Length; i++)
+                    StructOpaqueScope.EnterStandaloneCSharpToLua();
+
+                    PushErrorHandler(LuaState);
+                    int functionRef = GetOrCreateModuleFunctionRef(moduleName, methodName, key);
+                    LuaDll.lua_rawgeti(LuaState, LuaConsts.LuaRegistryIndex, functionRef);
+
+                    ParameterInfo[] parameters = invokeMethod?.GetParameters();
+                    if (args != null)
                     {
-                        LuaMarshal.PushObject(LuaState, args[i]);
+                        for (int i = 0; i < args.Length; i++)
+                        {
+                            LuaInvokeMarshaling.PushArgument(LuaState, args[i], parameters, invokeMethod, i);
+                        }
                     }
-                }
 
-                int nArgs = args?.Length ?? 0;
-                int nRet = returnType == typeof(void) ? 0 : 1;
-                int err = LuaDll.lua_pcall(LuaState, nArgs, nRet, oldTop + 1);
-                if (err != 0)
+                    int nArgs = args?.Length ?? 0;
+                    int nRet = returnType == typeof(void) ? 0 : 1;
+                    int err = LuaDll.lua_pcall(LuaState, nArgs, nRet, oldTop + 1);
+                    if (err != 0)
+                    {
+                        string error = LuaDllExtension.tostring(LuaState, -1);
+                        throw new Exception(error);
+                    }
+
+                    if (returnType == typeof(void))
+                    {
+                        return null;
+                    }
+
+                    return LuaInvokeMarshaling.PopReturn(LuaState, invokeMethod, returnType, -1);
+                }
+                finally
                 {
-                    string error = LuaDllExtension.tostring(LuaState, -1);
-                    throw new Exception(error);
+                    LuaDll.lua_settop(LuaState, oldTop);
                 }
-
-                if (returnType == typeof(void))
-                {
-                    return null;
-                }
-
-                return LuaMarshal.PopObject(LuaState, returnType, -1);
             }
             finally
             {
-                LuaDll.lua_settop(LuaState, oldTop);
-                ProcessPendingRefReleases();
+                LuaPrintBuffer.LeaveManagedPcall();
             }
+        }
+
+        internal int GetOrCreateModuleFunctionRef(string moduleName, string methodName)
+        {
+            string key = moduleName + "::" + methodName;
+            return GetOrCreateModuleFunctionRef(moduleName, methodName, key);
         }
 
         private int GetOrCreateModuleFunctionRef(string moduleName, string methodName, string key)
@@ -313,67 +383,97 @@ table.insert(package.searchers, 2, zlua_module_searcher)
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int LoadModule(IntPtr luaState)
         {
-            LuaEnv env = s_activeEnv;
-            if (env == null || env._moduleLoader == null)
-            {
-                LuaDll.lua_pushnil(luaState);
-                return 1;
-            }
-
-            string moduleName = LuaDllExtension.tostring(luaState, 1);
-            if (string.IsNullOrWhiteSpace(moduleName))
-            {
-                LuaDll.lua_pushnil(luaState);
-                return 1;
-            }
-
-            object loaded;
             try
             {
-                loaded = env._moduleLoader(moduleName);
+                LuaEnv env = s_activeEnv;
+                if (env == null || env._moduleLoader == null)
+                {
+                    LuaDll.lua_pushnil(luaState);
+                    return 1;
+                }
+
+                string moduleName = LuaDllExtension.tostring(luaState, 1);
+                if (string.IsNullOrWhiteSpace(moduleName))
+                {
+                    LuaDll.lua_pushnil(luaState);
+                    return 1;
+                }
+
+                object loaded = env._moduleLoader(moduleName);
+                if (loaded == null)
+                {
+                    LuaDll.lua_pushnil(luaState);
+                    return 1;
+                }
+
+                if (loaded is string source)
+                {
+                    if (string.IsNullOrEmpty(source))
+                    {
+                        LuaDll.lua_pushnil(luaState);
+                        return 1;
+                    }
+
+                    LuaDll.lua_pushstring(luaState, source);
+                    return 1;
+                }
+
+                if (loaded is byte[] bytes)
+                {
+                    if (bytes.Length == 0)
+                    {
+                        LuaDll.lua_pushnil(luaState);
+                        return 1;
+                    }
+
+                    LuaDll.lua_pushstring(luaState, Encoding.UTF8.GetString(bytes));
+                    return 1;
+                }
+
+                LuaCallbackBoundary.Throw(
+                    $"moduleLoader returned unsupported type '{loaded.GetType().FullName}' for '{moduleName}'");
+                return 0;
             }
             catch (Exception ex)
             {
-                return LuaDllExtension.error(luaState, $"moduleLoader error for '{moduleName}': {ex.Message}");
+                return LuaCallbackBoundary.ToLuaError(luaState, ex);
             }
-
-            if (loaded == null)
-            {
-                LuaDll.lua_pushnil(luaState);
-                return 1;
-            }
-
-            if (loaded is string source)
-            {
-                if (string.IsNullOrEmpty(source))
-                {
-                    LuaDll.lua_pushnil(luaState);
-                    return 1;
-                }
-
-                LuaDll.lua_pushstring(luaState, source);
-                return 1;
-            }
-
-            if (loaded is byte[] bytes)
-            {
-                if (bytes.Length == 0)
-                {
-                    LuaDll.lua_pushnil(luaState);
-                    return 1;
-                }
-
-                LuaDll.lua_pushstring(luaState, Encoding.UTF8.GetString(bytes));
-                return 1;
-            }
-
-            return LuaDllExtension.error(luaState,
-                $"moduleLoader returned unsupported type '{loaded.GetType().FullName}' for '{moduleName}'");
         }
 
         public void LoadBuiltinGlobals()
         {
             DoStringIgnoreResult(ZLuaBuiltinScriptLoader.Load("globals.lua"));
+            EnsureErrorHandlerRef();
+        }
+
+        internal int EnsureErrorHandlerRef()
+        {
+            if (_errorHandlerRef >= 0)
+            {
+                return _errorHandlerRef;
+            }
+
+            int oldTop = LuaDll.lua_gettop(LuaState);
+            try
+            {
+                LuaDataType handlerType = LuaDll.lua_getglobal(LuaState, "__zluaErrorHandler");
+                if (handlerType != LuaDataType.Function)
+                {
+                    throw new Exception("Lua global '__zluaErrorHandler' is not available.");
+                }
+
+                _errorHandlerRef = LuaDll.luaL_ref(LuaState, LuaConsts.LuaRegistryIndex);
+                return _errorHandlerRef;
+            }
+            finally
+            {
+                LuaDll.lua_settop(LuaState, oldTop);
+            }
+        }
+
+        internal void PushErrorHandler(IntPtr luaState)
+        {
+            LuaDll.lua_rawgeti(luaState, LuaConsts.LuaRegistryIndex, EnsureErrorHandlerRef());
         }
 
         public void LoadBuiltinZLuaLib()
@@ -420,20 +520,7 @@ table.insert(package.searchers, 2, zlua_module_searcher)
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int Print(IntPtr luaState)
         {
-            int count = LuaDll.lua_gettop(luaState);
-            SharedBuilder.Clear();
-            SharedBuilder.Append("[ZLua] ");
-            for (int i = 1; i <= count; i++)
-            {
-                if (i > 1)
-                {
-                    SharedBuilder.Append('\t');
-                }
-
-                SharedBuilder.Append(LuaDllExtension.tostring(luaState, i));
-            }
-
-            Debug.Log(SharedBuilder.ToString());
+            LuaPrintBuffer.EnqueueFromLuaPrint(luaState);
             return 0;
         }
 
@@ -446,7 +533,13 @@ table.insert(package.searchers, 2, zlua_module_searcher)
 
             if (LuaState != IntPtr.Zero)
             {
+                LuaPrintBuffer.ForceFlushAll();
                 ClearPendingRefs();
+                if (_errorHandlerRef >= 0)
+                {
+                    LuaDll.luaL_unref(LuaState, LuaConsts.LuaRegistryIndex, _errorHandlerRef);
+                    _errorHandlerRef = -1;
+                }
                 foreach (var functionRef in _moduleFunctionRefs.Values)
                 {
                     LuaDll.luaL_unref(LuaState, LuaConsts.LuaRegistryIndex, functionRef);

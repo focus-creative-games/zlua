@@ -135,7 +135,58 @@ Run + (System.Int32)  →  内部键 "Run(System.Int32)"
 
 ## 5. 别名机制
 
-### 5.1 C# Attribute
+别名提供 **独立于默认方法名** 的 Lua 键，用于 O(1) 绑定某一具体重载。别名与默认方法名分属两个不相交的键空间。
+
+### 5.1 键空间规则（注册期强制）
+
+对同一类型、同一 `is_static` 域，元表上最终键集合为：
+
+| 键类型 | 来源 | 说明 |
+|--------|------|------|
+| **默认名** | C# `MethodInfo.Name` | 单重重载 → 桥接 closure；多重重载 → dispatch closure |
+| **别名** | `[LuaAlias]` / XML | 额外键，指向**单个**重载的桥接 closure |
+
+**硬性约束（Codegen / 注册期校验，违反即报错）：**
+
+1. **别名不得与任何非别名默认方法名重复**（含本类型及继承链上已注册到该元表的方法名）。若重复，别名与默认键冲突，**无意义**，禁止注册。
+2. **别名之间不得重复**（声明类型内唯一；继承链合并到同一元表时亦不得冲突）。
+3. **非别名方法名不得占用已有别名**——与规则 1 等价：默认名集合与别名集合必须 **互不相交**。
+
+```text
+{ 默认方法名 } ∩ { 别名 } = ∅
+```
+
+**禁止示例：**
+
+```csharp
+// 错误：别名与默认名 Run 重复（Run 已作为 dispatch 键存在）
+[LuaAlias("Run")]
+public void Run(int value) { ... }
+
+// 错误：别名与另一非别名方法 GetValue 重复
+[LuaAlias("GetValue")]
+public void Run(int value) { ... }
+public int GetValue() => 0;
+
+// 错误：C# 方法名 run_i32 与别名 run_i32 重复
+public void run_i32() { ... }
+[LuaAlias("run_i32")]
+public void Run(int value) { ... }
+```
+
+**合法示例：**
+
+```csharp
+[LuaAlias("run_i32")]
+public void Run(int value) { ... }
+
+[LuaAlias("run_str")]
+public void Run(string value) { ... }
+
+// 默认键 Run：多重重载时为 dispatch；run_i32 / run_str 为额外键，互不冲突
+```
+
+### 5.2 C# Attribute
 
 ```csharp
 [LuaAlias("run_i32")]
@@ -143,12 +194,10 @@ public void Run(int value) { ... }
 ```
 
 - 新属性 **`LuaAliasAttribute`**（不要复用 `MonoLuaCallbackAttribute`）。
-- 别名在**声明类型**内必须唯一。
-- 不得与同类任一 **方法名** 或其它 **别名** 冲突；冲突在 **Codegen / 注册期** 报错。
+- 须满足 §5.1 键空间规则。
+- 别名在元表中注册为**额外键**，不替换默认名 `Run` 的 dispatch 行为。
 
-别名在元表中注册为**额外键**，不替换默认名 `Run` 的 dispatch 行为。
-
-### 5.2 XML 配置（不可改源码时）
+### 5.3 XML 配置（不可改源码时）
 
 ```xml
 <Type fullName="Demo">
@@ -158,9 +207,9 @@ public void Run(int value) { ... }
 
 - `signature` 仅含参数部分，格式同 §4.1。
 - 优先级建议：**Attribute > XML**。
-- 合并后做与 Attribute 相同的唯一性校验。
+- 合并后做与 §5.1 相同的键空间校验。
 
-### 5.3 静态 / 实例
+### 5.4 静态 / 实例
 
 - 实例别名 → 写入类型的 `__instance_mt`。
 - 静态别名 → 写入类型表（静态成员表）。
@@ -211,25 +260,45 @@ end
 
 ### 6.3 `zlua.register_method`
 
-将 `get_method` 得到的 closure 注册为类型元表上的**别名**，便于 `obj:alias(...)` 语法糖：
+```lua
+zlua.register_method(static_class_mt_or_obj, aliasName, methodOrClosure) → void
+```
+
+将 `get_method` 得到的 closure 注册为 `methodTable` 上的**别名键**，便于 `obj:alias(...)` 或 `TypeTable.alias(...)` 语法糖。完整 API 见 `LIB_SPEC.md` §9.3。
 
 ```lua
+local Demo = CSharp.AC.Demo
+local demo = Demo()
+
+-- 实例方法别名：第一个参数传对象实例
 local run_i32 = zlua.get_method(demo, "Run", zlua.signature(zlua.types.int32), false)
-zlua.register_method("run_i32", run_i32)
+zlua.register_method(demo, "run_i32", run_i32)
 demo:run_i32(20)
+
+-- 静态方法别名：第一个参数传类型表
+local add = zlua.get_method(Demo, "Add",
+    zlua.signature(zlua.types.int32, zlua.types.int32), true)
+zlua.register_method(Demo, "add_i32", add)
+assert.equal(Demo.add_i32(3, 5), 8)
 ```
 
 | 参数 | 说明 |
 |------|------|
-| `aliasName` | 新 Lua 键名，须满足 §5 唯一性 |
-| `methodClosure` | `get_method` 返回值；内含 `klass`、`is_static` |
+| `static_class_mt_or_obj` | **类型表**（静态类元表）或 **C# 对象实例 userdata** |
+| `aliasName` | 写入 `methodTable` 的 Lua 键名；须满足 §5 唯一性 |
+| `methodOrClosure` | `get_method` 返回值，或语义兼容的可调用 closure |
 
-注册目标由 closure 决定：
+**写入目标（由第一个参数决定）：**
 
-- 实例方法 → 该类型 `__instance_mt`
-- 静态方法 → 该类型表
+| 传入值 | 写入目标 |
+|--------|----------|
+| **类型表** | 该类型**静态绑定**的 `methodTable`（`SMT.__index` upvalue） |
+| **对象实例 userdata** | 该实例 **IMT** 所绑定的 `methodTable` |
 
-**不得**将静态 closure 注册到实例元表，或反之；违反时注册期/运行时报错。
+- 静态方法别名须传**类型表**；实例方法别名须传**对象实例**。
+- 目标 `methodTable` 中**已存在同名键**时立即报错，不覆盖。
+
+`methodTable` 语义见 `META_TABLE_SPEC.md` §3.1。
 
 ### 6.4 `zlua.types`
 
@@ -252,7 +321,8 @@ zlua.types.boolean
 |------|------|
 | 默认分派 | `demo:Run(10)` |
 | 显式重载（缓存 closure） | `run_i32(demo, 10)` |
-| 注册别名后 | `demo:run_i32(20)` |
+| 注册实例别名后 | `demo:run_i32(20)` |
+| 注册静态别名后 | `Demo.add_i32(3, 5)` |
 | 静态 | `CSharp.AC.Demo.Add(3, 5)` 或 `add(3, 5)`（`get_method` 缓存） |
 | ~~签名字符串键~~ | ~~`demo[sig](demo, 10)`~~ **禁止** |
 
@@ -296,7 +366,7 @@ demo:run_str("xyz")
 -- 显式绑定 int 重载并注册
 local sig_i32 = zlua.signature(zlua.types.int32)
 local run_i32 = zlua.get_method(demo, "Run", sig_i32, false)
-zlua.register_method("run_i32", run_i32)
+zlua.register_method(demo, "run_i32", run_i32)
 demo:run_i32(20)
 ```
 
@@ -306,7 +376,7 @@ demo:run_i32(20)
 
 - [ ] `zlua.signature` 仅编码参数类型
 - [ ] `zlua.get_method(target, methodName, signature, is_static)`
-- [ ] `zlua.register_method(aliasName, closure)`
+- [ ] `zlua.register_method(static_class_mt_or_obj, aliasName, methodOrClosure)`
 - [ ] 多重重载时默认名改为 dispatch closure
 - [ ] `[LuaAlias]` + XML 合并与唯一性校验
 - [ ] 元表**不**暴露签名字符串键给 `__index`

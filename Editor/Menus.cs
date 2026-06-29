@@ -19,10 +19,6 @@
 // SOFTWARE.
 
 using ZLua.BuildProcessors;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
 using UnityEditor;
 using UnityEngine;
 
@@ -30,9 +26,14 @@ namespace ZLua
 {
     public static class Menus
     {
-
         [MenuItem("ZLua/Settings...")]
         public static void OpenSettings() => SettingsService.OpenProjectSettings("Project/ZLua");
+
+        [MenuItem("ZLua/Force Recompile All Scripts", priority = 50)]
+        public static void ForceRecompileAllScripts()
+        {
+            LuaInvokeWeaver.ForceRecompileAllScripts();
+        }
 
         [MenuItem("ZLua/Install...", priority = 100)]
         public static void Install()
@@ -60,5 +61,4 @@ namespace ZLua
         [MenuItem("ZLua/Documents/GitHub")]
         public static void OpenGitHub() => Application.OpenURL("https://github.com/focus-creative-games/zlua");
     }
-
 }

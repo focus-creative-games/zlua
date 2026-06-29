@@ -179,6 +179,23 @@ CS.Demo.TryParse("42", out)
 
 **Native：** `__zlua_new_ref`
 
+### 6.4 Opaque 升级（`zlua.to_user_data`）
+
+将 C#→Lua marshal 产生的 **opaque lightuserdata** 转为可长期持有、可成员访问的 userdata。规则见 `MARSHAL_SPEC.md` §4。
+
+```lua
+zlua.to_user_data(opaque) → structUserdata | classUserdata
+```
+
+| 项 | 说明 |
+|----|------|
+| 参数 | 须为本次同步调用链内 C# Push 的 **lightuserdata**；`Validate` 失败 → 报错 |
+| struct | **拷贝** 到 StructUserData（与旧 handle `ToUserData` 相同） |
+| class 槽 | 读 `Il2CppObject**`，注册为 ClassUserData |
+| 限制 | opaque **无** `:` / `.`；**不可** 跨 pcall / 异步保存后再调用 |
+
+**Native：** `__zlua_to_user_data`
+
 ---
 
 ## 7. 数组类型与实例
@@ -389,20 +406,47 @@ add(3, 5)
 ### 9.3 `zlua.register_method`
 
 ```lua
-zlua.register_method(aliasName, methodClosure) → void
+zlua.register_method(static_class_mt_or_obj, aliasName, methodOrClosure) → void
 ```
 
-将 `get_method` 返回的 closure 注册为类型元表别名：
+将可调用 closure 注册为 `methodTable` 上的**别名键**，使 `obj:aliasName(...)` 或 `TypeTable.aliasName(...)` 可直接分派。
 
 ```lua
-zlua.register_method("run_i32", run_i32)
+local Demo = CSharp.AC.Demo
+local demo = Demo()
+
+-- 实例方法别名：第一个参数传对象实例
+local run_i32 = zlua.get_method(demo, "Run", zlua.signature(zlua.types.int32), false)
+zlua.register_method(demo, "run_i32", run_i32)
 demo:run_i32(20)
+
+-- 静态方法别名：第一个参数传类型表（静态类元表）
+local add = zlua.get_method(Demo, "Add",
+    zlua.signature(zlua.types.int32, zlua.types.int32), true)
+zlua.register_method(Demo, "add_i32", add)
+assert.equal(Demo.add_i32(3, 5), 8)
 ```
 
 | 参数 | 说明 |
 |------|------|
-| `aliasName` | 类内唯一 Lua 键（与 `[LuaAlias]` 规则一致，见 `METHOD_OVERLOAD_SPEC.md` §5） |
-| `methodClosure` | 内含 `klass`、`is_static`；决定写入类型表或 `__instance_mt` |
+| `static_class_mt_or_obj` | **类型表**（静态类元表）或 **C# 对象实例 userdata**（见下） |
+| `aliasName` | 写入 `methodTable` 的 Lua 键名 |
+| `methodOrClosure` | `zlua.get_method` 返回值，或语义兼容的可调用 closure |
+
+**第一个参数 `static_class_mt_or_obj`：**
+
+| 传入值 | 写入目标 |
+|--------|----------|
+| **类型表** | 该类型**静态绑定**的 `methodTable`（`SMT.__index` 的 upvalue）。例如 `CSharp['Assembly-CSharp'].MyFoo`、`zlua.make_generic_type(...)` 的返回值 |
+| **对象实例 userdata** | 该实例所属类型的 **实例元表 `IMT`** 所绑定的 `methodTable` |
+
+- 静态方法别名须传**类型表**；实例方法别名须传**对象实例**（或等价的实例 userdata）。
+- `methodTable` 为注册期构建的内部表，见 `META_TABLE_SPEC.md` §3.1；**不得**直接 `rawset` 到类型表根键。
+
+**冲突与错误：**
+
+- 注册时若目标 `methodTable` 中**已存在同名键**（值为非 `nil`），**立即报错**（`luaL_error`），不覆盖已有条目。
+- `aliasName` 另须满足 `METHOD_OVERLOAD_SPEC.md` §5.1（不得与非别名默认 C# 方法名重复等）。
 
 **Native：** `__zlua_register_method`（待实现）
 
@@ -436,7 +480,7 @@ local t = zlua.to_table(arr)
 
 -- 重载
 local run_i32 = zlua.get_method(demo, "Run", sig, false)
-zlua.register_method("run_i32", run_i32)
+zlua.register_method(demo, "run_i32", run_i32)
 ```
 
 ---
@@ -449,6 +493,7 @@ zlua.register_method("run_i32", run_i32)
 | `zlua.signature` | `__zlua_create_signature` | Mono（待对齐：仅 typeArg） |
 | `zlua.make_generic_type` | `__zlua_make_generic_type` | Mono；Il2Cpp 占位 |
 | `zlua.new_ref` | `__zlua_new_ref` | 待实现 |
+| `zlua.to_user_data` | `__zlua_to_user_data` | 待实现 |
 | `zlua.make_szarray_type` | `__zlua_make_szarray_type` | 待实现 |
 | `zlua.make_mdarray_type` | `__zlua_make_mdarray_type` | 待实现 |
 | `zlua.new_szarray_*` | `__zlua_new_szarray_*` | 待实现 |
@@ -483,6 +528,10 @@ end
 
 function zlua.new_ref(ref_type, ...)
     return __zlua_new_ref(ref_type, ...)
+end
+
+function zlua.to_user_data(opaque)
+    return __zlua_to_user_data(opaque)
 end
 
 function zlua.make_szarray_type(elementType)
@@ -529,8 +578,8 @@ function zlua.get_method(target, methodName, signature, is_static)
     return __zlua_get_method(target, methodName, signature, is_static)
 end
 
-function zlua.register_method(aliasName, methodClosure)
-    return __zlua_register_method(aliasName, methodClosure)
+function zlua.register_method(static_class_mt_or_obj, aliasName, methodOrClosure)
+    return __zlua_register_method(static_class_mt_or_obj, aliasName, methodOrClosure)
 end
 
 zlua.types = zlua.types or {
@@ -552,10 +601,11 @@ zlua.types = zlua.types or {
 ## 14. 实现清单
 
 - [ ] `zlua.new_ref` / `__zlua_new_ref`（`MARSHAL_SPEC.md` §3）
+- [ ] `zlua.to_user_data` / `__zlua_to_user_data`（`MARSHAL_SPEC.md` §4）
 - [ ] `zlua.types` 初始化与 `corlibtypes` 迁移
 - [ ] `signature` 仅接收 `typeArg`，去掉 methodName
 - [ ] `get_method(target, methodName, signature, is_static)` native 实现
-- [ ] `register_method(aliasName, closure)` native 实现
+- [ ] `register_method(static_class_mt_or_obj, aliasName, methodOrClosure)` native 实现
 - [ ] 数组 `make_*` / `new_*` 全套 API
 - [ ] `to_bytes` / `to_table`（szarray）
 - [ ] `Marshaling::ReadDelegate` 隐式 marshal（`FUNCTION_MARSHAL_SPEC.md` §4.0，**必做**）
