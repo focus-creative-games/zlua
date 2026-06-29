@@ -406,8 +406,9 @@ namespace InteropServices
             return 0;
 
         std::string str = il2cpp::utils::StringUtils::Utf16ToUtf8(s);
-        char *cstr = (char*)vm::MarshalAlloc::AllocateHGlobal(str.size() + 1);
-        strcpy(cstr, str.c_str());
+        size_t len = str.size() + 1;
+        char *cstr = (char*)vm::MarshalAlloc::AllocateHGlobal(len);
+        strncpy(cstr, str.c_str(), len);
         return reinterpret_cast<intptr_t>(cstr);
     }
 
