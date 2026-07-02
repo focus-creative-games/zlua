@@ -37,6 +37,7 @@ zlua.corlibtypes = zlua.corlibtypes or {}
     void BuiltinScripts::LoadGlobals()
     {
         LuaEnv::DoStringIgnoreResult(kZLuaGlobalsLua);
+        LuaEnv::EnsureErrorHandlerCached();
     }
 
     void BuiltinScripts::LoadZLuaLib()

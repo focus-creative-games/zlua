@@ -37,9 +37,10 @@ namespace ZLua
         private static readonly LuaCSFunction ZLuaToDelegateCallback = ZLuaToDelegate;
         private static readonly LuaCSFunction ZLuaToUserDataCallback = ZLuaToUserData;
         private static readonly LuaCSFunction ArrayInstanceLenCallback = ArrayInstanceLen;
+        private static readonly LuaCSFunction ArrayElementGetCallback = ArrayElementAccess.Get;
+        private static readonly LuaCSFunction ArrayElementSetCallback = ArrayElementAccess.Set;
         private static readonly LuaCSFunction DelegateInstanceCallCallback = DelegateInstanceCall;
         private static readonly LuaCSFunction TypeTableToStringCallback = TypeTableToString;
-        private static readonly LuaCSFunction EnumCtorCallback = InvokeEnumCtor;
         private static readonly LuaCSFunction EnumCallCallback = InvokeEnumCall;
         private static readonly LuaCSFunction EnumInstanceToStringCallback = EnumInstanceToString;
         private static readonly LuaCSFunction StructDefaultCallback = InvokeStructDefault;
@@ -282,12 +283,6 @@ namespace ZLua
             CreateMemberTablesOnStack(luaState, out int staticMethodTableIndex, out int staticGetterTableIndex, out int staticSetterTableIndex);
             RegisterEnumConstants(luaState, staticMethodTableIndex, enumType);
 
-            CallbackRefs.Add(EnumCtorCallback);
-            IntPtr ctorFn = Marshal.GetFunctionPointerForDelegate(EnumCtorCallback);
-            LuaDll.lua_pushinteger(luaState, typeId);
-            LuaDll.lua_pushcclosure(luaState, ctorFn, 1);
-            LuaDll.lua_setfield(luaState, staticMetatableIndex, "_ctor");
-
             CallbackRefs.Add(EnumCallCallback);
             IntPtr callFn = Marshal.GetFunctionPointerForDelegate(EnumCallCallback);
             LuaDll.lua_pushinteger(luaState, typeId);
@@ -447,46 +442,6 @@ namespace ZLua
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
-        private static int InvokeEnumCtor(IntPtr luaState)
-        {
-            try
-            {
-                int typeId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
-                if (!Types.TryGetValue(typeId, out Type enumType) || !enumType.IsEnum)
-                {
-                    return LuaDllExtension.error(luaState, $"zlua: enum type id {typeId} not found");
-                }
-
-                if (LuaDll.lua_gettop(luaState) < 1)
-                {
-                    return LuaDllExtension.error(luaState, $"zlua: {GetLuaTypeFullName(enumType)}._ctor expects underlying integer value");
-                }
-
-                Type underlying = Enum.GetUnderlyingType(enumType);
-                if (!ValueTypeMarshaling.TryReadUnderlyingInteger(luaState, 1, underlying, out object rawValue))
-                {
-                    return LuaDllExtension.error(luaState, $"zlua: {GetLuaTypeFullName(enumType)}._ctor expects underlying integer value");
-                }
-
-                object enumValue;
-                try
-                {
-                    enumValue = Enum.ToObject(enumType, rawValue);
-                }
-                catch (Exception ex)
-                {
-                    return LuaDllExtension.error(luaState, $"zlua: invalid enum value for {GetLuaTypeFullName(enumType)}: {ex.Message}");
-                }
-
-                return PushConstructorInstance(luaState, enumValue, enumType);
-            }
-            catch (Exception ex)
-            {
-                return LuaDllExtension.error(luaState, $"zlua enum ctor error: {ex}");
-            }
-        }
-
-        [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int InvokeEnumCall(IntPtr luaState)
         {
             try
@@ -598,6 +553,10 @@ namespace ZLua
 
             CreateMemberTablesOnStack(luaState, out int methodTableIndex, out int getterTableIndex, out int setterTableIndex);
             PopulateInstanceMemberTables(luaState, type, instanceTypeId, methodTableIndex, getterTableIndex, setterTableIndex);
+            if (type.IsArray)
+            {
+                RegisterArrayElementAccessMethods(luaState, methodTableIndex);
+            }
             RetainMethodTableRef(luaState, InstanceMethodTableRefsByTypeId, instanceTypeId, methodTableIndex);
 
             TypeMemberLuaIndexer.BindInstanceMetatable(
@@ -629,6 +588,19 @@ namespace ZLua
             IntPtr gcFn = Marshal.GetFunctionPointerForDelegate(gcCb);
             LuaDll.lua_pushcfunction(luaState, gcFn);
             LuaDll.lua_setfield(luaState, mtIndex, "__gc");
+        }
+
+        private static void RegisterArrayElementAccessMethods(IntPtr luaState, int methodTableIndex)
+        {
+            CallbackRefs.Add(ArrayElementGetCallback);
+            IntPtr getFn = Marshal.GetFunctionPointerForDelegate(ArrayElementGetCallback);
+            LuaDll.lua_pushcfunction(luaState, getFn);
+            LuaDll.lua_setfield(luaState, methodTableIndex, "get");
+
+            CallbackRefs.Add(ArrayElementSetCallback);
+            IntPtr setFn = Marshal.GetFunctionPointerForDelegate(ArrayElementSetCallback);
+            LuaDll.lua_pushcfunction(luaState, setFn);
+            LuaDll.lua_setfield(luaState, methodTableIndex, "set");
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]

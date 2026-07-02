@@ -14,11 +14,9 @@ namespace ZLua
         private static readonly Dictionary<int, LuaCSFunction> StaticFastInvokers = new Dictionary<int, LuaCSFunction>();
         private static readonly Dictionary<int, LuaCSFunction> InstanceFastInvokers = new Dictionary<int, LuaCSFunction>();
         private static readonly Dictionary<int, ConstructorInfo> Constructors = new Dictionary<int, ConstructorInfo>();
-        private static readonly Dictionary<int, LuaCSFunction> ConstructorFastInvokers = new Dictionary<int, LuaCSFunction>();
         private static readonly Dictionary<int, LuaCSFunction> ConstructorCallFastInvokers = new Dictionary<int, LuaCSFunction>();
         private static readonly Dictionary<int, DispatchGroup> DispatchGroups = new Dictionary<int, DispatchGroup>();
         private static readonly Dictionary<int, LuaCSFunction> DispatchFastInvokers = new Dictionary<int, LuaCSFunction>();
-        private static readonly Dictionary<int, LuaCSFunction> ConstructorDispatchFastInvokers = new Dictionary<int, LuaCSFunction>();
         private static readonly Dictionary<int, LuaCSFunction> ConstructorCallDispatchFastInvokers = new Dictionary<int, LuaCSFunction>();
         private static readonly List<LuaCSFunction> CallbackRefs = new List<LuaCSFunction>();
 
@@ -75,8 +73,6 @@ namespace ZLua
             if (ctors.Length == 1)
             {
                 int ctorId = RegisterConstructor(ctors[0]);
-                PushConstructorClosureFromId(luaState, ctorId);
-                LuaDll.lua_setfield(luaState, metatableIndex, "_ctor");
                 PushConstructorCallClosureFromId(luaState, ctorId);
                 LuaDll.lua_setfield(luaState, metatableIndex, "__call");
                 return;
@@ -92,13 +88,11 @@ namespace ZLua
             {
                 IsStatic = true,
                 IsConstructor = true,
-                MethodName = "_ctor",
+                MethodName = ".ctor",
                 OwnerType = type,
                 ConstructorIds = ctorIds,
             };
             int dispatchId = RegisterDispatchGroup(group);
-            PushConstructorDispatchClosure(luaState, dispatchId);
-            LuaDll.lua_setfield(luaState, metatableIndex, "_ctor");
             PushConstructorCallDispatchClosure(luaState, dispatchId);
             LuaDll.lua_setfield(luaState, metatableIndex, "__call");
         }
@@ -560,6 +554,7 @@ namespace ZLua
 
         private static int RegisterMethod(MethodInfo method, bool isStatic)
         {
+            LuaMarshalAsResolver.ValidateMethodConfiguration(method);
             int methodId = _nextMethodId++;
             if (isStatic)
             {
@@ -583,14 +578,9 @@ namespace ZLua
 
         private static int RegisterConstructor(ConstructorInfo ctor)
         {
+            LuaMarshalAsResolver.ValidateMethodConfiguration(ctor);
             int ctorId = _nextCtorId++;
             Constructors[ctorId] = ctor;
-            if (LuaToCSharpConstructorBridgeFactory.TryCreate(ctor, argStartIndex: 1, out LuaCSFunction fastInvoker))
-            {
-                ConstructorFastInvokers[ctorId] = fastInvoker;
-                CallbackRefs.Add(fastInvoker);
-            }
-
             if (LuaToCSharpConstructorBridgeFactory.TryCreate(ctor, argStartIndex: 2, out LuaCSFunction callInvoker))
             {
                 ConstructorCallFastInvokers[ctorId] = callInvoker;
@@ -613,17 +603,6 @@ namespace ZLua
             PushStubClosure(luaState, stub, methodId);
         }
 
-        private static void PushConstructorClosureFromId(IntPtr luaState, int ctorId)
-        {
-            if (ConstructorFastInvokers.TryGetValue(ctorId, out LuaCSFunction fastInvoker))
-            {
-                PushCompiledBridge(luaState, fastInvoker);
-                return;
-            }
-
-            PushStubClosure(luaState, InvokeConstructor, ctorId);
-        }
-
         private static void PushConstructorCallClosureFromId(IntPtr luaState, int ctorId)
         {
             if (ConstructorCallFastInvokers.TryGetValue(ctorId, out LuaCSFunction fastInvoker))
@@ -633,17 +612,6 @@ namespace ZLua
             }
 
             PushStubClosure(luaState, InvokeConstructorCall, ctorId);
-        }
-
-        private static void PushConstructorDispatchClosure(IntPtr luaState, int dispatchId)
-        {
-            if (ConstructorDispatchFastInvokers.TryGetValue(dispatchId, out LuaCSFunction fastDispatch))
-            {
-                PushCompiledBridge(luaState, fastDispatch);
-                return;
-            }
-
-            PushStubClosure(luaState, DispatchConstructor, dispatchId);
         }
 
         private static void PushConstructorCallDispatchClosure(IntPtr luaState, int dispatchId)
@@ -686,18 +654,6 @@ namespace ZLua
             }
             else if (group.IsConstructor)
             {
-                if (LuaToCSharpConstructorOverloadDispatchFactory.TryCreate(
-                        group,
-                        dispatchId,
-                        argStartIndex: 1,
-                        ctorId => Constructors[ctorId],
-                        ctorId => ConstructorFastInvokers.TryGetValue(ctorId, out LuaCSFunction invoker) ? invoker : null,
-                        out LuaCSFunction ctorDispatch))
-                {
-                    ConstructorDispatchFastInvokers[dispatchId] = ctorDispatch;
-                    CallbackRefs.Add(ctorDispatch);
-                }
-
                 if (LuaToCSharpConstructorOverloadDispatchFactory.TryCreate(
                         group,
                         dispatchId,
@@ -808,9 +764,7 @@ namespace ZLua
                 return;
             }
 
-            LuaCSFunction cb = group.IsConstructor
-                ? DispatchConstructor
-                : (group.IsStatic ? DispatchStaticMethod : DispatchInstanceMethod);
+            LuaCSFunction cb = group.IsStatic ? DispatchStaticMethod : DispatchInstanceMethod;
             PushStubClosure(luaState, cb, dispatchId);
         }
 
@@ -946,43 +900,6 @@ namespace ZLua
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
-        private static int DispatchConstructor(IntPtr luaState)
-        {
-            try
-            {
-                int dispatchId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
-                if (!DispatchGroups.TryGetValue(dispatchId, out DispatchGroup group) || !group.IsConstructor)
-                {
-                    LuaCallbackBoundary.Throw($"zlua: constructor dispatch group {dispatchId} not found");
-                }
-
-                const int argStartIndex = 1;
-                int[] ctorIds = group.ConstructorIds;
-                List<string> candidates = new List<string>(ctorIds.Length);
-                for (int i = 0; i < ctorIds.Length; i++)
-                {
-                    if (!Constructors.TryGetValue(ctorIds[i], out ConstructorInfo ctor))
-                    {
-                        continue;
-                    }
-
-                    candidates.Add(GetMethodSignatureKey(ctor));
-                    if (TryBuildArguments(luaState, ctor, argStartIndex, out object[] args))
-                    {
-                        return InvokeConstructorInstance(luaState, group.OwnerType, ctor, args);
-                    }
-                }
-
-                LuaCallbackBoundary.Throw(BuildNoOverloadMessage(group.OwnerType, "_ctor", luaState, argStartIndex, candidates));
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                return LuaCallbackBoundary.ToLuaError(luaState, ex);
-            }
-        }
-
-        [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int DispatchConstructorCall(IntPtr luaState)
         {
             try
@@ -1010,34 +927,8 @@ namespace ZLua
                     }
                 }
 
-                LuaCallbackBoundary.Throw(BuildNoOverloadMessage(group.OwnerType, "_ctor", luaState, argStartIndex, candidates));
+                LuaCallbackBoundary.Throw(BuildNoOverloadMessage(group.OwnerType, null, luaState, argStartIndex, candidates));
                 return 0;
-            }
-            catch (Exception ex)
-            {
-                return LuaCallbackBoundary.ToLuaError(luaState, ex);
-            }
-        }
-
-        [MonoLuaCallback(typeof(LuaCSFunction))]
-        private static int InvokeConstructor(IntPtr luaState)
-        {
-            try
-            {
-                int ctorId = (int)LuaDll.lua_tointeger(luaState, LuaConsts.LuaRegistryIndex - 1);
-                if (!Constructors.TryGetValue(ctorId, out ConstructorInfo ctor))
-                {
-                    LuaCallbackBoundary.Throw($"zlua: constructor id {ctorId} not found");
-                }
-
-                const int argStartIndex = 1;
-                if (!TryBuildArguments(luaState, ctor, argStartIndex, out object[] args))
-                {
-                    LuaCallbackBoundary.Throw(
-                        $"zlua: constructor argument mismatch for {ctor.DeclaringType.FullName}{GetParameterSignature(ctor.GetParameters())}");
-                }
-
-                return InvokeConstructorInstance(luaState, ctor.DeclaringType, ctor, args);
             }
             catch (Exception ex)
             {
@@ -1139,7 +1030,7 @@ namespace ZLua
             int argStartIndex,
             List<string> candidates)
         {
-            string methodName = group.IsConstructor ? "_ctor" : group.MethodName;
+            string methodName = group.IsConstructor ? null : group.MethodName;
             return LuaDllExtension.error(
                 luaState,
                 BuildNoOverloadMessage(group.OwnerType, methodName, luaState, argStartIndex, candidates));
@@ -1521,11 +1412,6 @@ namespace ZLua
                         && boxed.GetType() == targetType;
                 }
 
-                if (luaType == LuaDataType.Table)
-                {
-                    return StructMarshaling.CanComposeStructFromTable(luaState, luaIndex, targetType);
-                }
-
                 return false;
             }
 
@@ -1663,7 +1549,10 @@ namespace ZLua
                 argTags.Add(LuaDll.lua_type(luaState, argStartIndex + i).ToString());
             }
 
-            return $"no overload for {ownerType.FullName}.{methodName} matching ({string.Join(", ", argTags)}); candidates: {string.Join(", ", candidates)}";
+            string target = string.IsNullOrEmpty(methodName)
+                ? ownerType.FullName
+                : $"{ownerType.FullName}.{methodName}";
+            return $"no overload for {target} matching ({string.Join(", ", argTags)}); candidates: {string.Join(", ", candidates)}";
         }
 
         private static string GetParameterSignature(ParameterInfo[] parameters)
@@ -1730,11 +1619,6 @@ namespace ZLua
                     && structValue.GetType() == targetType)
                 {
                     return structValue;
-                }
-
-                if (StructMarshaling.TryComposeStructFromTable(luaState, luaIndex, targetType, out object composed))
-                {
-                    return composed;
                 }
 
                 throw new NotSupportedException($"unsupported struct value for {targetType.Name}");

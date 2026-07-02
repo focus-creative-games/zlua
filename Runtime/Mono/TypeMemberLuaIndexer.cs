@@ -24,9 +24,6 @@ local function bind_indexer(methodTable, fieldGetterTable, fieldSetterTable, ext
         error('bind_indexer: extrasTable must be table or nil, got ' .. type(extrasTable))
     end
 
-    local indexPrefix = isStatic
-        and 'zlua: static member not found: '
-        or 'zlua: instance member not found: '
     local newindexPrefix = isStatic
         and 'zlua: static member not writable: '
         or 'zlua: instance member not writable: '
@@ -46,7 +43,7 @@ local function bind_indexer(methodTable, fieldGetterTable, fieldSetterTable, ext
                 return extra
             end
         end
-        error(indexPrefix .. tostring(key))
+        return nil
     end
 
     local function newindex(obj, key, value)

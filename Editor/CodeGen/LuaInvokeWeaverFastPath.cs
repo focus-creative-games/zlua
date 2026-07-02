@@ -29,10 +29,6 @@ namespace ZLua
             }
 
             FieldDef siteField = EnsureSiteField(module, method, moduleName, methodName, getOrCreateFunctionRefMethod);
-            if (luaInvokeAttr != null)
-            {
-                LuaInvokeWeaverShared.RemoveLuaInvokeAttribute(method, luaInvokeAttr);
-            }
 
             method.ImplMap = null;
             method.Attributes &= ~MethodAttributes.PinvokeImpl;

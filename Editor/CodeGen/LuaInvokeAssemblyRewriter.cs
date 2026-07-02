@@ -175,8 +175,6 @@ namespace ZLua
                 return false;
             }
 
-            LuaInvokeWeaverShared.RemoveLuaInvokeAttribute(method, luaInvokeAttr);
-
             method.ImplMap = null;
             method.Attributes &= ~MethodAttributes.PinvokeImpl;
             method.ImplAttributes &= ~MethodImplAttributes.InternalCall;
@@ -261,7 +259,6 @@ namespace ZLua
 
         private static void RewritePlayerMethod(ModuleDefMD module, MethodDef method, CustomAttribute luaInvokeAttr)
         {
-            LuaInvokeWeaverShared.RemoveLuaInvokeAttribute(method, luaInvokeAttr);
             RemoveDllImportAttributeIfExists(method);
 
             method.Body = null;

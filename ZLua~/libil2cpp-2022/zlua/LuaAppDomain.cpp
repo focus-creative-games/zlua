@@ -2,7 +2,6 @@
 
 #include "BuiltinScripts.h"
 #include "LuaEnv.h"
-#include "LuaInteropManager.h"
 
 #include "generated/LuaInvokeSites.h"
 
@@ -16,11 +15,27 @@ namespace zlua
         LuaAppDomain::InitializeFromManaged(moduleLoader);
     }
 
+    static void LuaMethod_AddPendingRef(void* /*L*/, int32_t refIndex)
+    {
+        LuaEnv::AddPendingRef(refIndex);
+    }
+
+    static void LuaIl2CppAppDomain_ProcessPendingRefReleases()
+    {
+        LuaEnv::ProcessPendingRefReleases();
+    }
+
     static void RegisterCoreInternalCalls()
     {
         il2cpp::vm::InternalCalls::Add(
             "ZLua.LuaIl2CppAppDomain::InitializeInternal",
             (Il2CppMethodPointer)LuaIl2CppAppDomain_InitializeInternal);
+        il2cpp::vm::InternalCalls::Add(
+            "ZLua.LuaIl2CppAppDomain::ProcessPendingRefReleases",
+            (Il2CppMethodPointer)LuaIl2CppAppDomain_ProcessPendingRefReleases);
+        il2cpp::vm::InternalCalls::Add(
+            "ZLua.LuaMethod::AddPendingRef",
+            (Il2CppMethodPointer)LuaMethod_AddPendingRef);
     }
 
     void LuaAppDomain::Initialize()
@@ -34,8 +49,10 @@ namespace zlua
         LuaEnv::RegisterRoots();
         LuaEnv::Create((Il2CppDelegate*)moduleLoaderDelegate);
         BuiltinScripts::LoadGlobals();
-        LuaInteropManager::RegisterZLuaApi();
+        LuaEnv::RegisterZLuaApi();
         BuiltinScripts::LoadZLuaLib();
         InitLuaInvokeSites();
+        LuaEnv::DoStringIgnoreResult("_G.__ZLUA_IL2CPP_PLAYER__=true");
+        LuaEnv::DoStringIgnoreResult("if type(CSharp)=='table' and CSharp['ZLua.Tests'] then CSharp.T=CSharp['ZLua.Tests'] end");
     }
 }

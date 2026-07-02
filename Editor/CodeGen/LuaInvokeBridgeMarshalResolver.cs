@@ -16,12 +16,12 @@ namespace ZLua
             ParamDef paramDef = parameter.ParamDef;
             if (paramDef != null && TryReadDeclaredMarshal(paramDef.CustomAttributes, out LuaMarshalType declared))
             {
-                return Validate(declared, clrType, LuaMarshalDirection.CSharpToLua);
+                return Validate(declared, clrType, parameter, LuaMarshalDirection.CSharpToLua);
             }
 
             if (TryReadDeclaredMarshal(method.CustomAttributes, out LuaMarshalType methodDeclared))
             {
-                return Validate(methodDeclared, clrType, LuaMarshalDirection.CSharpToLua);
+                return Validate(methodDeclared, clrType, parameter, LuaMarshalDirection.CSharpToLua);
             }
 
             return LuaMarshalType.Default;
@@ -39,12 +39,12 @@ namespace ZLua
             if (returnParamDef != null
                 && TryReadDeclaredMarshal(returnParamDef.CustomAttributes, out LuaMarshalType declared))
             {
-                return Validate(declared, retType, LuaMarshalDirection.LuaToCSharp);
+                return Validate(declared, retType, null, LuaMarshalDirection.LuaToCSharp);
             }
 
             if (TryReadDeclaredMarshal(method.CustomAttributes, out LuaMarshalType methodDeclared))
             {
-                return Validate(methodDeclared, retType, LuaMarshalDirection.LuaToCSharp);
+                return Validate(methodDeclared, retType, null, LuaMarshalDirection.LuaToCSharp);
             }
 
             return LuaMarshalType.Default;
@@ -53,9 +53,17 @@ namespace ZLua
         private static LuaMarshalType Validate(
             LuaMarshalType marshalType,
             TypeSig clrType,
+            Parameter parameter,
             LuaMarshalDirection direction)
         {
             if (marshalType == LuaMarshalType.Default)
+            {
+                return LuaMarshalType.Default;
+            }
+
+            if (marshalType == LuaMarshalType.Table
+                || marshalType == LuaMarshalType.UnpackedValues
+                || marshalType == LuaMarshalType.ParamsTable)
             {
                 return LuaMarshalType.Default;
             }
@@ -154,7 +162,14 @@ namespace ZLua
             return typeDef != null && !typeDef.IsEnum;
         }
 
-        private static bool IsEnumType(TypeSig typeSig)
+        internal static bool IsByteArray(TypeSig typeSig)
+        {
+            return typeSig != null
+                && typeSig.ElementType == ElementType.SZArray
+                && typeSig.Next?.ElementType == ElementType.U1;
+        }
+
+        internal static bool IsEnumTypePublic(TypeSig typeSig)
         {
             if (typeSig?.ElementType != ElementType.ValueType)
             {
@@ -164,15 +179,6 @@ namespace ZLua
             TypeDef typeDef = typeSig.ToTypeDefOrRef()?.ResolveTypeDef();
             return typeDef != null && typeDef.IsEnum;
         }
-
-        internal static bool IsByteArray(TypeSig typeSig)
-        {
-            return typeSig != null
-                && typeSig.ElementType == ElementType.SZArray
-                && typeSig.Next?.ElementType == ElementType.U1;
-        }
-
-        internal static bool IsEnumTypePublic(TypeSig typeSig) => IsEnumType(typeSig);
 
         internal static bool IsStructTypePublic(TypeSig typeSig) => IsStructType(typeSig);
 

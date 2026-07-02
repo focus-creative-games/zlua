@@ -96,7 +96,7 @@ namespace ZLua
             return _luaEnv.RunLuaFunc<T>(invokeMethod, moduleName, methodName, args);
         }
 
-        internal static void ProcessPendingRefReleases()
+        private static void ProcessPendingRefReleases()
         {
             if (_luaEnv != null)
             {

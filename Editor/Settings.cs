@@ -104,6 +104,9 @@ namespace ZLua
 
         public static string GeneratedZLuaPath => Path.GetFullPath(Path.Combine(LocalLibil2cppPath, "zlua", "generated"));
 
+        public static string PackageGeneratedZLuaPath =>
+            Path.GetFullPath(Path.Combine(Libil2cppCppPathInPackage, "zlua", "generated"));
+
         public static string BuildWin64GeneratedZLuaPath =>
             Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "build-win64", "Il2CppOutputProject", "IL2CPP", "libil2cpp", "zlua", "generated"));
 

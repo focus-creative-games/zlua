@@ -52,6 +52,14 @@ function zlua.to_user_data(opaque)
     return __zlua_to_user_data(opaque)
 end
 
+function zlua.box(typeArg, value)
+    return __zlua_box(typeArg, value)
+end
+
+function zlua.unbox(boxedValue)
+    return __zlua_unbox(boxedValue)
+end
+
 function zlua.get_method(target, methodName, signature, is_static)
     return __zlua_get_method(target, methodName, signature, is_static)
 end

@@ -10,13 +10,12 @@ namespace ZLua
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void InitializeInternal(Func<string, object> moduleLoader);
 
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void ProcessPendingRefReleases();
+
         public static void Initialize(Func<string, object> moduleLoader)
         {
             InitializeInternal(moduleLoader);
-        }
-
-        internal static void ProcessPendingRefReleases()
-        {
         }
     }
 }

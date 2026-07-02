@@ -35,6 +35,12 @@ namespace ZLua
             LuaInvokeWeaver.ForceRecompileAllScripts();
         }
 
+        [MenuItem("ZLua/Generate LuaInvoke Sites", priority = 51)]
+        public static void GenerateLuaInvokeSites()
+        {
+            LuaInvokeCodegen.GenerateLuaInvokeSites(showDialog: true);
+        }
+
         [MenuItem("ZLua/Install...", priority = 100)]
         public static void Install()
         {

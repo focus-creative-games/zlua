@@ -1,8 +1,12 @@
 #include "LuaEnv.h"
 
-#include "Marshaling.h"
-#include "ObjectRegistry.h"
+#include "marshal/ObjectMarshal.h"
+#include "MetadataUtil.h"
+#include "mt/AssemblyRegistry.h"
+#include "ZLuaLib.h"
+#include "LuaUtil.h"
 
+#include "il2cpp-config.h"
 #include "vm/Runtime.h"
 #include "vm/String.h"
 #include "vm/Exception.h"
@@ -12,6 +16,7 @@
 
 #include <unordered_map>
 #include <string>
+#include <vector>
 
 namespace zlua
 {
@@ -21,6 +26,50 @@ namespace zlua
     static bool s_moduleLoaderHooksInstalled = false;
     static std::unordered_map<std::string, int> s_ModuleRefs;
     static std::unordered_map<std::string, int> s_ModuleFunctionRefs;
+    static int s_errorHandlerRef = LUA_NOREF;
+    static std::vector<int> s_pendingRefReleases;
+    static const MethodInfo* s_debugLogMethod = nullptr;
+    static bool s_debugLogMethodResolved = false;
+
+    static const MethodInfo* EnsureDebugLogMethod()
+    {
+        if (s_debugLogMethodResolved)
+            return s_debugLogMethod;
+
+        s_debugLogMethodResolved = true;
+
+        const Il2CppAssembly* assembly = MetadataUtil::ResolveAssembly("UnityEngine.CoreModule");
+        Il2CppClass* debugClass = MetadataUtil::ResolveType(assembly, "UnityEngine.Debug");
+        s_debugLogMethod = MetadataUtil::FindMethod(debugClass, "Log", 1, true);
+
+        return s_debugLogMethod;
+    }
+
+    static void LogToUnity(const char* message)
+    {
+        const MethodInfo* logMethod = EnsureDebugLogMethod();
+        IL2CPP_ASSERT(logMethod != nullptr);
+        Il2CppString* msgStr = il2cpp::vm::String::New(message);
+        void* params[1] = { msgStr };
+        il2cpp::vm::Runtime::Invoke(logMethod, nullptr, params, nullptr);
+    }
+
+    static int EnsureErrorHandlerRef(lua_State* L)
+    {
+        if (s_errorHandlerRef != LUA_NOREF)
+            return s_errorHandlerRef;
+
+        const int oldTop = lua_gettop(L);
+        if (lua_getglobal(L, "__zluaErrorHandler") != LUA_TFUNCTION)
+        {
+            lua_settop(L, oldTop);
+            LuaEnv::RaiseLuaException("Lua global '__zluaErrorHandler' is not available.");
+        }
+
+        s_errorHandlerRef = luaL_ref(L, LUA_REGISTRYINDEX);
+        lua_settop(L, oldTop);
+        return s_errorHandlerRef;
+    }
 
     void LuaEnv::RaiseLuaException(const char* msg)
     {
@@ -42,7 +91,7 @@ namespace zlua
                 line.append(str, len);
             lua_pop(L, 1);
         }
-        printf("%s\n", line.c_str());
+        LogToUnity(line.c_str());
         return 0;
     }
 
@@ -75,28 +124,28 @@ namespace zlua
             return std::string((char*)il2cpp::vm::Array::GetFirstElementAddress(charArray), charArray->max_length);
         }
 
-        LuaEnv::RaiseLuaException("Lua module loader must return a string or byte array");
         return std::string();
     }
 
     static int ZLuaLoadModule(lua_State* L)
     {
-        const char* moduleName = luaL_optstring(L, 1, nullptr);
-        if (moduleName == nullptr || moduleName[0] == '\0')
+        const char* moduleName = luaL_checkstring(L, 1);
+        try
         {
-            lua_pushnil(L);
+            std::string source = TryLoadModuleSource(moduleName);
+            if (source.empty())
+            {
+                lua_pushnil(L);
+                return 1;
+            }
+
+            lua_pushlstring(L, source.c_str(), source.size());
             return 1;
         }
-
-        std::string source = TryLoadModuleSource(moduleName);
-        if (source.empty())
+        catch (Il2CppExceptionWrapper& e)
         {
-            lua_pushnil(L);
-            return 1;
+            return LuaUtil::RaiseAsLuaError(L, "Exception in module loader", e.ex);
         }
-
-        lua_pushlstring(L, source.c_str(), source.size());
-        return 1;
     }
 
     static void InstallModuleLoaderHooks()
@@ -160,7 +209,7 @@ table.insert(package.searchers, 2, zlua_module_searcher)
 
         luaL_openlibs(s_L);
         RegisterPrintCallback();
-        ObjectRegistry::EnsureObjectCache(s_L);
+        ObjectMarshal::EnsureObjectCache(s_L);
         InstallModuleLoaderHooks();
     }
 
@@ -169,7 +218,8 @@ table.insert(package.searchers, 2, zlua_module_searcher)
         if (s_L == nullptr)
             return;
 
-        ObjectRegistry::Shutdown();
+        ProcessPendingRefReleases();
+        ObjectMarshal::Shutdown();
 
         for (auto& kv : s_ModuleFunctionRefs)
             luaL_unref(s_L, LUA_REGISTRYINDEX, kv.second);
@@ -178,6 +228,12 @@ table.insert(package.searchers, 2, zlua_module_searcher)
         for (auto& kv : s_ModuleRefs)
             luaL_unref(s_L, LUA_REGISTRYINDEX, kv.second);
         s_ModuleRefs.clear();
+
+        if (s_errorHandlerRef != LUA_NOREF)
+        {
+            luaL_unref(s_L, LUA_REGISTRYINDEX, s_errorHandlerRef);
+            s_errorHandlerRef = LUA_NOREF;
+        }
 
         lua_close(s_L);
         s_L = nullptr;
@@ -306,7 +362,44 @@ table.insert(package.searchers, 2, zlua_module_searcher)
 
     void LuaEnv::RegisterPrintCallback()
     {
+        EnsureDebugLogMethod();
         lua_pushcfunction(s_L, ZLuaPrint);
         lua_setglobal(s_L, "print");
+    }
+
+    void LuaEnv::RegisterZLuaApi()
+    {
+        AssemblyRegistry::EnsureCSharpRoot();
+        ZLuaLib::RegisterGlobals();
+    }
+
+    int LuaEnv::PushErrorHandler(lua_State* L)
+    {
+        IL2CPP_ASSERT(L == s_L);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, EnsureErrorHandlerRef(L));
+        return lua_gettop(L);
+    }
+
+    void LuaEnv::EnsureErrorHandlerCached()
+    {
+        IL2CPP_ASSERT(s_L != nullptr);
+        EnsureErrorHandlerRef(s_L);
+    }
+
+    void LuaEnv::AddPendingRef(int refIndex)
+    {
+        if (refIndex == LUA_NOREF)
+            return;
+        s_pendingRefReleases.push_back(refIndex);
+    }
+
+    void LuaEnv::ProcessPendingRefReleases()
+    {
+        if (s_L == nullptr || s_pendingRefReleases.empty())
+            return;
+
+        for (int refIndex : s_pendingRefReleases)
+            luaL_unref(s_L, LUA_REGISTRYINDEX, refIndex);
+        s_pendingRefReleases.clear();
     }
 }

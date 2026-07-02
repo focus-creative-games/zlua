@@ -25,8 +25,14 @@ namespace zlua
 
         static void DoStringIgnoreResult(const char* chunk);
         static void RegisterPrintCallback();
+        static void RegisterZLuaApi();
 
+        static int PushErrorHandler(lua_State* L);
+        static void EnsureErrorHandlerCached();
         static void RaiseLuaException(const char* msg);
+
+        static void AddPendingRef(int refIndex);
+        static void ProcessPendingRefReleases();
     private:
         static std::string LoadModuleSource(const char* moduleName);
         static int FindModuleFunctionRef(const char* moduleName, const char* methodName);

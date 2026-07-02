@@ -44,6 +44,11 @@ namespace ZLua
                 case LuaMarshalType.UserData:
                     return CanConvertUserData(luaState, luaIndex, targetType, luaType);
 
+                case LuaMarshalType.Table:
+                case LuaMarshalType.UnpackedValues:
+                case LuaMarshalType.ParamsTable:
+                    return false;
+
                 default:
                     return false;
             }
