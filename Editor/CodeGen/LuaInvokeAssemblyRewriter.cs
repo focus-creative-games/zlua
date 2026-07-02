@@ -175,8 +175,6 @@ namespace ZLua
                 return false;
             }
 
-            LuaInvokeWeaverShared.RemoveLuaInvokeAttribute(method, luaInvokeAttr);
-
             method.ImplMap = null;
             method.Attributes &= ~MethodAttributes.PinvokeImpl;
             method.ImplAttributes &= ~MethodImplAttributes.InternalCall;
@@ -235,16 +233,37 @@ namespace ZLua
             {
                 Parameter parameter = method.Parameters[i];
                 TypeSig parameterType = parameter.Type;
-                if (parameterType.IsByRef)
-                {
-                    throw new InvalidOperationException($"[LuaInvoke] does not support ref/out parameters in editor mode: {method.FullName}");
-                }
+                bool isByRef = parameterType.IsByRef;
+                TypeSig effectiveType = isByRef ? parameterType.Next : parameterType;
 
                 body.Instructions.Add(OpCodes.Dup.ToInstruction());
                 body.Instructions.Add(OpCodes.Ldc_I4.ToInstruction(i));
                 body.Instructions.Add(OpCodes.Ldarg.ToInstruction(parameter));
+                if (isByRef)
+                {
+                    // Box the dereferenced value for legacy object[] path.
+                    if (effectiveType == null)
+                    {
+                        throw new InvalidOperationException($"[LuaInvoke] cannot resolve byref element type for '{parameter.Name}' of method: {method.FullName}");
+                    }
 
-                if (parameterType.IsValueType)
+                    if (effectiveType.IsValueType)
+                    {
+                        body.Instructions.Add(CreateLdObjInstruction(effectiveType));
+                        ITypeDefOrRef boxType = effectiveType.ToTypeDefOrRef();
+                        if (boxType == null)
+                        {
+                            throw new InvalidOperationException($"[LuaInvoke] cannot box byref parameter '{parameter.Name}' of method: {method.FullName}");
+                        }
+
+                        body.Instructions.Add(OpCodes.Box.ToInstruction(boxType));
+                    }
+                    else
+                    {
+                        body.Instructions.Add(OpCodes.Ldind_Ref.ToInstruction());
+                    }
+                }
+                else if (parameterType.IsValueType)
                 {
                     ITypeDefOrRef boxType = parameterType.ToTypeDefOrRef();
                     if (boxType == null)
@@ -259,9 +278,44 @@ namespace ZLua
             }
         }
 
+        private static Instruction CreateLdObjInstruction(TypeSig effectiveType)
+        {
+            switch (effectiveType.ElementType)
+            {
+                case ElementType.Boolean:
+                case ElementType.I1:
+                    return OpCodes.Ldind_I1.ToInstruction();
+                case ElementType.U1:
+                    return OpCodes.Ldind_U1.ToInstruction();
+                case ElementType.I2:
+                    return OpCodes.Ldind_I2.ToInstruction();
+                case ElementType.Char:
+                case ElementType.U2:
+                    return OpCodes.Ldind_U2.ToInstruction();
+                case ElementType.I4:
+                    return OpCodes.Ldind_I4.ToInstruction();
+                case ElementType.U4:
+                    return OpCodes.Ldind_U4.ToInstruction();
+                case ElementType.I8:
+                case ElementType.U8:
+                    return OpCodes.Ldind_I8.ToInstruction();
+                case ElementType.R4:
+                    return OpCodes.Ldind_R4.ToInstruction();
+                case ElementType.R8:
+                    return OpCodes.Ldind_R8.ToInstruction();
+                case ElementType.I:
+                case ElementType.U:
+                case ElementType.Ptr:
+                    return OpCodes.Ldind_I.ToInstruction();
+                default:
+                    ITypeDefOrRef typeRef = effectiveType.ToTypeDefOrRef()
+                        ?? throw new InvalidOperationException($"[LuaInvoke] cannot ldobj byref element type: {effectiveType}");
+                    return OpCodes.Ldobj.ToInstruction(typeRef);
+            }
+        }
+
         private static void RewritePlayerMethod(ModuleDefMD module, MethodDef method, CustomAttribute luaInvokeAttr)
         {
-            LuaInvokeWeaverShared.RemoveLuaInvokeAttribute(method, luaInvokeAttr);
             RemoveDllImportAttributeIfExists(method);
 
             method.Body = null;

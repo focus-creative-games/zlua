@@ -18,21 +18,19 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-using System;
 using System.IO;
-using System.Runtime.InteropServices;
-using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
 
 namespace ZLua
 {
 
-
     public class Settings : ScriptableObject
     {
         [Tooltip("Enable ZLua")]
         public bool enable = true;
+
+        public int maxMethodBridgeGenericIteration = 4;
 
         private static Settings s_Instance;
 
@@ -48,64 +46,15 @@ namespace ZLua
             }
         }
 
-        public static bool EnableForCurrentBuildTarget
-        {
-            get
-            {
-                if (!Instance.enable)
-                {
-                    return false;
-                }
-                // #if UNITY_WEBGL || UNITY_WEIXINMINIGAME
-                return true;
-                // #else
-                //                 return false;
-                // #endif
-            }
-        }
-
-        public static string InstallRootDir => Path.GetFullPath($"Library/ZLua");
+        public static bool EnableForCurrentBuildTarget => Instance.enable;
 
         public static string GetPreservedLinkXmlPath()
         {
-            return Path.GetFullPath($"{ZLuaDataPathInPackage}/link.xml");
+            return Path.GetFullPath($"{CommonDirs.ZLuaDataPathInPackage}/link.xml");
         }
 
-        public static string SettingsPath => "ProjectSettings/ZLua.asset";
+        private static string SettingsPath => "ProjectSettings/ZLua.asset";
 
-        public static string PackageName => "com.code-philosophy.zlua";
-
-        public static string ZLuaDataPathInPackage => $"Packages/{PackageName}/ZLua~";
-
-        public static string LuaLibPathInPackage => $"{ZLuaDataPathInPackage}/lualib";
-
-        public static string GetLuaLibScriptPath(string fileName) =>
-            Path.GetFullPath(Path.Combine(LuaLibPathInPackage, fileName));
-
-        public static string Libil2cppCppPathInPackage
-        {
-            get
-            {
-                var unityVersion = new UnityVersion(Application.unityVersion);
-                string branch = unityVersion.isTuanjieEngine ? "tuanjie" : $"{unityVersion.major}";
-                return $"{ZLuaDataPathInPackage}/libil2cpp-{branch}";
-            }
-        }
-
-        public static string LocalIl2CppDataPath => $"{InstallRootDir}/LocalIl2CppData-{Application.platform}";
-
-        public static string LocalIl2CppPath => $"{LocalIl2CppDataPath}/il2cpp";
-
-        public static string LocalLibil2cppPath => $"{LocalIl2CppPath}/libil2cpp";
-
-        public static string LuaSrcPathInPackage => $"{ZLuaDataPathInPackage}/lua5.4/src";
-
-        public static string LocalLuaSrcPath => $"{LocalLibil2cppPath}/lua";
-
-        public static string GeneratedZLuaPath => Path.GetFullPath(Path.Combine(LocalLibil2cppPath, "zlua", "generated"));
-
-        public static string BuildWin64GeneratedZLuaPath =>
-            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "build-win64", "Il2CppOutputProject", "IL2CPP", "libil2cpp", "zlua", "generated"));
 
         private static Settings LoadOrCreate()
         {

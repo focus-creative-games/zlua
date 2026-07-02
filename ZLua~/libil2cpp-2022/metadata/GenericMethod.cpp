@@ -138,6 +138,11 @@ namespace metadata
 
     static FullySharedGenericMethodInfo ambiguousMethodInfo;
 
+    bool GenericMethod::IsAnUnresolvedCallStubWasNotFound(Il2CppMethodPointer methodPointer)
+    {
+        return methodPointer == (Il2CppMethodPointer)AnUnresolvedCallStubWasNotFound || methodPointer == (Il2CppMethodPointer)AnUnresolvedCallStubWasNotFoundValueType;
+    }
+
     bool GenericMethod::IsGenericAmbiguousMethodInfo(const MethodInfo* method)
     {
         return method == &ambiguousMethodInfo;

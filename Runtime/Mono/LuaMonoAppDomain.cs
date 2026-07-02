@@ -1,13 +1,15 @@
 using System;
-using System.Collections.Generic;
 using System.Reflection;
+using ZLua.DelegateImpl;
+using ZLua.Mt;
+using ZLua.MethodBridge;
+using ZLua.Marshal;
 
 namespace ZLua
 {
     public static class LuaMonoAppDomain
     {
         private static LuaEnv _luaEnv;
-        private static LuaManagerObject _managerObject;
 
         public static LuaEnv LuaEnv
         {
@@ -33,19 +35,12 @@ namespace ZLua
 
             _luaEnv = new LuaEnv();
             _luaEnv.SetModuleLoader(moduleLoader);
-            _managerObject = new LuaManagerObject(_luaEnv);
             _luaEnv.LoadBuiltinGlobals();
-            _managerObject.RegisterZLuaApi();
+            LuaMarshalAsValidation.ReportInvalidConfiguration = LuaPrintBuffer.EnqueueEditorError;
+            AssemblyRegistry.EnsureCSharpRoot();
+            ZLuaLib.RegisterGlobals(_luaEnv);
             _luaEnv.EnsureBuiltinZLuaLib();
-            WarmDelegateBridges();
-        }
-
-        private static void WarmDelegateBridges()
-        {
-            // Expression.Compile during native Lua callbacks can SIGSEGV on Unity Editor Mono.
-            DynamicBridgeFactory.Warmup(typeof(Action));
-            DynamicBridgeFactory.Warmup(typeof(Action<int>));
-            DynamicBridgeFactory.Warmup(typeof(Func<int, int>));
+            DelegateBridges.Warmup();
         }
 
         public static void Shutdown()
@@ -58,13 +53,12 @@ namespace ZLua
             ProcessPendingRefReleases();
             _luaEnv.Dispose();
             _luaEnv = null;
-            _managerObject = null;
         }
 
         public static void RegisterType(Type type)
         {
             EnsureInitialized();
-            _managerObject.RegisterType(type);
+            TypeRegistry.RegisterType(_luaEnv, type);
         }
 
         public static void RegisterType<T>()
@@ -96,7 +90,7 @@ namespace ZLua
             return _luaEnv.RunLuaFunc<T>(invokeMethod, moduleName, methodName, args);
         }
 
-        internal static void ProcessPendingRefReleases()
+        private static void ProcessPendingRefReleases()
         {
             if (_luaEnv != null)
             {

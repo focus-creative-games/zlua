@@ -62,7 +62,7 @@
 #include "Baselib.h"
 #include "Cpp/ReentrantLock.h"
 
-#include "zlua/LuaAppDomain.h"
+#include "zlua/lvm/LuaAppDomain.h"
 
 Il2CppDefaults il2cpp_defaults;
 bool g_il2cpp_is_fully_initialized = false;
@@ -178,8 +178,6 @@ namespace vm
             s_RuntimeInitCount--;
             return false;
         }
-
-        zlua::LuaAppDomain::Initialize();
 
         Assembly::Initialize();
         gc::GarbageCollector::Initialize();

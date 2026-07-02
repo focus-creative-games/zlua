@@ -1,0 +1,100 @@
+#include "MethodBridge.h"
+
+#include "../generated/MethodBridgeStub.h"
+#include "../utils/Collection.h"
+#include "../utils/MetadataUtil.h"
+
+#include "metadata/GenericMethod.h"
+#include "vm/Reflection.h"
+#include "vm/MetadataCache.h"
+#include "vm/GlobalMetadata.h"
+
+namespace zlua
+{
+
+static AppendOnlyStringHashMap<FnLua2CsInvoker> s_name2Invokers;
+
+void MethodBridge::Initialize()
+{
+    for (size_t i = 0;; i++)
+    {
+        const MethodBridgeEntry& entry = methodbridge::g_methodBridges[i];
+        if (entry.stubName == nullptr)
+        {
+            break;
+        }
+        s_name2Invokers.insert({entry.stubName, entry.lua2CsInvoker});
+    }
+}
+
+int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStart, const MethodMarshalCtx* ctx)
+{
+    const MethodInfo* method = ctx->method;
+    void** params = (void**)alloca(method->parameters_count * sizeof(void*));
+    for (uint8_t i = 0; i < method->parameters_count; i++)
+    {
+        const MarshalMetaInfo* paramMeta = ctx->paramsMeta[i];
+        IL2CPP_ASSERT(!paramMeta->passByValue || paramMeta->size == sizeof(void*));
+        void* tempStorage = nullptr;
+        void* storage = paramMeta->passByValue ? &tempStorage : alloca(paramMeta->size);
+        paramMeta->lua2csWriter(L, argStart + i, storage, paramMeta);
+        params[i] = paramMeta->passByValue ? tempStorage : storage;
+    }
+
+    if (ctx->retMeta != nullptr)
+    {
+        void* ret = alloca(ctx->retMeta->size);
+        method->invoker_method(method->methodPointer, method, target, params, ret);
+        ctx->retMeta->cs2luaWriter(L, ret, ctx->retMeta);
+        return 1;
+    }
+    else
+    {
+        method->invoker_method(method->methodPointer, method, target, params, nullptr);
+        return 0;
+    }
+}
+
+static std::string s_methodNameCache;
+
+
+static bool DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(const MethodInfo* method)
+{
+    const Il2CppImage* image = method->klass->image;
+    for (uint8_t i = 0; i < method->parameters_count; i++)
+    {
+        uint32_t token = MetadataUtil::GetParameterToken(method, i);
+        if (token != 0 && MetadataUtil::HasParameterMarshalAsAttribute(image, token))
+        {
+                return true;
+        }
+    }
+    uint32_t returnToken = MetadataUtil::GetParameterToken(method, -1);
+    if (returnToken != 0 && MetadataUtil::HasParameterMarshalAsAttribute(image, returnToken))
+    {
+        return true;
+    }
+    return false;
+}
+
+FnLua2CsInvoker MethodBridge::ResolveMethodInvoker(const MethodInfo* method)
+{
+    if (method->methodPointer == nullptr 
+        || il2cpp::metadata::GenericMethod::IsAnUnresolvedCallStubWasNotFound(method->methodPointer)
+        || DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(method)
+    )
+    {
+        return DefaultInvokeLuaMethod;
+    }
+    s_methodNameCache.clear();
+    MetadataUtil::CreateStubName(method, s_methodNameCache);
+    auto it = s_name2Invokers.find(s_methodNameCache.c_str());
+    if (it != s_name2Invokers.end())
+    {
+        return it->second;
+    }
+    return DefaultInvokeLuaMethod;
+    //return it != s_name2Invokers.end() ? it->second : DefaultInvokeLuaMethod;
+}
+
+} // namespace zlua

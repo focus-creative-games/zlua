@@ -16,12 +16,13 @@ namespace ZLua
             ParamDef paramDef = parameter.ParamDef;
             if (paramDef != null && TryReadDeclaredMarshal(paramDef.CustomAttributes, out LuaMarshalType declared))
             {
-                return Validate(declared, clrType, LuaMarshalDirection.CSharpToLua);
+                return Validate(declared, clrType, parameter, LuaMarshalDirection.CSharpToLua);
             }
 
-            if (TryReadDeclaredMarshal(method.CustomAttributes, out LuaMarshalType methodDeclared))
+            // MARSHAL_SPEC §4.3: ref/in/out default to OpaqueValue on C#→Lua.
+            if (clrType.IsByRef)
             {
-                return Validate(methodDeclared, clrType, LuaMarshalDirection.CSharpToLua);
+                return LuaMarshalType.OpaqueLightUserData;
             }
 
             return LuaMarshalType.Default;
@@ -39,12 +40,7 @@ namespace ZLua
             if (returnParamDef != null
                 && TryReadDeclaredMarshal(returnParamDef.CustomAttributes, out LuaMarshalType declared))
             {
-                return Validate(declared, retType, LuaMarshalDirection.LuaToCSharp);
-            }
-
-            if (TryReadDeclaredMarshal(method.CustomAttributes, out LuaMarshalType methodDeclared))
-            {
-                return Validate(methodDeclared, retType, LuaMarshalDirection.LuaToCSharp);
+                return Validate(declared, retType, null, LuaMarshalDirection.LuaToCSharp);
             }
 
             return LuaMarshalType.Default;
@@ -53,9 +49,17 @@ namespace ZLua
         private static LuaMarshalType Validate(
             LuaMarshalType marshalType,
             TypeSig clrType,
+            Parameter parameter,
             LuaMarshalDirection direction)
         {
             if (marshalType == LuaMarshalType.Default)
+            {
+                return LuaMarshalType.Default;
+            }
+
+            if (marshalType == LuaMarshalType.Table
+                || marshalType == LuaMarshalType.UnpackedValues
+                || marshalType == LuaMarshalType.ParamsTable)
             {
                 return LuaMarshalType.Default;
             }
@@ -74,12 +78,24 @@ namespace ZLua
                     return "OpaqueLightUserData is CSharpToLua-only.";
                 }
 
-                if (!IsStructType(clrType))
+                // ref/in/out: always allowed (default OpaqueValue).
+                if (clrType != null && clrType.IsByRef)
                 {
-                    return "OpaqueLightUserData requires struct type.";
+                    return null;
                 }
 
-                return null;
+                TypeSig byValType = clrType;
+                if (byValType != null && byValType.IsByRef)
+                {
+                    byValType = byValType.Next;
+                }
+
+                if (IsOpaqueValueByValAllowed(byValType))
+                {
+                    return null;
+                }
+
+                return "OpaqueLightUserData requires ref/in/out, struct, or managed reference type.";
             }
 
             if (marshalType == LuaMarshalType.Bytes)
@@ -100,6 +116,8 @@ namespace ZLua
             return "Unsupported marshal type.";
         }
 
+        internal static bool IsUserDataAllowedPublic(TypeSig typeSig) => IsUserDataAllowed(typeSig);
+
         private static bool IsUserDataAllowed(TypeSig typeSig)
         {
             if (typeSig == null)
@@ -112,31 +130,32 @@ namespace ZLua
                 return false;
             }
 
+            // MARSHAL_SPEC §6.1–§6.2: reference types + struct only (not primitives / enum / IntPtr).
             switch (typeSig.ElementType)
             {
-                case ElementType.Boolean:
-                case ElementType.Char:
-                case ElementType.I1:
-                case ElementType.U1:
-                case ElementType.I2:
-                case ElementType.U2:
-                case ElementType.I4:
-                case ElementType.U4:
-                case ElementType.I8:
-                case ElementType.U8:
-                case ElementType.R4:
-                case ElementType.R8:
                 case ElementType.String:
                 case ElementType.Object:
                 case ElementType.SZArray:
+                case ElementType.Array:
+                case ElementType.Class:
                     return true;
                 case ElementType.ValueType:
-                    return true;
+                    return IsStructType(typeSig);
                 default:
                     if (IsCorlibType(typeSig, "System", "IntPtr")
                         || IsCorlibType(typeSig, "System", "UIntPtr"))
                     {
-                        return true;
+                        return false;
+                    }
+
+                    // Generic instantiations / other reference-like forms.
+                    if (typeSig.IsGenericInstanceType)
+                    {
+                        TypeDef typeDef = typeSig.ToTypeDefOrRef()?.ResolveTypeDef();
+                        if (typeDef != null && typeDef.IsClass && !typeDef.IsValueType)
+                        {
+                            return true;
+                        }
                     }
 
                     return false;
@@ -154,7 +173,51 @@ namespace ZLua
             return typeDef != null && !typeDef.IsEnum;
         }
 
-        private static bool IsEnumType(TypeSig typeSig)
+        private static bool IsOpaqueValueByValAllowed(TypeSig typeSig)
+        {
+            if (typeSig == null || typeSig.IsByRef)
+            {
+                return false;
+            }
+
+            switch (typeSig.ElementType)
+            {
+                case ElementType.String:
+                case ElementType.Object:
+                case ElementType.SZArray:
+                case ElementType.Array:
+                case ElementType.Class:
+                    return true;
+                case ElementType.ValueType:
+                    return IsStructType(typeSig);
+                default:
+                    if (IsCorlibType(typeSig, "System", "IntPtr")
+                        || IsCorlibType(typeSig, "System", "UIntPtr"))
+                    {
+                        return false;
+                    }
+
+                    if (typeSig.IsGenericInstanceType)
+                    {
+                        TypeDef typeDef = typeSig.ToTypeDefOrRef()?.ResolveTypeDef();
+                        if (typeDef != null && typeDef.IsClass && !typeDef.IsValueType)
+                        {
+                            return true;
+                        }
+                    }
+
+                    return false;
+            }
+        }
+
+        internal static bool IsByteArray(TypeSig typeSig)
+        {
+            return typeSig != null
+                && typeSig.ElementType == ElementType.SZArray
+                && typeSig.Next?.ElementType == ElementType.U1;
+        }
+
+        internal static bool IsEnumTypePublic(TypeSig typeSig)
         {
             if (typeSig?.ElementType != ElementType.ValueType)
             {
@@ -165,16 +228,9 @@ namespace ZLua
             return typeDef != null && typeDef.IsEnum;
         }
 
-        internal static bool IsByteArray(TypeSig typeSig)
-        {
-            return typeSig != null
-                && typeSig.ElementType == ElementType.SZArray
-                && typeSig.Next?.ElementType == ElementType.U1;
-        }
-
-        internal static bool IsEnumTypePublic(TypeSig typeSig) => IsEnumType(typeSig);
-
         internal static bool IsStructTypePublic(TypeSig typeSig) => IsStructType(typeSig);
+
+        internal static bool IsOpaqueValueByValAllowedPublic(TypeSig typeSig) => IsOpaqueValueByValAllowed(typeSig);
 
         private static bool TryReadDeclaredMarshal(CustomAttributeCollection attributes, out LuaMarshalType marshalType)
         {

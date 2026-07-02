@@ -1,6 +1,6 @@
 {
     "name": "ZLua.Common",
-    "rootNamespace": "NovaLlua",
+    "rootNamespace": "ZLlua",
     "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],

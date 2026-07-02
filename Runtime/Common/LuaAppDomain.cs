@@ -17,16 +17,14 @@ namespace ZLua
             MethodInfo processPendingMethod = ResolveBackendMethod(
                 nameof(ProcessPendingRefReleases),
                 BindingFlags.NonPublic | BindingFlags.Static);
-            _processPendingRefReleases = processPendingMethod != null
-                ? (Action)Delegate.CreateDelegate(typeof(Action), processPendingMethod)
-                : null;
+            _processPendingRefReleases = (Action)Delegate.CreateDelegate(typeof(Action), processPendingMethod);
 
             LuaFramePump.EnsureRegistered();
         }
 
         internal static void ProcessPendingRefReleases()
         {
-            _processPendingRefReleases?.Invoke();
+            _processPendingRefReleases();
         }
 
         private static MethodInfo ResolveBackendMethod(string methodName, BindingFlags bindingFlags)
@@ -34,11 +32,6 @@ namespace ZLua
             string assemblyName = Application.isEditor ? "ZLua.Mono" : "ZLua.Il2Cpp";
             Assembly assembly = AppDomain.CurrentDomain.GetAssemblies()
                 .FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName, StringComparison.Ordinal));
-            if (assembly == null)
-            {
-                return null;
-            }
-
             string typeName = Application.isEditor ? "ZLua.LuaMonoAppDomain" : "ZLua.LuaIl2CppAppDomain";
             return assembly.GetType(typeName)?.GetMethod(methodName, bindingFlags);
         }

@@ -4,12 +4,12 @@ function zlua.typeof(typeTable)
     return __zlua_typeof(typeTable)
 end
 
-function zlua.signature(...)
-    return __zlua_create_signature(...)
-end
-
 function zlua.make_generic_type(genericType, ...)
     return __zlua_make_generic_type(genericType, ...)
+end
+
+function zlua.make_generic_method(genericMethodBase, ...)
+    return __zlua_make_generic_method(genericMethodBase, ...)
 end
 
 function zlua.make_szarray_type(elementType)
@@ -48,16 +48,24 @@ function zlua.to_delegate(func, delegateType)
     return __zlua_to_delegate(func, delegateType)
 end
 
-function zlua.to_user_data(opaque)
-    return __zlua_to_user_data(opaque)
+function zlua.get_opaquevalue(opaque_handle)
+    return __zlua_get_opaquevalue(opaque_handle)
 end
 
-function zlua.get_method(target, methodName, signature, is_static)
-    return __zlua_get_method(target, methodName, signature, is_static)
+function zlua.set_opaquevalue(opaque_handle, new_value)
+    return __zlua_set_opaquevalue(opaque_handle, new_value)
 end
 
-function zlua.register_method(static_class_mt_or_obj, aliasName, methodOrClosure)
-    return __zlua_register_method(static_class_mt_or_obj, aliasName, methodOrClosure)
+function zlua.box(typeArg, value)
+    return __zlua_box(typeArg, value)
+end
+
+function zlua.unbox(boxedValue)
+    return __zlua_unbox(boxedValue)
+end
+
+function zlua.register_method(aliasName, methodOrClosure)
+    return __zlua_register_method(aliasName, methodOrClosure)
 end
 
 zlua.types = {

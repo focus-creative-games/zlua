@@ -1,0 +1,62 @@
+using System;
+using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using ZLua;
+using ZLua.Marshal;
+using ZLua.Mt;
+using ZLua.DelegateImpl;
+
+namespace ZLua.MethodBridge
+{
+    public static class LuaInvokeFunctions
+    {
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void Run(params object[] args)
+        {
+            (string moduleName, string methodName, MethodInfo invokeMethod) = ResolveCallerLuaTarget();
+            if (invokeMethod != null)
+            {
+                LuaMonoAppDomain.RunLuaFunc(invokeMethod, moduleName, methodName, args);
+                return;
+            }
+
+            LuaMonoAppDomain.RunLuaFunc(moduleName, methodName, args);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static T Run<T>(params object[] args)
+        {
+            (string moduleName, string methodName, MethodInfo invokeMethod) = ResolveCallerLuaTarget();
+            if (invokeMethod != null)
+            {
+                return LuaMonoAppDomain.RunLuaFunc<T>(invokeMethod, moduleName, methodName, args);
+            }
+
+            return LuaMonoAppDomain.RunLuaFunc<T>(moduleName, methodName, args);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static (string moduleName, string methodName, MethodInfo invokeMethod) ResolveCallerLuaTarget()
+        {
+            MethodBase caller = new StackTrace().GetFrame(2)?.GetMethod();
+            if (caller == null)
+            {
+                throw new InvalidOperationException("Cannot resolve caller method for LuaInvoke.");
+            }
+
+            LuaInvokeAttribute attr = caller.GetCustomAttribute<LuaInvokeAttribute>();
+            if (attr == null)
+            {
+                throw new InvalidOperationException($"Method '{caller.DeclaringType?.FullName}.{caller.Name}' is not marked with [LuaInvoke].");
+            }
+
+            if (string.IsNullOrWhiteSpace(attr.Module) || string.IsNullOrWhiteSpace(attr.Function))
+            {
+                throw new InvalidOperationException("[LuaInvoke] requires module and function names in editor mode.");
+            }
+
+            return (attr.Module, attr.Function, caller as MethodInfo);
+        }
+    }
+}

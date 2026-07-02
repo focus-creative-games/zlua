@@ -3,6 +3,10 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using ZLua.Mt;
+using ZLua.MethodBridge;
+using ZLua.Marshal;
+using ZLua.DelegateImpl;
 
 namespace ZLua
 {
@@ -442,7 +446,7 @@ table.insert(package.searchers, 2, zlua_module_searcher)
 
         public void LoadBuiltinGlobals()
         {
-            DoStringIgnoreResult(ZLuaBuiltinScriptLoader.Load("globals.lua"));
+            DoStringIgnoreResult(BuiltinScripts.Load("globals.lua"));
             EnsureErrorHandlerRef();
         }
 
@@ -478,7 +482,7 @@ table.insert(package.searchers, 2, zlua_module_searcher)
 
         public void LoadBuiltinZLuaLib()
         {
-            DoStringIgnoreResult(ZLuaBuiltinScriptLoader.Load("zlualib.lua"));
+            DoStringIgnoreResult(BuiltinScripts.Load("zlualib.lua"));
         }
 
         public void EnsureBuiltinZLuaLib()

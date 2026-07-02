@@ -54,7 +54,7 @@ namespace ZLua
 
         public static void RegisterCallback(IntPtr luaState, string globalName, LuaCSFunction func)
         {
-            IntPtr function = Marshal.GetFunctionPointerForDelegate(func);
+            IntPtr function = global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(func);
             LuaDll.lua_pushcfunction(luaState, function);
             LuaDll.lua_setglobal(luaState, globalName);
         }

@@ -8,8 +8,8 @@ namespace ZLua
     {
         internal const string MonoAssemblyName = "ZLua.Mono";
         internal const string CommonAssemblyName = "ZLua.Common";
-        internal const string BridgeTypeFullName = "ZLua.LuaInvokeBridge";
-        internal const string SiteRegistryTypeFullName = "ZLua.LuaInvokeSiteRegistry";
+        internal const string BridgeTypeFullName = "ZLua.MethodBridge.LuaInvokeBridge";
+        internal const string SiteRegistryTypeFullName = "ZLua.MethodBridge.LuaInvokeSiteRegistry";
         internal const string AppDomainTypeFullName = "ZLua.LuaMonoAppDomain";
         internal const string ProcessedAttributeTypeFullName = "ZLua.LuaInvokeWeaverProcessedAttribute";
 

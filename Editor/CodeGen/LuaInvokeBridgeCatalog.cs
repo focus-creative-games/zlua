@@ -39,7 +39,15 @@ namespace ZLua
             TypeSig[] genericArgs = null;
             if (allDefault)
             {
-                bridgeName = BuildDefaultBridgeMethodName(method);
+                try
+                {
+                    bridgeName = BuildDefaultBridgeMethodName(method);
+                }
+                catch (NotSupportedException)
+                {
+                    // e.g. Default UnityEngine.Vector3 — fall back to legacy RunLuaFunc weave.
+                    return false;
+                }
             }
             else if (!TryBuildMarshaledBridgeName(sig, retMarshal, paramMarshals, out bridgeName))
             {
@@ -64,33 +72,27 @@ namespace ZLua
             LuaMarshalType[] paramMarshals,
             string bridgeName)
         {
-            if (string.Equals(bridgeName, "InvokeM_UEnum", StringComparison.Ordinal))
+            bool needsOpaqueGeneric = string.Equals(bridgeName, "InvokeM_Int32_OOpaque", StringComparison.Ordinal)
+                || string.Equals(bridgeName, "InvokeM_Int32_OByRef", StringComparison.Ordinal);
+            if (!needsOpaqueGeneric)
             {
-                return new[] { sig.RetType };
+                return null;
             }
 
-            if (string.Equals(bridgeName, "InvokeM_UEnum_UEnum", StringComparison.Ordinal))
+            for (int i = 0; i < sig.Params.Count; i++)
             {
-                for (int i = 0; i < sig.Params.Count; i++)
+                if (paramMarshals[i] != LuaMarshalType.OpaqueLightUserData)
                 {
-                    if (LuaInvokeBridgeMarshalResolver.IsEnumTypePublic(sig.Params[i]))
-                    {
-                        return new[] { sig.Params[i] };
-                    }
+                    continue;
                 }
 
-                return new[] { sig.RetType };
-            }
-
-            if (string.Equals(bridgeName, "InvokeM_Int32_OOpaque", StringComparison.Ordinal))
-            {
-                for (int i = 0; i < sig.Params.Count; i++)
+                TypeSig typeSig = sig.Params[i];
+                if (typeSig != null && typeSig.IsByRef)
                 {
-                    if (paramMarshals[i] == LuaMarshalType.OpaqueLightUserData)
-                    {
-                        return new[] { sig.Params[i] };
-                    }
+                    typeSig = typeSig.Next;
                 }
+
+                return typeSig != null ? new[] { typeSig } : null;
             }
 
             return null;
@@ -135,6 +137,12 @@ namespace ZLua
                 return true;
             }
 
+            if (marshalType == LuaMarshalType.OpaqueLightUserData && typeSig.IsByRef)
+            {
+                sb.Append("OByRef");
+                return true;
+            }
+
             if (typeSig.IsByRef)
             {
                 return false;
@@ -149,25 +157,35 @@ namespace ZLua
             switch (marshalType)
             {
                 case LuaMarshalType.Bytes:
-                    if (!LuaInvokeBridgeMarshalResolver.IsByteArray(typeSig))
+                    if (LuaInvokeBridgeMarshalResolver.IsByteArray(typeSig))
+                    {
+                        sb.Append("BByteArray");
+                        return true;
+                    }
+
+                    if (typeSig.ElementType == ElementType.String)
+                    {
+                        sb.Append("BString");
+                        return true;
+                    }
+
+                    return false;
+                case LuaMarshalType.UserData:
+                    if (!LuaInvokeBridgeMarshalResolver.IsUserDataAllowedPublic(typeSig))
                     {
                         return false;
                     }
 
-                    sb.Append("BByteArray");
-                    return true;
-                case LuaMarshalType.UserData:
                     if (LuaInvokeBridgeMarshalResolver.IsEnumTypePublic(typeSig))
                     {
-                        sb.Append("UEnum");
-                        return true;
+                        return false;
                     }
 
                     sb.Append('U');
                     AppendDefaultTypeName(sb, typeSig);
                     return true;
                 case LuaMarshalType.OpaqueLightUserData:
-                    if (!LuaInvokeBridgeMarshalResolver.IsStructTypePublic(typeSig))
+                    if (!LuaInvokeBridgeMarshalResolver.IsOpaqueValueByValAllowedPublic(typeSig))
                     {
                         return false;
                     }
@@ -213,7 +231,9 @@ namespace ZLua
 
             if (typeSig.IsByRef)
             {
-                throw new NotSupportedException("ref/out is not supported for fast LuaInvoke.");
+                // Byref must go through Opaque (InvokeM_*_OByRef); never Default Invoke_*.
+                throw new NotSupportedException(
+                    "ref/out/in requires OpaqueValue marshal path for LuaInvoke; check LuaInvokeBridgeMarshalResolver.");
             }
 
             switch (typeSig.ElementType)
@@ -259,6 +279,19 @@ namespace ZLua
                     return;
                 case ElementType.String:
                     sb.Append("String");
+                    return;
+                case ElementType.SZArray:
+                    // Default szarray → ByObjUserData (MARSHAL_SPEC §1.2). byte[] uses dedicated name for bridges.
+                    if (LuaInvokeBridgeMarshalResolver.IsByteArray(typeSig))
+                    {
+                        sb.Append("ByteArray");
+                        return;
+                    }
+
+                    sb.Append("Object");
+                    return;
+                case ElementType.Class:
+                    sb.Append("Object");
                     return;
                 case ElementType.ValueType:
                 {

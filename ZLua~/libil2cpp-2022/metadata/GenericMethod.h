@@ -31,6 +31,7 @@ namespace metadata
 
         static void ClearStatics();
         static const Il2CppRGCTXData* InflateRGCTX(const MethodInfo* method);
+        static bool IsAnUnresolvedCallStubWasNotFound(Il2CppMethodPointer methodPointer);
 
     private:
         static const MethodInfo* GetMethod(const Il2CppGenericMethod* gmethod, bool copyMethodPtr);

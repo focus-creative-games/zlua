@@ -34,6 +34,7 @@ using System.Text;
 using UnityEditor;
 using UnityEditor.PackageManager;
 using UnityEngine;
+using ZLua.Utils;
 using Debug = UnityEngine.Debug;
 using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 
@@ -77,12 +78,12 @@ namespace ZLua
 
         public void InstallLocal()
         {
-            RunInitLocalIl2CppData(ApplicationIl2cppPath, Settings.Libil2cppCppPathInPackage, _curVersion);
+            RunInitLocalIl2CppData(ApplicationIl2cppPath, CommonDirs.Libil2cppCppPathInPackage, _curVersion);
         }
 
         public bool HasInstalledToLocal()
         {
-            return Directory.Exists(Settings.LocalLibil2cppPath);
+            return Directory.Exists(CommonDirs.LocalLibil2cppPath);
         }
 
         public bool NeedReinstallAfterUpdatePackage()
@@ -110,7 +111,7 @@ namespace ZLua
         }
 
         private static string InstalledPackageFingerprintPath =>
-            Path.Combine(Settings.InstallRootDir, "installed_package_max_mtime_utc_ticks.txt");
+            Path.Combine(CommonDirs.InstallRootDir, "installed_package_max_mtime_utc_ticks.txt");
 
         private static string GetZLuaPackageRootPath()
         {
@@ -119,7 +120,7 @@ namespace ZLua
             {
                 return packageInfo.resolvedPath;
             }
-            return Path.GetFullPath(Path.Combine("Packages", Settings.PackageName));
+            return Path.GetFullPath(Path.Combine("Packages", CommonDirs.PackageName));
         }
 
         private static long ComputePackageLatestFileWriteTimeUtcTicks()
@@ -197,20 +198,20 @@ namespace ZLua
 
         private void RunInitLocalIl2CppData(string editorIl2cppPath, string modifieldLibil2cppSourceDir, UnityVersion version)
         {
-            string workDir = Settings.InstallRootDir;
+            string workDir = CommonDirs.InstallRootDir;
             Directory.CreateDirectory(workDir);
 
             // create LocalIl2Cpp
-            string localIl2CppDataDir = Settings.LocalIl2CppDataPath;
+            string localIl2CppDataDir = CommonDirs.LocalIl2CppDataPath;
             DirectoryUtil.RecreateDir(localIl2CppDataDir);
 #if !NEW_IL2CPP_PATH
             // copy MonoBleedingEdge
             DirectoryUtil.CopyDir($"{Directory.GetParent(editorIl2cppPath)}/MonoBleedingEdge", $"{localIl2CppDataDir}/MonoBleedingEdge", true);
 #endif
             // copy il2cpp
-            DirectoryUtil.CopyDir(editorIl2cppPath, Settings.LocalIl2CppPath, true);
+            DirectoryUtil.CopyDir(editorIl2cppPath, CommonDirs.LocalIl2CppPath, true);
 #if NEW_IL2CPP_PATH
-            string buildDir = $"{Settings.LocalIl2CppPath}/build";
+            string buildDir = $"{CommonDirs.LocalIl2CppPath}/build";
             if (RuntimeInformation.ProcessArchitecture == Architecture.Arm || RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
             {
                 BashUtil.CopyDir($"{buildDir}/deploy_arm64", $"{buildDir}/deploy", false);
@@ -222,13 +223,13 @@ namespace ZLua
 #endif
 
             // replace libil2cpp
-            string dstLibil2cppDir = Settings.LocalLibil2cppPath;
+            string dstLibil2cppDir = CommonDirs.LocalLibil2cppPath;
             DirectoryUtil.CopyDir($"{modifieldLibil2cppSourceDir}", dstLibil2cppDir, true);
 
             // copy lua src
-            DirectoryUtil.CopyDir($"{Settings.LuaSrcPathInPackage}", Settings.LocalLuaSrcPath, true);
+            DirectoryUtil.CopyDir($"{CommonDirs.LuaSrcPathInPackage}", CommonDirs.LocalLuaSrcPath, true);
             // remove luac.c
-            File.Delete($"{Settings.LocalLuaSrcPath}/luac.c");
+            File.Delete($"{CommonDirs.LocalLuaSrcPath}/luac.c");
 
             // clean Il2cppBuildCache
             DirectoryUtil.RemoveDir($"Library/Il2cppBuildCache", true);

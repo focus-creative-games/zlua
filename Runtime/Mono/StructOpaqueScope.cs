@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using ZLua.Mt;
+using ZLua.MethodBridge;
+using ZLua.Marshal;
+using ZLua.DelegateImpl;
 
 namespace ZLua
 {

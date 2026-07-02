@@ -46,7 +46,7 @@ namespace ZLua.BuildProcessors
             {
                 throw new Exception($"Please install ZLua first.");
             }
-            string runtimeDir = Settings.LocalIl2CppPath;
+            string runtimeDir = CommonDirs.LocalIl2CppPath;
             Environment.SetEnvironmentVariable("UNITY_IL2CPP_PATH", runtimeDir);
             Debug.Log($"[SetupIl2CppEnv] set UNITY_IL2CPP_PATH='{runtimeDir}'");
         }

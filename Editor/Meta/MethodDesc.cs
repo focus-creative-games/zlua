@@ -1,0 +1,129 @@
+﻿using dnlib.DotNet;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using ZLua.Utils;
+
+namespace ZLua.Meta
+{
+    public class ParamInfo
+    {
+        public TypeSig type;
+        public ParamDef paramDef;
+        public string name;
+        public int indexExcludedThis;
+    }
+
+    public class ReturnInfo
+    {
+        public TypeSig type;
+        public ParamDef paramDef;
+    }
+
+    public class MethodDesc : IEquatable<MethodDesc>
+    {
+        public static MethodDesc CreateMethodDesc(MethodDef methodDef, List<TypeSig> klassInst, List<TypeSig> methodInst, bool toSharedTypeSig)
+        {
+            ICorLibTypes corLibTypes = methodDef.Module.CorLibTypes;
+            TypeSig returnType;
+            List<TypeSig> parameters;
+            if (klassInst == null && methodInst == null)
+            {
+                if (methodDef.HasGenericParameters)
+                {
+                    throw new Exception($"[PreservedMethod] method:{methodDef} has generic parameters");
+                }
+                returnType = toSharedTypeSig ? MetaUtil.ToShareTypeSig(corLibTypes, methodDef.ReturnType) : methodDef.ReturnType;
+                parameters = methodDef.Parameters.Select(p => toSharedTypeSig ? MetaUtil.ToShareTypeSig(corLibTypes, p.Type) : p.Type).ToList();
+            }
+            else
+            {
+                var gc = new GenericArgumentContext(klassInst, methodInst);
+                returnType = toSharedTypeSig ? MetaUtil.ToShareTypeSig(corLibTypes, MetaUtil.Inflate(methodDef.ReturnType, gc)) : MetaUtil.Inflate(methodDef.ReturnType, gc);
+                parameters = methodDef.Parameters.Select(p => toSharedTypeSig ? MetaUtil.ToShareTypeSig(corLibTypes, MetaUtil.Inflate(p.Type, gc)) : MetaUtil.Inflate(p.Type, gc)).ToList();
+            }
+
+
+            var paramInfos = new List<ParamInfo>();
+            int paramOffset = 0;
+            if (!methodDef.IsStatic)
+            {
+                parameters.RemoveAt(0);
+                paramOffset = 1;
+            }
+            if (returnType.ContainsGenericParameter)
+            {
+                throw new Exception($"[PreservedMethod] method:{methodDef} has generic parameters");
+            }
+            int index = 0;
+            foreach (var paramInfo in parameters)
+            {
+                if (paramInfo.ContainsGenericParameter)
+                {
+                    throw new Exception($"[PreservedMethod] method:{methodDef} has generic parameters");
+                }
+                paramInfos.Add(new ParamInfo()
+                {
+                    type = toSharedTypeSig ? MetaUtil.ToSharedTypeSig(corLibTypes, paramInfo) : paramInfo,
+                    indexExcludedThis = index,
+                    name = $"__p{index}",
+                    paramDef = methodDef.Parameters[index + paramOffset].ParamDef,
+                });
+                index++;
+            }
+            var mbs = new MethodDesc(methodDef,
+                klassInst,
+                methodInst,
+                paramInfos,
+                new ReturnInfo()
+                {
+                    type = returnType != null ? (toSharedTypeSig ? MetaUtil.ToSharedTypeSig(corLibTypes, returnType) : returnType) : corLibTypes.Void,
+                    paramDef = methodDef.Parameters.ReturnParameter.ParamDef,
+                }
+            );
+            return mbs;
+        }
+
+        public string Sig { get; }
+
+        public MethodDef MethodDef { get; }
+        public List<TypeSig> KlassInst { get; }
+
+        public List<TypeSig> MethodInst { get; }
+
+        public ReturnInfo ReturnInfo { get; }
+
+        public List<ParamInfo> ParamInfos { get; }
+
+        public MethodDesc(MethodDef methodDef, List<TypeSig> klassInst, List<TypeSig> methodInst, List<ParamInfo> paramInfos, ReturnInfo returnInfo)
+        {
+            MethodDef = methodDef;
+            KlassInst = klassInst;
+            MethodInst = methodInst;
+            ParamInfos = paramInfos;
+            ReturnInfo = returnInfo;
+            Sig = BuildSig(methodDef, klassInst, methodInst);
+        }
+
+        private string BuildSig(MethodDef methodDef, List<TypeSig> klassInst, List<TypeSig> methodInst)
+        {
+            return NameUtil.CreateUniqueName(methodDef, KlassInst, MethodInst);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return Equals((MethodDesc)obj);
+        }
+
+        public bool Equals(MethodDesc other)
+        {
+            return Sig == other.Sig;
+        }
+
+        public override int GetHashCode()
+        {
+            return Sig.GetHashCode();
+        }
+    }
+}
