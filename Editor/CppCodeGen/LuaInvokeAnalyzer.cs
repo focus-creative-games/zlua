@@ -108,8 +108,9 @@ namespace ZLua.CppCodeGen
             binding.luaFunctionName = functionName;
             binding.uniqueName = NameUtil.CreateUniqueName(method, null, null);
             binding.internalCallSignature = NameUtil.CreateInternalCallSignature(method);
-            binding.returnMetaInfo = MarshalMetaUtil.CreateMarshalMetaInfo(method.MethodSig.RetType, method.Parameters.ReturnParameter.ParamDef, false);
-            binding.parameters = method.Parameters.Select(p => MarshalMetaUtil.CreateParamMarshalInfo(p, false)).ToList();
+            bool ignoreMarshalAsFromParam = false;
+            binding.returnMetaInfo = MarshalMetaUtil.CreateMarshalMetaInfo(method.MethodSig.RetType, method.Parameters.ReturnParameter.ParamDef, ignoreMarshalAsFromParam);
+            binding.parameters = method.Parameters.Select(p => MarshalMetaUtil.CreateParamMarshalInfo(p, ignoreMarshalAsFromParam)).ToList();
             return binding;
         }
     }

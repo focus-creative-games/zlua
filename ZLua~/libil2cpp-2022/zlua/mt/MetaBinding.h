@@ -1,4 +1,5 @@
 #pragma once
+#include <deque>
 #include <vector>
 
 #include "../utils/Collection.h"
@@ -48,6 +49,23 @@ struct MetaInfo
 
 typedef AppendOnlyStringHashMap<MetaInfo> NameMetaMap;
 
+#if ZLUA_FAST_METATABLE
+/* Resolve this / field address strategy for tagged getters/setters (OPTIMIZATION.md). */
+enum class FastInstanceKind : uint8_t
+{
+    Static = 0,
+    StructByVal,
+    StructByObj,
+    ReferenceByObj,
+};
+
+struct FastMemberCtx
+{
+    FastInstanceKind kind;
+    MetaInfo info;
+};
+#endif
+
 struct TypeBinding
 {
     Il2CppClass* klass;
@@ -56,6 +74,10 @@ struct TypeBinding
     mutable NameMetaMap staticMap;
     const MethodMarshalCtx* uniqueCtorMethod;
     const MethodGroups* ctorGroups;
+#if ZLUA_FAST_METATABLE
+    /* deque: pointers passed to Lua lightuserdata stay valid across push_back. */
+    std::deque<FastMemberCtx> fastMemberStorage;
+#endif
 };
 
 enum class ClosureKind

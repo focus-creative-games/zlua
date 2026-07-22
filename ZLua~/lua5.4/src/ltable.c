@@ -631,6 +631,11 @@ Table *luaH_new (lua_State *L) {
   t->array = NULL;
   t->alimit = 0;
   setnodevector(L, t, 0);
+#if ZLUA_FAST_METATABLE
+  t->zlua_mt_kind = 0;
+  setnilvalue(&t->zlua_index);
+  setnilvalue(&t->zlua_newindex);
+#endif
   return t;
 }
 

@@ -58,6 +58,10 @@ int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStar
 static std::string s_methodNameCache;
 
 
+/// we only need to check LuaMarshalAsAttribute on the method parameters and return type,
+/// not on the method itself or the method's declaring type. because we have considered the
+//  LuaMarshalAsAttribute on the method itself and the method's declaring type in generating
+//  the method bridge code.
 static bool DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(const MethodInfo* method)
 {
     const Il2CppImage* image = method->klass->image;

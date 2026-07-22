@@ -4,6 +4,9 @@
 #include "MetaBinding.h"
 #include "InstanceTarget.h"
 #include "TypeRegistryCommon.h"
+#if ZLUA_FAST_METATABLE
+#include "FastMetatable.h"
+#endif
 
 #include "../LuaConsts.h"
 #include "../lvm/LuaEnv.h"
@@ -235,6 +238,10 @@ bool MetaBinding::TryRegisterMethodAlias(lua_State* L, Il2CppClass* klass, bool 
     NameMetaMap& map = isStatic ? binding->staticMap : binding->byobjInstanceMap;
     if (map.find(aliasName.c_str()) != map.end())
         return false;
+
+#if ZLUA_FAST_METATABLE
+    FastMetatable::RawSetMethodOnIndexTable(L, klass, isStatic, /*isByVal*/ false, aliasName.c_str(), closureStackIndex);
+#endif
 
     lua_pushvalue(L, closureStackIndex);
     const int closureRef = LuaUtil::ToLuaRef(L);

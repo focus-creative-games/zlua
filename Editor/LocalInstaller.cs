@@ -229,7 +229,11 @@ namespace ZLua
             // copy lua src
             DirectoryUtil.CopyDir($"{CommonDirs.LuaSrcPathInPackage}", CommonDirs.LocalLuaSrcPath, true);
             // remove luac.c
-            File.Delete($"{CommonDirs.LocalLuaSrcPath}/luac.c");
+            string luacPath = $"{CommonDirs.LocalLuaSrcPath}/luac.c";
+            if (File.Exists(luacPath))
+            {
+                File.Delete(luacPath);
+            }
 
             // clean Il2cppBuildCache
             DirectoryUtil.RemoveDir($"Library/Il2cppBuildCache", true);

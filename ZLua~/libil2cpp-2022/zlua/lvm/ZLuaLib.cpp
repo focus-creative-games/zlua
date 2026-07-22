@@ -13,6 +13,9 @@
 #include "../marshal/StructMarshal.h"
 #include "../mt/MetaBinding.h"
 #include "../mt/TypeRegistry.h"
+#if ZLUA_FAST_METATABLE
+#include "../mt/FastMetatable.h"
+#endif
 #include "../marshal/DelegateMarshal.h"
 #include "../marshal/ArrayMarshal.h"
 #include "../marshal/ObjectMarshal.h"
@@ -409,10 +412,15 @@ static int ZLuaRegisterMethod(lua_State* L)
     const TypeBinding* binding = MetaBinding::GetTypeBindingFromClosure(L, kclosureStackIndex);
     IL2CPP_ASSERT(binding != nullptr);
 
-    NameMetaMap& map = MetadataUtil::IsStaticMethod(ctx->method) ? binding->staticMap : (ctx->byVal ? binding->byvalInstanceMap : binding->byobjInstanceMap);
+    const bool isStatic = MetadataUtil::IsStaticMethod(ctx->method);
+    NameMetaMap& map = isStatic ? binding->staticMap : (ctx->byVal ? binding->byvalInstanceMap : binding->byobjInstanceMap);
     auto it = map.find(aliasName);
     if (it != map.end())
         LuaException::ThrowFormat("zlua: method alias already exists: %s", aliasName);
+
+#if ZLUA_FAST_METATABLE
+    FastMetatable::RawSetMethodOnIndexTable(L, binding->klass, isStatic, ctx->byVal, aliasName, kclosureStackIndex);
+#endif
 
     MetaInfo newMeta = {};
     newMeta.kind = MetaKind::Method;

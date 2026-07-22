@@ -14,6 +14,10 @@
 #include "../marshal/Marshaling.h"
 #include "../marshal/ObjectRegistry.h"
 
+#if ZLUA_FAST_METATABLE
+#include "FastMetatable.h"
+#endif
+
 #include "il2cpp-api-types.h"
 #include "il2cpp-blob.h"
 #include "vm/Field.h"
@@ -132,6 +136,10 @@ static void FillInstanceMetatable(lua_State* L, TypeBinding* binding, int typeTa
         lua_setfield(L, mtIndex, LuaConsts::UdKind);
     }
 
+#if ZLUA_FAST_METATABLE
+    (void)instanceIndex;
+    (void)instanceNewIndex;
+#else
     lua_pushlightuserdata(L, binding);
     lua_pushcclosure(L, instanceIndex, 1);
     lua_setfield(L, mtIndex, LuaConsts::MetaIndex);
@@ -139,6 +147,7 @@ static void FillInstanceMetatable(lua_State* L, TypeBinding* binding, int typeTa
     lua_pushlightuserdata(L, binding);
     lua_pushcclosure(L, instanceNewIndex, 1);
     lua_setfield(L, mtIndex, LuaConsts::MetaNewIndex);
+#endif
 
     if (gc != nullptr)
     {
@@ -152,6 +161,23 @@ static void FillInstanceMetatable(lua_State* L, TypeBinding* binding, int typeTa
         lua_setfield(L, mtIndex, LuaConsts::MetaToString);
     }
 }
+
+#if ZLUA_FAST_METATABLE
+static void AttachFastInstanceIndexTables(lua_State* L, TypeBinding* binding, const NameMetaMap* map, FastInstanceKind kind, int mtIndex)
+{
+    lua_newtable(L); /* memberTable */
+    lua_newtable(L); /* setterTable */
+    const int setterTableIndex = lua_gettop(L);
+    const int memberTableIndex = setterTableIndex - 1;
+    FastMetatable::FillMemberTables(L, binding, map, kind, memberTableIndex, setterTableIndex);
+    lua_pushvalue(L, memberTableIndex);
+    lua_setfield(L, mtIndex, LuaConsts::MetaIndex);
+    lua_pushvalue(L, setterTableIndex);
+    lua_setfield(L, mtIndex, LuaConsts::MetaNewIndex);
+    lua_pop(L, 2);
+    FastMetatable::SealMetatable(L, mtIndex);
+}
+#endif
 
 static int DelegateInstanceCall(lua_State* L)
 {
@@ -387,7 +413,7 @@ static int DispatchStaticNewIndex(lua_State* L, const NameMetaMap* map)
         const MarshalMetaInfo* meta = info->field.meta;
         FnMarshalLua2Cs writer = meta->lua2csWriter;
         if (writer == nullptr)
-            return luaL_error(L, "zlua: field is read-only: %s", key);
+            return luaL_error(L, "zlua: member not found or read-only: %s", key);
         writer(L, 3, info->field.staticAddress, meta);
         return 0;
     }
@@ -395,7 +421,7 @@ static int DispatchStaticNewIndex(lua_State* L, const NameMetaMap* map)
     {
         FnPropertySetter setter = info->property.setter;
         if (setter == nullptr)
-            return luaL_error(L, "zlua: property is read-only: %s", key);
+            return luaL_error(L, "zlua: member not found or read-only: %s", key);
         setter(L, nullptr, 3, &info->property);
         return 0;
     }
@@ -455,6 +481,9 @@ void TypeRegistryCommon::AttachByValInstanceMetatable(lua_State* L, Il2CppClass*
     const int mtIndex = stackGuard.GetTop();
     FillInstanceMetatable(L, binding, typeTableIndex, mtIndex, LuaConsts::UdKindByVal, klass->is_blittable ? nullptr : StructRegistry::OnReleaseByValUserData,
                           tostring, InstanceByValIndex, InstanceByValNewIndex);
+#if ZLUA_FAST_METATABLE
+    AttachFastInstanceIndexTables(L, binding, &binding->byvalInstanceMap, FastInstanceKind::StructByVal, mtIndex);
+#endif
 
     lua_setfield(L, typeTableIndex, LuaConsts::ByValInstanceMt);
 }
@@ -467,6 +496,9 @@ void TypeRegistryCommon::AttachByObjInstanceMetatable(lua_State* L, Il2CppClass*
     const int mtIndex = stackGuard.GetTop();
     FillInstanceMetatable(L, binding, typeTableIndex, mtIndex, LuaConsts::UdKindByObj, ObjectRegistry::OnReleaseObjectUserData, tostring, InstanceByObjIndex,
                           InstanceByObjNewIndex);
+#if ZLUA_FAST_METATABLE
+    AttachFastInstanceIndexTables(L, binding, &binding->byobjInstanceMap, FastInstanceKind::StructByObj, mtIndex);
+#endif
     lua_setfield(L, typeTableIndex, LuaConsts::ByObjInstanceMt);
 }
 
@@ -478,6 +510,9 @@ void TypeRegistryCommon::AttachReferenceInstanceMetatable(lua_State* L, Il2CppCl
     const int mtIndex = stackGuard.GetTop();
     FillInstanceMetatable(L, binding, typeTableIndex, mtIndex, LuaConsts::UdKindByObj, ObjectRegistry::OnReleaseObjectUserData, nullptr, InstanceReferenceIndex,
                           InstanceReferenceNewIndex);
+#if ZLUA_FAST_METATABLE
+    AttachFastInstanceIndexTables(L, binding, &binding->byobjInstanceMap, FastInstanceKind::ReferenceByObj, mtIndex);
+#endif
     if (MetadataUtil::IsDelegateClass(klass))
     {
         lua_pushcfunction(L, DelegateInstanceCall);
@@ -511,6 +546,19 @@ void TypeRegistryCommon::AttachStaticTypeMetatable(lua_State* L, Il2CppClass* kl
     lua_pushcfunction(L, TypeTableToString);
     lua_setfield(L, smtIndex, LuaConsts::MetaToString);
 
+#if ZLUA_FAST_METATABLE
+    lua_newtable(L); /* memberTable */
+    lua_newtable(L); /* setterTable */
+    const int setterTableIndex = lua_gettop(L);
+    const int memberTableIndex = setterTableIndex - 1;
+    FastMetatable::FillMemberTables(L, binding, &binding->staticMap, FastInstanceKind::Static, memberTableIndex, setterTableIndex);
+    lua_pushvalue(L, memberTableIndex);
+    lua_setfield(L, smtIndex, LuaConsts::MetaIndex);
+    lua_pushvalue(L, setterTableIndex);
+    lua_setfield(L, smtIndex, LuaConsts::MetaNewIndex);
+    lua_pop(L, 2);
+    FastMetatable::SealMetatable(L, smtIndex);
+#else
     lua_pushlightuserdata(L, binding);
     lua_pushcclosure(L, StaticIndex, 1);
     lua_setfield(L, smtIndex, LuaConsts::MetaIndex);
@@ -518,6 +566,7 @@ void TypeRegistryCommon::AttachStaticTypeMetatable(lua_State* L, Il2CppClass* kl
     lua_pushlightuserdata(L, binding);
     lua_pushcclosure(L, StaticNewIndex, 1);
     lua_setfield(L, smtIndex, LuaConsts::MetaNewIndex);
+#endif
 
     lua_setmetatable(L, typeTableIndex);
 }

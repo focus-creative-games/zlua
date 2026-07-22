@@ -22,6 +22,16 @@
 #define ZLUA_ARCH_32 1
 #endif
 
+/*
+ * ZLUA_FAST_METATABLE — defined in lua/luaconf.h (default 0).
+ * 0: legacy Dispatch* C __index/__newindex
+ * 1: OPTIMIZATION.md scheme B (sealed mt + VM fast path)
+ * Do not redefine here; keep Lua core and zlua runtime in sync (Table ABI).
+ */
+#ifndef ZLUA_FAST_METATABLE
+#error "ZLUA_FAST_METATABLE must be defined by lua/luaconf.h"
+#endif
+
 namespace zlua
 {
 

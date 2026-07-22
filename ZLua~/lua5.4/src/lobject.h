@@ -744,6 +744,11 @@ typedef struct Table {
   Node *lastfree;  /* any free position is before this position */
   struct Table *metatable;
   GCObject *gclist;
+#if ZLUA_FAST_METATABLE
+  lu_byte zlua_mt_kind;  /* 0 = normal; non-0 = ZLua sealed IMT/SMT */
+  TValue zlua_index;     /* cached __index (table) */
+  TValue zlua_newindex;  /* cached __newindex (table) */
+#endif
 } Table;
 
 

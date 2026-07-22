@@ -35,6 +35,7 @@ namespace ZLua.CppCodeGen
         {
             var results = new List<MethodBindingInfo>();
 
+            bool ignoreMarshalAsFromParam = true;
             foreach (string assName in assemblyNames)
             {
                 ModuleDef mod = assemblyCache.LoadModule(assName);
@@ -54,7 +55,7 @@ namespace ZLua.CppCodeGen
                         {
                             continue;
                         }
-                        var parameters = methodDef.Parameters.Select(p => MarshalMetaUtil.CreateParamMarshalInfo(p, true)).Skip(methodDef.IsStatic ? 0 : 1).ToList();
+                        var parameters = methodDef.Parameters.Select(p => MarshalMetaUtil.CreateParamMarshalInfo(p, ignoreMarshalAsFromParam)).Skip(methodDef.IsStatic ? 0 : 1).ToList();
                         for (int i = 0; i < parameters.Count; i++)
                         {
                             parameters[i].indexExcludedThis = i;
@@ -65,7 +66,7 @@ namespace ZLua.CppCodeGen
                             uniqueName = NameUtil.CreateUniqueName(methodDef, null, null),
                             stubName = NameUtil.CreateStubName(methodDef, null, null),
                             parameters = parameters,
-                            returnMetaInfo = MarshalMetaUtil.CreateMarshalMetaInfo(methodDef.Parameters.ReturnParameter.Type, methodDef.Parameters.ReturnParameter.ParamDef, true),
+                            returnMetaInfo = MarshalMetaUtil.CreateMarshalMetaInfo(methodDef.Parameters.ReturnParameter.Type, methodDef.Parameters.ReturnParameter.ParamDef, ignoreMarshalAsFromParam),
                         });
                     }
                 }

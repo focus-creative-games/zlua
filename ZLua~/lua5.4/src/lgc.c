@@ -544,6 +544,12 @@ static lu_mem traversetable (global_State *g, Table *h) {
   const TValue *mode = gfasttm(g, h->metatable, TM_MODE);
   TString *smode;
   markobjectN(g, h->metatable);
+#if ZLUA_FAST_METATABLE
+  if (h->zlua_mt_kind != 0) {
+    markvalue(g, &h->zlua_index);
+    markvalue(g, &h->zlua_newindex);
+  }
+#endif
   if (mode && ttisshrstring(mode) &&  /* is there a weak mode? */
       (cast_void(smode = tsvalue(mode)),
        cast_void(weakkey = strchr(getshrstr(smode), 'k')),

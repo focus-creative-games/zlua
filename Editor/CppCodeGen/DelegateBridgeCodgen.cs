@@ -208,9 +208,10 @@ namespace ZLua.CppCodeGen
             writer.WriteLine($"int errfunc = LuaEnv::PushErrorHandler();");
             writer.WriteLine($"LuaUtil::PushRef(L, luaMethod->funcRef);");
 
+            bool ignoreMarshalAsFromParam = true;
             foreach (var param in binding.invokeMethod.ParamInfos)
             {
-                LuaMarshalMetaInfo paramMetaInfo = MarshalMetaUtil.CreateMarshalMetaInfo(param.type, param.paramDef, false);
+                LuaMarshalMetaInfo paramMetaInfo = MarshalMetaUtil.CreateMarshalMetaInfo(param.type, param.paramDef, ignoreMarshalAsFromParam);
                 string metaExpr = $"ctx->paramsMeta[{param.indexExcludedThis}]";
                 writer.WriteLine(CodegenCommon.GeneratePushStatement(binding.invokeMethod.MethodDef, metaExpr, param.name, param.type, paramMetaInfo.marshalAsInfo));
             }
@@ -221,7 +222,7 @@ namespace ZLua.CppCodeGen
             {
                 string retvalName = "_retval";
                 writer.WriteLine($"{returnTypeName} {retvalName};");
-                LuaMarshalMetaInfo returnMetaInfo = MarshalMetaUtil.CreateMarshalMetaInfo(returnType, binding.invokeMethod.ReturnInfo.paramDef, false);
+                LuaMarshalMetaInfo returnMetaInfo = MarshalMetaUtil.CreateMarshalMetaInfo(returnType, binding.invokeMethod.ReturnInfo.paramDef, ignoreMarshalAsFromParam);
                 writer.WriteLine(CodegenCommon.GeneratePopStatement(binding.invokeMethod.MethodDef, "-1", $"ctx->retMeta", retvalName, returnType, returnMetaInfo.marshalAsInfo));
                 writer.WriteLine($"return {retvalName};");
             }

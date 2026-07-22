@@ -29,6 +29,7 @@
 #include "ltable.h"
 #include "ltm.h"
 #include "lvm.h"
+#include "zlua_fastmt.h"
 
 
 /*
@@ -290,6 +291,36 @@ void luaV_finishget (lua_State *L, const TValue *t, TValue *key, StkId val,
                       const TValue *slot) {
   int loop;  /* counter to avoid infinite loops */
   const TValue *tm;  /* metamethod */
+#if ZLUA_FAST_METATABLE
+  {
+    Table *mt = NULL;
+    if (ttisfulluserdata(t))
+      mt = uvalue(t)->metatable;
+    else if (ttistable(t))
+      mt = hvalue(t)->metatable;
+    if (mt != NULL && mt->zlua_mt_kind != 0) {
+      Table *idx = hvalue(&mt->zlua_index);
+      const TValue *slotv = luaH_get(idx, key);
+      if (!isempty(slotv)) {
+        if (zlua_is_getter(slotv))
+          zlua_vm_call_getter(L, slotv, t, val);
+        else
+          setobj2s(L, val, slotv);
+        return;
+      }
+      /* Static type table: extras such as _default live on SMT itself. */
+      if (ttistable(t)) {
+        const TValue *extra = luaH_get(mt, key);
+        if (!isempty(extra)) {
+          setobj2s(L, val, extra);
+          return;
+        }
+      }
+      setnilvalue(s2v(val));
+      return;
+    }
+  }
+#endif
   for (loop = 0; loop < MAXTAGLOOP; loop++) {
     if (slot == NULL) {  /* 't' is not a table? */
       lua_assert(!ttistable(t));
@@ -332,6 +363,24 @@ void luaV_finishget (lua_State *L, const TValue *t, TValue *key, StkId val,
 void luaV_finishset (lua_State *L, const TValue *t, TValue *key,
                      TValue *val, const TValue *slot) {
   int loop;  /* counter to avoid infinite loops */
+#if ZLUA_FAST_METATABLE
+  {
+    Table *mt = NULL;
+    if (ttisfulluserdata(t))
+      mt = uvalue(t)->metatable;
+    else if (ttistable(t))
+      mt = hvalue(t)->metatable;
+    if (mt != NULL && mt->zlua_mt_kind != 0) {
+      Table *setters = hvalue(&mt->zlua_newindex);
+      const TValue *slotv = luaH_get(setters, key);
+      if (!isempty(slotv) && zlua_is_setter(slotv)) {
+        zlua_vm_call_setter(L, slotv, t, val);
+        return;
+      }
+      luaG_runerror(L, "zlua: member not found or read-only");
+    }
+  }
+#endif
   for (loop = 0; loop < MAXTAGLOOP; loop++) {
     const TValue *tm;  /* '__newindex' metamethod */
     if (slot != NULL) {  /* is 't' a table? */

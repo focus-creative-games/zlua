@@ -23,7 +23,7 @@ namespace ZLua.CppCodeGen
 
     public static class MarshalMetaUtil
     {
-        public static LuaMarshalAsInfo GetLuaMarshalAsInfo(IHasCustomAttribute provider)
+        private static LuaMarshalAsInfo GetLuaMarshalAsInfoImpl(IHasCustomAttribute provider)
         {
             if (provider == null)
             {
@@ -50,7 +50,36 @@ namespace ZLua.CppCodeGen
             return info;
         }
 
-        
+        private static readonly Dictionary<TypeDef, LuaMarshalAsInfo> _luaMarshalAsInfoCache = new Dictionary<TypeDef, LuaMarshalAsInfo>();
+
+
+        private static LuaMarshalAsInfo GetLuaMarshalAsInfo(TypeDef typeDef)
+        {
+            if (_luaMarshalAsInfoCache.TryGetValue(typeDef, out var info))
+            {
+                return info;
+            }
+            info = GetLuaMarshalAsInfoImpl(typeDef);
+            _luaMarshalAsInfoCache[typeDef] = info;
+            return info;
+        }
+
+        public static LuaMarshalAsInfo GetLuaMarshalAsInfo(ParamDef paramDef, bool ignoreMarshalAsFromParam)
+        {
+            if (paramDef == null)
+            {
+                return null;
+            }
+            if (!ignoreMarshalAsFromParam)
+            {
+                LuaMarshalAsInfo info = GetLuaMarshalAsInfoImpl(paramDef);
+                if (info != null)
+                {
+                    return info;
+                }
+            }
+            return GetLuaMarshalAsInfo(paramDef.DeclaringMethod.DeclaringType);
+        }
 
         public static TypeSig ToSharedGenericInstTypeSig(TypeSig typeSig)
         {
@@ -62,22 +91,22 @@ namespace ZLua.CppCodeGen
             return t;
         }
 
-        public static LuaMarshalMetaInfo CreateMarshalMetaInfo(TypeSig typeSig, ParamDef paramDef, bool ignoreMarshalAs)
+        public static LuaMarshalMetaInfo CreateMarshalMetaInfo(TypeSig typeSig, ParamDef paramDef, bool ignoreMarshalAsFromParam)
         {
             return new LuaMarshalMetaInfo
             {
                 typeSig = ToSharedGenericInstTypeSig(typeSig),
-                marshalAsInfo = ignoreMarshalAs ? null : GetLuaMarshalAsInfo(paramDef),
+                marshalAsInfo = GetLuaMarshalAsInfo(paramDef, ignoreMarshalAsFromParam),
             };
         }
 
-        public static ParamMarshalInfo CreateParamMarshalInfo(Parameter parameter, bool ignoreMarshalAs)
+        public static ParamMarshalInfo CreateParamMarshalInfo(Parameter parameter, bool ignoreMarshalAsFromParam)
         {
             return new ParamMarshalInfo
             {
                 indexExcludedThis = parameter.Index,
                 name = parameter.Index >= 0 ? $"__p{parameter.Index}" : "__ret",
-                marshalMetaInfo = CreateMarshalMetaInfo(parameter.Type, parameter.ParamDef, ignoreMarshalAs),
+                marshalMetaInfo = CreateMarshalMetaInfo(parameter.Type, parameter.ParamDef, ignoreMarshalAsFromParam),
             };
         }
     }
