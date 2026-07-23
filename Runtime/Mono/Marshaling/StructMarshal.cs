@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
+using System.Linq.Expressions;
 using System.Runtime.InteropServices;
 using Unity.Collections.LowLevel.Unsafe;
 using ZLua.Utils;
@@ -10,8 +10,8 @@ namespace ZLua.Marshaling
     internal static class StructMarshal
     {
         private static readonly Dictionary<Type, bool> s_blittableCache = new Dictionary<Type, bool>();
-        private static readonly MethodInfo MemberwiseCloneMethod =
-            typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly Dictionary<Type, Func<object, object>> s_copyCache =
+            new Dictionary<Type, Func<object, object>>();
 
         internal static bool IsStructType(Type type)
         {
@@ -152,17 +152,21 @@ namespace ZLua.Marshaling
                 }
 
                 IntPtr udPtr = (IntPtr)header;
-                if (!IsBlittable(structType))
+                if (IsBlittable(structType))
                 {
-                    StructRegistry.RegisterBoxed(udPtr, boxed);
-                    return;
+                    int payloadSize = GetPayloadSize(structType);
+                    if (payloadSize > 0)
+                    {
+                        global::System.Runtime.InteropServices.Marshal.StructureToPtr(
+                            boxed,
+                            (IntPtr)PayloadOf(header),
+                            false);
+                    }
                 }
 
-                int payloadSize = GetPayloadSize(structType);
-                if (payloadSize > 0)
-                {
-                    global::System.Runtime.InteropServices.Marshal.StructureToPtr(boxed, (IntPtr)PayloadOf(header), false);
-                }
+                // Always refresh companion: Expression unbox/mutate/rebox yields a new box;
+                // getters prefer companion and would otherwise read a stale copy.
+                StructRegistry.RegisterBoxed(udPtr, boxed);
             }
         }
 
@@ -235,6 +239,10 @@ namespace ZLua.Marshaling
             return UnsafeUtility.SizeOf(structType);
         }
 
+        /// <summary>
+        /// Ownership copy for ByVal push/pop: unbox+rebox via a per-type compiled cloner
+        /// (no AllocHGlobal / MemberwiseClone.Invoke).
+        /// </summary>
         private static object CopyValue(object value, Type structType)
         {
             if (value == null)
@@ -242,22 +250,25 @@ namespace ZLua.Marshaling
                 return Activator.CreateInstance(structType);
             }
 
-            if (IsBlittable(structType))
+            Func<object, object> copy;
+            lock (s_copyCache)
             {
-                int size = UnsafeUtility.SizeOf(structType);
-                IntPtr buffer = global::System.Runtime.InteropServices.Marshal.AllocHGlobal(size);
-                try
+                if (!s_copyCache.TryGetValue(structType, out copy))
                 {
-                    global::System.Runtime.InteropServices.Marshal.StructureToPtr(value, buffer, false);
-                    return global::System.Runtime.InteropServices.Marshal.PtrToStructure(buffer, structType);
-                }
-                finally
-                {
-                    global::System.Runtime.InteropServices.Marshal.FreeHGlobal(buffer);
+                    copy = BuildCopy(structType);
+                    s_copyCache[structType] = copy;
                 }
             }
 
-            return MemberwiseCloneMethod.Invoke(value, null);
+            return copy(value);
+        }
+
+        private static Func<object, object> BuildCopy(Type structType)
+        {
+            ParameterExpression valueParam = Expression.Parameter(typeof(object), "value");
+            // (object)(T)boxed — unbox then rebox yields a shallow value-type copy.
+            Expression body = Expression.Convert(Expression.Convert(valueParam, structType), typeof(object));
+            return Expression.Lambda<Func<object, object>>(body, valueParam).Compile();
         }
     }
 }

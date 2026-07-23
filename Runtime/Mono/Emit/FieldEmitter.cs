@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq.Expressions;
 using System.Reflection;
 using ZLua.Utils;
 
@@ -30,40 +32,101 @@ namespace ZLua.Emit
         {
             Type declaringType = field.DeclaringType;
             Type fieldType = field.FieldType;
+            ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
 
-            return L =>
+            Expression value;
+            if (isStatic)
             {
-                StructOpaqueScope.EnterLuaToCSharp();
-                try
-                {
-                    try
-                    {
-                        object target = null;
-                        if (!isStatic)
-                        {
-                            target = BridgeMarshaling.PopTarget(L, 1, declaringType, isByVal);
-                        }
+                value = Expression.Field(null, field);
+            }
+            else
+            {
+                Expression targetObj = Expression.Call(
+                    EmitMethods.PopTarget,
+                    L,
+                    Expression.Constant(1),
+                    Expression.Constant(declaringType, typeof(Type)),
+                    Expression.Constant(isByVal));
+                value = Expression.Field(Expression.Convert(targetObj, declaringType), field);
+            }
 
-                        object value = field.GetValue(target);
-                        return BridgeMarshaling.PushReturn(L, fieldType, value);
-                    }
-                    catch (Exception ex)
-                    {
-                        return LuaCallbackBoundary.ToLuaError(L, ex);
-                    }
-                }
-                finally
-                {
-                    StructOpaqueScope.LeaveLuaToCSharp();
-                }
-            };
+            Expression body = Expression.Call(
+                EmitMethods.PushReturn,
+                L,
+                Expression.Constant(fieldType, typeof(Type)),
+                Expression.Convert(value, typeof(object)));
+
+            Func<IntPtr, int> core = Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
+            return Wrap(core);
         }
 
         private static LuaCSFunction CompileSetter(FieldInfo field, bool isStatic, bool isByVal)
         {
             Type declaringType = field.DeclaringType;
             Type fieldType = field.FieldType;
+            ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
 
+            Expression valueObj = Expression.Call(
+                EmitMethods.PopArg,
+                L,
+                Expression.Constant(2),
+                Expression.Constant(fieldType, typeof(Type)));
+            Expression typedValue = Expression.Convert(valueObj, fieldType);
+
+            Expression body;
+            if (isStatic)
+            {
+                body = Expression.Block(
+                    Expression.Assign(Expression.Field(null, field), typedValue),
+                    Expression.Constant(0));
+            }
+            else if (isByVal && declaringType.IsValueType)
+            {
+                ParameterExpression targetLocal = Expression.Variable(typeof(object), "target");
+                ParameterExpression typedTarget = Expression.Variable(declaringType, "typedTarget");
+                var exprs = new List<Expression>
+                {
+                    Expression.Assign(
+                        targetLocal,
+                        Expression.Call(
+                            EmitMethods.PopTarget,
+                            L,
+                            Expression.Constant(1),
+                            Expression.Constant(declaringType, typeof(Type)),
+                            Expression.Constant(true))),
+                    Expression.Assign(typedTarget, Expression.Convert(targetLocal, declaringType)),
+                    Expression.Assign(Expression.Field(typedTarget, field), typedValue),
+                    Expression.Call(
+                        EmitMethods.StructWriteBack,
+                        L,
+                        Expression.Constant(1),
+                        Expression.Convert(typedTarget, typeof(object)),
+                        Expression.Constant(declaringType, typeof(Type))),
+                    Expression.Constant(0),
+                };
+                body = Expression.Block(new[] { targetLocal, typedTarget }, exprs);
+            }
+            else
+            {
+                Expression targetObj = Expression.Call(
+                    EmitMethods.PopTarget,
+                    L,
+                    Expression.Constant(1),
+                    Expression.Constant(declaringType, typeof(Type)),
+                    Expression.Constant(false));
+                body = Expression.Block(
+                    Expression.Assign(
+                        Expression.Field(Expression.Convert(targetObj, declaringType), field),
+                        typedValue),
+                    Expression.Constant(0));
+            }
+
+            Func<IntPtr, int> core = Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
+            return Wrap(core);
+        }
+
+        private static LuaCSFunction Wrap(Func<IntPtr, int> core)
+        {
             return L =>
             {
                 StructOpaqueScope.EnterLuaToCSharp();
@@ -71,16 +134,7 @@ namespace ZLua.Emit
                 {
                     try
                     {
-                        if (isStatic)
-                        {
-                            object value = BridgeMarshaling.PopArg(L, 2, fieldType);
-                            field.SetValue(null, value);
-                            return 0;
-                        }
-
-                        object valueInst = BridgeMarshaling.PopArg(L, 2, fieldType);
-                        BridgeMarshaling.SetInstanceField(L, 1, field, valueInst, isByVal);
-                        return 0;
+                        return core(L);
                     }
                     catch (Exception ex)
                     {

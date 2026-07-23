@@ -116,30 +116,5 @@ namespace ZLua.Emit
                 LuaCallbackBoundary.Throw($"zlua argument mismatch: expected {expectedArgs} argument(s), got {actual}");
             }
         }
-
-        /// <summary>
-        /// Sets an instance field and writes back ByVal userdata payload when needed.
-        /// </summary>
-        internal static void SetInstanceField(IntPtr L, int targetIndex, FieldInfo field, object value, bool isByVal)
-        {
-            Type declaringType = field.DeclaringType;
-            object target = PopTarget(L, targetIndex, declaringType, isByVal);
-            field.SetValue(target, value);
-            if (isByVal)
-            {
-                StructMarshal.WriteBack(L, targetIndex, target, declaringType);
-            }
-        }
-
-        internal static void SetInstanceProperty(IntPtr L, int targetIndex, PropertyInfo property, object value, bool isByVal)
-        {
-            Type declaringType = property.DeclaringType;
-            object target = PopTarget(L, targetIndex, declaringType, isByVal);
-            property.SetValue(target, value, null);
-            if (isByVal)
-            {
-                StructMarshal.WriteBack(L, targetIndex, target, declaringType);
-            }
-        }
     }
 }

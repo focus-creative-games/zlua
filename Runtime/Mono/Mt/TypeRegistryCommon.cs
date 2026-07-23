@@ -245,42 +245,7 @@ namespace ZLua.Mt
             try
             {
                 object obj = ObjectRegistry.PopThis(L, 1);
-                Delegate del = obj as Delegate;
-                if (del == null)
-                {
-                    LuaCallbackBoundary.Throw("zlua: __call expects delegate userdata");
-                    return 0;
-                }
-
-                MethodInfo invoke = del.GetType().GetMethod("Invoke");
-                if (invoke == null)
-                {
-                    LuaCallbackBoundary.Throw("zlua: delegate Invoke method not found");
-                    return 0;
-                }
-
-                ParameterInfo[] parameters = invoke.GetParameters();
-                int luaArgCount = LuaDll.lua_gettop(L) - 1;
-                if (luaArgCount != parameters.Length)
-                {
-                    LuaCallbackBoundary.Throw(
-                        $"zlua: delegate invoke expects {parameters.Length} argument(s), got {luaArgCount}");
-                }
-
-                var args = new object[parameters.Length];
-                for (int i = 0; i < parameters.Length; i++)
-                {
-                    args[i] = TypedMarshal.PopObject(L, i + 2, parameters[i].ParameterType);
-                }
-
-                object result = del.DynamicInvoke(args);
-                if (invoke.ReturnType == typeof(void))
-                {
-                    return 0;
-                }
-
-                TypedMarshal.PushObject(L, result, invoke.ReturnType);
-                return 1;
+                return DelegateInvokerCache.Invoke(obj as Delegate, L);
             }
             catch (Exception ex)
             {

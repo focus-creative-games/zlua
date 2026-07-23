@@ -190,15 +190,35 @@ namespace ZLua.Marshaling
                 return null;
             }
 
+            if (!TryGetObject(L, idx, out object obj))
+            {
+                LuaCallbackBoundary.Throw("zlua argument mismatch: expected by-obj userdata");
+            }
+
+            return obj;
+        }
+
+        /// <summary>
+        /// Soft peek for ByObj userdata; returns false for nil / non-ByObj (no throw).
+        /// </summary>
+        internal static bool TryGetObject(IntPtr L, int idx, out object obj)
+        {
+            obj = null;
+            if (LuaDll.lua_isnil(L, idx))
+            {
+                return true;
+            }
+
             unsafe
             {
                 ZLuaObjectUserData* ud = (ZLuaObjectUserData*)LuaDll.lua_touserdata(L, idx);
                 if (ud == null || ud->Header.Kind != UserDataKind.ByObj)
                 {
-                    LuaCallbackBoundary.Throw("zlua argument mismatch: expected by-obj userdata");
+                    return false;
                 }
 
-                return s_objectSlots.Get(ud->SlotIndex).Obj;
+                obj = s_objectSlots.Get(ud->SlotIndex).Obj;
+                return true;
             }
         }
 

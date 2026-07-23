@@ -325,41 +325,31 @@ namespace ZLua.Emit
         }
 
         /// <summary>
-        /// Same-arity ctor overloads (e.g. Calculator(int) vs Calculator(string)): try each until Pop succeeds.
+        /// Same-arity ctor overloads (e.g. Calculator(int) vs Calculator(string)):
+        /// select by Lua argument shape, not try/fail Pop.
         /// </summary>
         private static Func<IntPtr, int> BuildSameArityDispatchCore(List<ConstructorInfo> ctors, Type type)
         {
             var cores = new Func<IntPtr, int>[ctors.Count];
+            var ctorArray = new ConstructorInfo[ctors.Count];
             for (int i = 0; i < ctors.Count; i++)
             {
+                ctorArray[i] = ctors[i];
                 cores[i] = BuildDirectCore(ctors[i], type);
             }
 
             return L =>
             {
-                Exception lastError = null;
-                for (int i = 0; i < cores.Length; i++)
+                if (!LuaArgMatcher.TrySelect(L, argStart: 2, ctorArray, out int selected)
+                    || selected < 0
+                    || selected >= cores.Length)
                 {
-                    int top = LuaDll.lua_gettop(L);
-                    try
-                    {
-                        return cores[i](L);
-                    }
-                    catch (Exception ex)
-                    {
-                        lastError = ex;
-                        LuaDll.lua_settop(L, top);
-                    }
+                    LuaCallbackBoundary.Throw(
+                        $"zlua: no matching constructor for {TypeRegistry.GetLuaFullName(type)}");
+                    return 0;
                 }
 
-                if (lastError != null)
-                {
-                    throw lastError;
-                }
-
-                LuaCallbackBoundary.Throw(
-                    $"zlua: no matching constructor for {TypeRegistry.GetLuaFullName(type)}");
-                return 0;
+                return cores[selected](L);
             };
         }
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
 using ZLua.Utils;
@@ -96,17 +97,42 @@ namespace ZLua.Emit
                     Expression.Call(setter, typedValue),
                     Expression.Constant(0));
             }
-            else
+            else if (isByVal && declaringType.IsValueType)
             {
-                // SetInstanceProperty handles ByVal writeback
-                body = Expression.Block(
+                ParameterExpression targetLocal = Expression.Variable(typeof(object), "target");
+                ParameterExpression typedTarget = Expression.Variable(declaringType, "typedTarget");
+                var exprs = new List<Expression>
+                {
+                    Expression.Assign(
+                        targetLocal,
+                        Expression.Call(
+                            EmitMethods.PopTarget,
+                            L,
+                            Expression.Constant(1),
+                            Expression.Constant(declaringType, typeof(Type)),
+                            Expression.Constant(true))),
+                    Expression.Assign(typedTarget, Expression.Convert(targetLocal, declaringType)),
+                    Expression.Call(typedTarget, setter, typedValue),
                     Expression.Call(
-                        EmitMethods.SetInstanceProperty,
+                        EmitMethods.StructWriteBack,
                         L,
                         Expression.Constant(1),
-                        Expression.Constant(property, typeof(PropertyInfo)),
-                        valueObj,
-                        Expression.Constant(isByVal)),
+                        Expression.Convert(typedTarget, typeof(object)),
+                        Expression.Constant(declaringType, typeof(Type))),
+                    Expression.Constant(0),
+                };
+                body = Expression.Block(new[] { targetLocal, typedTarget }, exprs);
+            }
+            else
+            {
+                Expression targetObj = Expression.Call(
+                    EmitMethods.PopTarget,
+                    L,
+                    Expression.Constant(1),
+                    Expression.Constant(declaringType, typeof(Type)),
+                    Expression.Constant(false));
+                body = Expression.Block(
+                    Expression.Call(Expression.Convert(targetObj, declaringType), setter, typedValue),
                     Expression.Constant(0));
             }
 

@@ -25,9 +25,6 @@ namespace ZLua.Emit
         internal static readonly MethodInfo PushReturn =
             Require(typeof(BridgeMarshaling), nameof(BridgeMarshaling.PushReturn));
 
-        internal static readonly MethodInfo SetInstanceProperty =
-            Require(typeof(BridgeMarshaling), nameof(BridgeMarshaling.SetInstanceProperty));
-
         internal static readonly MethodInfo StructWriteBack =
             Require(typeof(StructMarshal), nameof(StructMarshal.WriteBack));
 
