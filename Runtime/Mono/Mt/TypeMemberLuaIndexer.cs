@@ -1,16 +1,15 @@
 using System;
-using ZLua;
-using ZLua.Marshal;
-using ZLua.MethodBridge;
-using ZLua.DelegateImpl;
+using ZLua.Utils;
 
 namespace ZLua.Mt
 {
     /// <summary>
-    /// Lua-side __index / __newindex per META_TABLE_SPEC.md (methodTable + field getter/setter tables).
+    /// Lua-side __index / __newindex per META_TABLE_SPEC / Docs-New metatable index
+    /// (methodTable + fieldGetterTable + fieldSetterTable).
     /// </summary>
     internal static class TypeMemberLuaIndexer
     {
+        // setter(obj, value) — matches Docs-New/spec/metatable/02-INDEX.md
         private const string BootstrapChunk = @"
 local rawget = rawget
 
@@ -53,7 +52,7 @@ local function bind_indexer(methodTable, fieldGetterTable, fieldSetterTable, ext
     local function newindex(obj, key, value)
         local setter = rawget(fieldSetterTable, key)
         if setter ~= nil then
-            setter(obj, key, value)
+            setter(obj, value)
             return
         end
         if rawget(fieldGetterTable, key) ~= nil then
@@ -68,7 +67,7 @@ end
 return bind_indexer
 ";
 
-        private static int _bindIndexerRef;
+        private static int _bindIndexerRef = LuaConsts.LuaNoRef;
         private static bool _loaded;
 
         internal static void EnsureLoaded(IntPtr luaState)
@@ -139,77 +138,52 @@ return bind_indexer
         {
             EnsureLoaded(luaState);
             int absMetatableIndex = LuaDll.lua_absindex(luaState, metatableIndex);
+            int absMethod = LuaDll.lua_absindex(luaState, methodTableIndex);
+            int absGetter = LuaDll.lua_absindex(luaState, fieldGetterTableIndex);
+            int absSetter = LuaDll.lua_absindex(luaState, fieldSetterTableIndex);
+            int absExtras = extrasTableIndex != 0 ? LuaDll.lua_absindex(luaState, extrasTableIndex) : 0;
 
-            int methodRef = RefMemberTable(luaState, methodTableIndex, "methodTable");
-            int getterRef = RefMemberTable(luaState, fieldGetterTableIndex, "fieldGetterTable");
-            int setterRef = RefMemberTable(luaState, fieldSetterTableIndex, "fieldSetterTable");
-            int extrasRef = extrasTableIndex != 0
-                ? RefMemberTable(luaState, extrasTableIndex, "extrasTable")
-                : 0;
-
-            try
+            ExpectTable(luaState, absMethod, "methodTable");
+            ExpectTable(luaState, absGetter, "fieldGetterTable");
+            ExpectTable(luaState, absSetter, "fieldSetterTable");
+            if (absExtras != 0)
             {
-                LuaDll.lua_rawgeti(luaState, LuaConsts.LuaRegistryIndex, _bindIndexerRef);
-                PushMemberTableRef(luaState, methodRef);
-                PushMemberTableRef(luaState, getterRef);
-                PushMemberTableRef(luaState, setterRef);
-                if (extrasRef != 0)
-                {
-                    PushMemberTableRef(luaState, extrasRef);
-                }
-                else
-                {
-                    LuaDll.lua_pushnil(luaState);
-                }
-
-                LuaDll.lua_pushboolean(luaState, isStatic ? 1 : 0);
-
-                if (LuaDll.lua_pcall(luaState, 5, 2, 0) != 0)
-                {
-                    string error = LuaDllExtension.tostring(luaState, -1) ?? "unknown Lua error";
-                    LuaDll.lua_pop(luaState, 1);
-                    throw new InvalidOperationException("zlua: bind member indexer failed: " + error);
-                }
-
-                LuaDll.lua_setfield(luaState, absMetatableIndex, "__newindex");
-                LuaDll.lua_setfield(luaState, absMetatableIndex, "__index");
+                ExpectTable(luaState, absExtras, "extrasTable");
             }
-            finally
+
+            LuaDll.lua_rawgeti(luaState, LuaConsts.LuaRegistryIndex, _bindIndexerRef);
+            LuaDll.lua_pushvalue(luaState, absMethod);
+            LuaDll.lua_pushvalue(luaState, absGetter);
+            LuaDll.lua_pushvalue(luaState, absSetter);
+            if (absExtras != 0)
             {
-                UnrefMemberTable(luaState, methodRef);
-                UnrefMemberTable(luaState, getterRef);
-                UnrefMemberTable(luaState, setterRef);
-                if (extrasRef != 0)
-                {
-                    UnrefMemberTable(luaState, extrasRef);
-                }
+                LuaDll.lua_pushvalue(luaState, absExtras);
             }
+            else
+            {
+                LuaDll.lua_pushnil(luaState);
+            }
+
+            LuaDll.lua_pushboolean(luaState, isStatic ? 1 : 0);
+
+            if (LuaDll.lua_pcall(luaState, 5, 2, 0) != 0)
+            {
+                string error = LuaDllExtension.tostring(luaState, -1) ?? "unknown Lua error";
+                LuaDll.lua_pop(luaState, 1);
+                throw new InvalidOperationException("zlua: bind member indexer failed: " + error);
+            }
+
+            // pcall returns index, newindex — set __newindex first (top), then __index
+            LuaDll.lua_setfield(luaState, absMetatableIndex, LuaConsts.MetaNewIndex);
+            LuaDll.lua_setfield(luaState, absMetatableIndex, LuaConsts.MetaIndex);
         }
 
-        private static int RefMemberTable(IntPtr luaState, int tableIndex, string label)
+        private static void ExpectTable(IntPtr luaState, int index, string label)
         {
-            int absIndex = LuaDll.lua_absindex(luaState, tableIndex);
-            LuaDataType valueType = LuaDll.lua_type(luaState, absIndex);
-            if (valueType != LuaDataType.Table)
+            if (LuaDll.lua_type(luaState, index) != LuaDataType.Table)
             {
                 throw new InvalidOperationException(
-                    $"zlua: bind member indexer expects {label} to be a table at stack index {absIndex}, got {valueType}");
-            }
-
-            LuaDll.lua_pushvalue(luaState, absIndex);
-            return LuaDll.luaL_ref(luaState, LuaConsts.LuaRegistryIndex);
-        }
-
-        private static void PushMemberTableRef(IntPtr luaState, int tableRef)
-        {
-            LuaDll.lua_rawgeti(luaState, LuaConsts.LuaRegistryIndex, tableRef);
-        }
-
-        private static void UnrefMemberTable(IntPtr luaState, int tableRef)
-        {
-            if (tableRef != 0)
-            {
-                LuaDll.luaL_unref(luaState, LuaConsts.LuaRegistryIndex, tableRef);
+                    $"zlua: bind member indexer expects {label} to be a table, got {LuaDll.lua_type(luaState, index)}");
             }
         }
     }

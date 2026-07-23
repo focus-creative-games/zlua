@@ -11,7 +11,8 @@ class ObjectRegistry
     static void Initialize(lua_State* L);
     static void Shutdown(lua_State* L);
 
-    static void Push(lua_State* L, Il2CppObject* obj, int metatableRefIndex);
+    /* viewKlass: declared-type facade for metatable / (identity, view) cache. */
+    static void Push(lua_State* L, Il2CppObject* obj, Il2CppClass* viewKlass, int metatableRefIndex);
     static Il2CppObject* Pop(lua_State* L, int idx);
 
     static inline Il2CppObject* PopThis(lua_State* L, int idx)

@@ -6,7 +6,7 @@
 #include "../utils/MetadataUtil.h"
 #include "ObjectRegistry.h"
 #include "ObjectMarshal.h"
-#include "Marshaling.h"
+#include "TypedMarshal.h"
 #include "StringMarshal.h"
 
 #include "vm/Array.h"
@@ -107,7 +107,7 @@ void PushAsPrimitiveTable(lua_State* L, Il2CppArray* array)
     for (il2cpp_array_size_t i = 0; i < array->max_length; ++i)
     {
         T value = startAddr[i];
-        DefaultMarshaling<T>::Push(L, value);
+        DefaultTypedMarshal<T>::Push(L, value);
         lua_rawseti(L, -2, i + 1);
     }
 }
@@ -120,7 +120,7 @@ Il2CppArray* PopFromPrimitiveTable(lua_State* L, int arrayIndex, Il2CppClass* kl
     for (int32_t i = 0; i < length; ++i)
     {
         lua_rawgeti(L, arrayIndex, i + 1);
-        startAddr[i] = DefaultMarshaling<T>::Pop(L, -1);
+        startAddr[i] = DefaultTypedMarshal<T>::Pop(L, -1);
         lua_pop(L, 1);
     }
     return newArray;
@@ -213,7 +213,7 @@ void ArrayMarshal::PushAsTable(lua_State* L, Il2CppArray* array)
         for (il2cpp_array_size_t i = 0; i < array->max_length; ++i)
         {
             void* valueAddr = il2cpp_array_addr_with_size(array, i, elementSize);
-            Marshaling::PushByType(L, valueAddr, elementType);
+            TypedMarshal::PushByType(L, valueAddr, elementType);
             lua_rawseti(L, -2, i + 1);
         }
         break;
@@ -303,7 +303,7 @@ Il2CppArray* ArrayMarshal::PopFromTable(lua_State* L, int arrayIndex, Il2CppClas
         {
             lua_rawgeti(L, arrayIndex, i + 1);
             void* valueAddr = il2cpp_array_addr_with_size(newArray, i, elementSize);
-            Marshaling::PopByType(L, -1, valueAddr, elementType);
+            TypedMarshal::PopByType(L, -1, valueAddr, elementType);
             lua_pop(L, 1);
         }
         return newArray;

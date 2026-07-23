@@ -2,7 +2,7 @@
 
 #include "../lvm/LuaEnv.h"
 #include "../marshal/MarshalDefs.h"
-#include "../marshal/Marshaling.h"
+#include "../marshal/TypedMarshal.h"
 #include "../marshal/ArrayMarshal.h"
 #include "../marshal/ObjectMarshal.h"
 #include "../marshal/StringMarshal.h"
@@ -206,7 +206,7 @@ namespace delegatebridge
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
-        DefaultMarshaling<bool>::Push(L, __p0);
+        DefaultTypedMarshal<bool>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 0, errfunc);
     }
     static void InvokeImpl_System_Action_601_Invoke_24C629DDF46CAFAEE7C2BD96E856EDE1(Il2CppObject* target, int32_t __p0, const MethodInfo* method)
@@ -221,7 +221,7 @@ namespace delegatebridge
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 0, errfunc);
     }
     static void InvokeImpl_System_Action_601_Invoke_EC0CA2AB4907826B3CFB12E5D3146419(Il2CppObject* target, intptr_t __p0, const MethodInfo* method)
@@ -236,7 +236,7 @@ namespace delegatebridge
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
-        DefaultMarshaling<intptr_t>::Push(L, __p0);
+        DefaultTypedMarshal<intptr_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 0, errfunc);
     }
     static void InvokeImpl_System_Action_601_Invoke_41AECDF51E0628BC523C0BDA09BE7ED6(Il2CppObject* target, Il2CppObject* __p0, const MethodInfo* method)
@@ -536,7 +536,7 @@ namespace delegatebridge
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 0, errfunc);
     }
     static void InvokeImpl_System_Action_602_Invoke_75DB1211162494160E4D21CFCC571CD3(Il2CppObject* target, int32_t __p0, int32_t __p1, const MethodInfo* method)
@@ -551,8 +551,8 @@ namespace delegatebridge
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
-        DefaultMarshaling<int32_t>::Push(L, __p1);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<int32_t>::Push(L, __p1);
         LuaUtil::PCall(L, 2, 0, errfunc);
     }
     static void InvokeImpl_System_Action_602_Invoke_59B3143529826F3F27315CD6CCCEE9DD(Il2CppObject* target, int32_t __p0, Il2CppString* __p1, const MethodInfo* method)
@@ -567,7 +567,7 @@ namespace delegatebridge
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
         StringMarshal::Push(L, __p1);
         LuaUtil::PCall(L, 2, 0, errfunc);
     }
@@ -600,7 +600,7 @@ namespace delegatebridge
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
         StringMarshal::Push(L, __p0);
-        DefaultMarshaling<bool>::Push(L, __p1);
+        DefaultTypedMarshal<bool>::Push(L, __p1);
         LuaUtil::PCall(L, 2, 0, errfunc);
     }
     static void InvokeImpl_System_Action_602_Invoke_61BAF5D906CAE0920A497716E1A0873B(Il2CppObject* target, Il2CppObject* __p0, Il2CppObject* __p1, const MethodInfo* method)
@@ -647,8 +647,8 @@ namespace delegatebridge
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
-        DefaultMarshaling<int32_t>::Push(L, __p1);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<int32_t>::Push(L, __p1);
         LuaUtil::PCall(L, 2, 0, errfunc);
     }
     static void InvokeImpl_System_Action_602_Invoke_E09F3BDAD5FBF2E47531DBFDF2C5E6C1(Il2CppObject* target, PhysicsScene_7789191B084D38B36003CA2FFB99B451 __p0, NativeArray_601_D0529AAB3CC1DB21D7B7C43A7EF16D47 __p1, const MethodInfo* method)
@@ -680,7 +680,7 @@ namespace delegatebridge
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
-        DefaultMarshaling<int32_t>::Push(L, __p1);
+        DefaultTypedMarshal<int32_t>::Push(L, __p1);
         LuaUtil::PCall(L, 2, 0, errfunc);
     }
     static void InvokeImpl_System_Action_602_Invoke_90B5FFACA3DCCC58197939127C1BFCD4(Il2CppObject* target, Il2CppObject* __p0, Il2CppObject* __p1, const MethodInfo* method)
@@ -743,9 +743,9 @@ namespace delegatebridge
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
-        DefaultMarshaling<bool>::Push(L, __p0);
-        DefaultMarshaling<bool>::Push(L, __p1);
-        DefaultMarshaling<int32_t>::Push(L, __p2);
+        DefaultTypedMarshal<bool>::Push(L, __p0);
+        DefaultTypedMarshal<bool>::Push(L, __p1);
+        DefaultTypedMarshal<int32_t>::Push(L, __p2);
         LuaUtil::PCall(L, 3, 0, errfunc);
     }
     static void InvokeImpl_System_Action_603_Invoke_D52448CCB9CCFBB5C3D3B91010391E01(Il2CppObject* target, Il2CppString* __p0, bool __p1, DebugScreenCapture_D801C2E81C22E70B43AF647AB6D62D90 __p2, const MethodInfo* method)
@@ -761,7 +761,7 @@ namespace delegatebridge
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
         StringMarshal::Push(L, __p0);
-        DefaultMarshaling<bool>::Push(L, __p1);
+        DefaultTypedMarshal<bool>::Push(L, __p1);
         StructMarshal::PushValue(L, &__p2, ctx->paramsMeta[2]->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->paramsMeta[2]));
         LuaUtil::PCall(L, 3, 0, errfunc);
     }
@@ -778,10 +778,10 @@ namespace delegatebridge
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
         ArrayMarshal::PushAsArrayObject(L, __p0, ctx->paramsMeta[0]);
-        DefaultMarshaling<intptr_t>::Push(L, __p1);
-        DefaultMarshaling<intptr_t>::Push(L, __p2);
-        DefaultMarshaling<int32_t>::Push(L, __p3);
-        DefaultMarshaling<int32_t>::Push(L, __p4);
+        DefaultTypedMarshal<intptr_t>::Push(L, __p1);
+        DefaultTypedMarshal<intptr_t>::Push(L, __p2);
+        DefaultTypedMarshal<int32_t>::Push(L, __p3);
+        DefaultTypedMarshal<int32_t>::Push(L, __p4);
         DelegateMarshal::Push(L, reinterpret_cast<Il2CppDelegate*>(__p5), MarshalMeta::EnsureByValMetatableRef(L, ctx->paramsMeta[5]));
         LuaUtil::PCall(L, 6, 0, errfunc);
     }
@@ -797,13 +797,13 @@ namespace delegatebridge
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
-        DefaultMarshaling<intptr_t>::Push(L, __p0);
-        DefaultMarshaling<intptr_t>::Push(L, __p1);
-        DefaultMarshaling<intptr_t>::Push(L, __p2);
-        DefaultMarshaling<intptr_t>::Push(L, __p3);
-        DefaultMarshaling<intptr_t>::Push(L, __p4);
-        DefaultMarshaling<intptr_t>::Push(L, __p5);
-        DefaultMarshaling<int32_t>::Push(L, __p6);
+        DefaultTypedMarshal<intptr_t>::Push(L, __p0);
+        DefaultTypedMarshal<intptr_t>::Push(L, __p1);
+        DefaultTypedMarshal<intptr_t>::Push(L, __p2);
+        DefaultTypedMarshal<intptr_t>::Push(L, __p3);
+        DefaultTypedMarshal<intptr_t>::Push(L, __p4);
+        DefaultTypedMarshal<intptr_t>::Push(L, __p5);
+        DefaultTypedMarshal<int32_t>::Push(L, __p6);
         DelegateMarshal::Push(L, reinterpret_cast<Il2CppDelegate*>(__p7), MarshalMeta::EnsureByValMetatableRef(L, ctx->paramsMeta[7]));
         LuaUtil::PCall(L, 8, 0, errfunc);
     }
@@ -870,7 +870,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p1), ctx->paramsMeta[1]);
         LuaUtil::PCall(L, 2, 1, errfunc);
         int32_t _retval;
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     static int32_t InvokeImpl_System_Comparison_601_Invoke_702EFBA29914C6663F211A284A4BD4FF(Il2CppObject* target, Il2CppObject* __p0, Il2CppObject* __p1, const MethodInfo* method)
@@ -889,7 +889,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p1), ctx->paramsMeta[1]);
         LuaUtil::PCall(L, 2, 1, errfunc);
         int32_t _retval;
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     static int32_t InvokeImpl_System_Comparison_601_Invoke_EAD6050AF192A6946ED5269EED2D5BDF(Il2CppObject* target, Il2CppObject* __p0, Il2CppObject* __p1, const MethodInfo* method)
@@ -908,7 +908,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p1), ctx->paramsMeta[1]);
         LuaUtil::PCall(L, 2, 1, errfunc);
         int32_t _retval;
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     static void InvokeImpl_System_ConsoleCancelEventHandler_Invoke_C53BC02A5B1D2EF801D4CDE444794C5A(Il2CppObject* target, Il2CppObject* __p0, Il2CppObject* __p1, const MethodInfo* method)
@@ -989,7 +989,7 @@ namespace delegatebridge
         LuaUtil::PushRef(L, luaMethod->funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static Il2CppObject* InvokeImpl_System_Func_601_Invoke_AEA92837B43BDBFDB5B7AC92A7074CAA(Il2CppObject* target, const MethodInfo* method)
@@ -1144,7 +1144,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
         LuaUtil::PCall(L, 1, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static int32_t InvokeImpl_System_Func_602_Invoke_0CE2F8006A37402C00913A791941C2D8(Il2CppObject* target, int32_t __p0, const MethodInfo* method)
@@ -1159,10 +1159,10 @@ namespace delegatebridge
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
         int32_t _retval;
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     static bool InvokeImpl_System_Func_602_Invoke_C110A6E6DA39CEA93B02EDD35F30097A(Il2CppObject* target, Il2CppObject* __p0, const MethodInfo* method)
@@ -1180,7 +1180,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
         LuaUtil::PCall(L, 1, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static int32_t InvokeImpl_System_Func_602_Invoke_7E25632ABFB659591C9C23D4561D7980(Il2CppObject* target, Il2CppObject* __p0, const MethodInfo* method)
@@ -1198,7 +1198,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
         LuaUtil::PCall(L, 1, 1, errfunc);
         int32_t _retval;
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     static bool InvokeImpl_System_Func_602_Invoke_B7F9C929D2D760F42603214EC9698F6B(Il2CppObject* target, Il2CppObject* __p0, const MethodInfo* method)
@@ -1216,7 +1216,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
         LuaUtil::PCall(L, 1, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static Il2CppObject* InvokeImpl_System_Func_602_Invoke_0E9900F6C7CB2561D49C09C3AE7DE83E(Il2CppObject* target, Il2CppObject* __p0, const MethodInfo* method)
@@ -1252,7 +1252,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
         LuaUtil::PCall(L, 1, 1, errfunc);
         int32_t _retval;
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     static bool InvokeImpl_System_Func_602_Invoke_51CEB3E46CAE6B3DF8A69AD83F729605(Il2CppObject* target, Il2CppObject* __p0, const MethodInfo* method)
@@ -1270,7 +1270,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
         LuaUtil::PCall(L, 1, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static Il2CppArray* InvokeImpl_System_Func_602_Invoke_E0C21A67BCFC4A75E3A1F30BCAA86CE3(Il2CppObject* target, Il2CppObject* __p0, const MethodInfo* method)
@@ -1324,7 +1324,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
         LuaUtil::PCall(L, 1, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static Il2CppObject* InvokeImpl_System_Func_602_Invoke_8DE427C01B2A998665357D4AA354A544(Il2CppObject* target, Il2CppObject* __p0, const MethodInfo* method)
@@ -1360,7 +1360,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
         LuaUtil::PCall(L, 1, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static bool InvokeImpl_System_Func_602_Invoke_F8D59E2D4A6B994D3776790B8428FC8A(Il2CppObject* target, int32_t __p0, const MethodInfo* method)
@@ -1375,10 +1375,10 @@ namespace delegatebridge
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static bool InvokeImpl_System_Func_603_Invoke_DBA73F3DF7E04ADA6EF414EAB3D99AD6(Il2CppObject* target, int32_t __p0, intptr_t __p1, const MethodInfo* method)
@@ -1393,11 +1393,11 @@ namespace delegatebridge
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
-        DefaultMarshaling<intptr_t>::Push(L, __p1);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<intptr_t>::Push(L, __p1);
         LuaUtil::PCall(L, 2, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static Il2CppObject* InvokeImpl_System_Func_603_Invoke_0AA728C1802D98A07EB17AC99F8EA9E2(Il2CppObject* target, Il2CppObject* __p0, Il2CppArray* __p1, const MethodInfo* method)
@@ -1433,7 +1433,7 @@ namespace delegatebridge
         LuaUtil::PushRef(L, luaMethod->funcRef);
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
         StringMarshal::Push(L, __p1);
-        DefaultMarshaling<bool>::Push(L, __p2);
+        DefaultTypedMarshal<bool>::Push(L, __p2);
         LuaUtil::PCall(L, 3, 1, errfunc);
         Il2CppObject* _retval;
         _retval = reinterpret_cast<Il2CppObject*>(ObjectMarshal::Pop(L, -1, ctx->retMeta->typeKlass));
@@ -1454,7 +1454,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
         LuaUtil::PCall(L, 1, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static bool InvokeImpl_System_Predicate_601_Invoke_F0ADF08342507F130C6D901BCF1C619A(Il2CppObject* target, Il2CppObject* __p0, const MethodInfo* method)
@@ -1472,7 +1472,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
         LuaUtil::PCall(L, 1, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static bool InvokeImpl_System_Predicate_601_Invoke_78F859C3DBC2E777ABA61B6A194FE916(Il2CppObject* target, Il2CppObject* __p0, const MethodInfo* method)
@@ -1490,7 +1490,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
         LuaUtil::PCall(L, 1, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static bool InvokeImpl_System_Reflection_MemberFilter_Invoke_95ED7EA54716BCDB3AF751AF3B389266(Il2CppObject* target, Il2CppObject* __p0, Il2CppObject* __p1, const MethodInfo* method)
@@ -1509,7 +1509,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p1), ctx->paramsMeta[1]);
         LuaUtil::PCall(L, 2, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static bool InvokeImpl_System_Reflection_TypeFilter_Invoke_F9BFBD61A8A5464849C311B7EC71A29A(Il2CppObject* target, Il2CppObject* __p0, Il2CppObject* __p1, const MethodInfo* method)
@@ -1528,7 +1528,7 @@ namespace delegatebridge
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p1), ctx->paramsMeta[1]);
         LuaUtil::PCall(L, 2, 1, errfunc);
         bool _retval;
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     static Il2CppObject* InvokeImpl_System_ResolveEventHandler_Invoke_63D09AAB8B6FC6A81F37CC26A468C659(Il2CppObject* target, Il2CppObject* __p0, Il2CppObject* __p1, const MethodInfo* method)
@@ -1596,7 +1596,7 @@ namespace delegatebridge
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
         ObjectMarshal::Push(L, reinterpret_cast<Il2CppObject*>(__p0), ctx->paramsMeta[0]);
-        DefaultMarshaling<bool>::Push(L, __p1);
+        DefaultTypedMarshal<bool>::Push(L, __p1);
         LuaUtil::PCall(L, 2, 0, errfunc);
     }
     static void InvokeImpl_System_UnhandledExceptionEventHandler_Invoke_B09F08BCB4B1BC377C8A356FB27BDC13(Il2CppObject* target, Il2CppObject* __p0, Il2CppObject* __p1, const MethodInfo* method)
@@ -1658,7 +1658,7 @@ namespace delegatebridge
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, luaMethod->funcRef);
         StructMarshal::PushValue(L, &__p0, ctx->paramsMeta[0]->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->paramsMeta[0]));
-        DefaultMarshaling<int32_t>::Push(L, __p1);
+        DefaultTypedMarshal<int32_t>::Push(L, __p1);
         LuaUtil::PCall(L, 2, 0, errfunc);
     }
     static void InvokeImpl_UnityEngine_Events_UnityAction_602_Invoke_DFAEF22D84FB1A5C41A9C4B75A41FD82(Il2CppObject* target, Scene_E7331A80F14DA8FDE306F5639BD2AD98 __p0, Scene_E7331A80F14DA8FDE306F5639BD2AD98 __p1, const MethodInfo* method)

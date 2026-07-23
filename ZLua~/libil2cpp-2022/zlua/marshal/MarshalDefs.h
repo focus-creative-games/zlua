@@ -50,7 +50,7 @@ struct MarshalMetaInfo
     FnMarshalLua2Cs lua2csWriter;
     FnMarshalCs2Lua cs2luaWriter;
     const Il2CppType* type;
-    Il2CppClass* typeKlass; // this field is set only for value type or generic value type
+    Il2CppClass* typeKlass; // declared type for marshal facade (class/interface/object/array/struct/...)
     int32_t size;
     int luaByValRefIndex;
     int luaByObjRefIndex;
@@ -73,8 +73,10 @@ struct FieldMarshalCtx
 };
 
 
-typedef void (*FnPropertyGetter)(lua_State* L, void* target, const void* ctx);
-typedef void (*FnPropertySetter)(lua_State* L, void* target, int valueIdx, const void* ctx);
+struct PropertyMarshalCtx;
+
+typedef void (*FnPropertyGetter)(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx);
+typedef void (*FnPropertySetter)(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx);
 
 struct PropertyMarshalCtx
 {
@@ -84,11 +86,14 @@ struct PropertyMarshalCtx
     FnPropertyGetter getter;
     FnPropertySetter setter;
     const MarshalMetaInfo* meta;
+    /* Precomputed: true when accessor is effectively sealed (non-virtual, method final, or klass sealed). */
+    bool getterSealed;
+    bool setterSealed;
 };
 
 struct MethodMarshalCtx;
 
-typedef int (*FnLua2CsInvoker)(lua_State* L, void* target, int argStart, const MethodMarshalCtx* ctx);
+typedef int (*FnLua2CsInvoker)(lua_State* L, void* target, int argStart, const MethodInfo* method, const MethodMarshalCtx* ctx);
 
 typedef void* (*FnResolveMethodThis)(lua_State*, int);
 
@@ -102,6 +107,8 @@ struct MethodMarshalCtx
     int32_t valueSize; // sizeof(void*) for refrence type, klass->instance - sizeof(Il2CppObject) for struct
     int32_t totalParamsSize;
     bool byVal;
+    /* Precomputed: true when method is effectively sealed (non-virtual, method final, klass sealed, or byVal). */
+    bool sealed;
 };
 
 struct MethodGroup
@@ -161,6 +168,7 @@ struct ZLuaObjectUserData
     UserDataHeader header;
     uint32_t slotIndex;
     Il2CppObject* obj;
+    Il2CppClass* viewKlass; // declared-type facade for IMT / cache key
 };
 
 // C# implicit conversion category for overload resolution (METHOD_OVERLOAD_SPEC §3.6).

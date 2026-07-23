@@ -7,6 +7,7 @@
 #include "../utils/MetadataUtil.h"
 #include "../utils/LuaStackGuard.h"
 #include "../utils/LuaException.h"
+#include "../bridge/MethodBridge.h"
 #include "../marshal/MethodOverloadResolver.h"
 #include "../marshal/StructMarshal.h"
 #include "il2cpp-config.h"
@@ -50,7 +51,7 @@ static int CreateValueTypeInstance(lua_State* L)
         LuaException::ThrowFormat("zlua: no constructor found for type: %s", klass->name);
     }
     void* payload = StructMarshal::PushZeroedValue(L, klass);
-    int ret = targetMethodCtx->lua2CsInvoker(L, payload, argStartIdx, targetMethodCtx);
+    int ret = MethodBridge::InvokeLua2Cs(L, payload, argStartIdx, targetMethodCtx);
     // constructor should not return a value
     IL2CPP_ASSERT(ret == 0);
     return 1;

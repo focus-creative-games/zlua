@@ -1,11 +1,10 @@
 using System;
-using ZLua;
-using ZLua.Marshal;
-using ZLua.MethodBridge;
-using ZLua.Mt;
 
 namespace ZLua.DelegateImpl
 {
+    /// <summary>
+    /// Pre-compiles common Lua→C# delegate bridges on startup.
+    /// </summary>
     internal static class DelegateBridges
     {
         internal static void Warmup()

@@ -1,6 +1,6 @@
 #include "../lvm/LuaEnv.h"
 #include "../marshal/MarshalDefs.h"
-#include "../marshal/Marshaling.h"
+#include "../marshal/TypedMarshal.h"
 #include "../marshal/ArrayMarshal.h"
 #include "../marshal/ObjectMarshal.h"
 #include "../marshal/StringMarshal.h"
@@ -85,9 +85,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalAsProbe_EchoIntDefault_1E8E4311227AC78B27072E083AEF883C.funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.LuaInvokeMarshalAsProbe::EchoIntInvalidBytes(System.Int32)
@@ -108,9 +108,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalAsProbe_EchoIntInvalidBytes_286EBD57331BF69364AE86AFB03CF6C1.funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.LuaInvokeMarshalAsProbe::EchoIntInvalidUserData(System.Int32)
@@ -131,9 +131,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalAsProbe_EchoIntInvalidUserData_9E56718AB3D5B7144A13F57EF1340A0F.funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.String ZLua.Tests.Fixtures.LuaInvokeMarshalAsProbe::EchoStringUserData(System.String)
@@ -203,7 +203,7 @@ namespace luainvoke
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalAsProbe_ReceiveStructOpaque_928C63EE57BB3C5DF0A4ABB33148BABB.funcRef);
         OpaqueValueMarshal::Push(L, &__p0, kMethodMarshalCtx_ZLua_Tests_Fixtures_LuaInvokeMarshalAsProbe_ReceiveStructOpaque_928C63EE57BB3C5DF0A4ABB33148BABB->paramsMeta[0]->type);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Byte[] ZLua.Tests.Fixtures.LuaInvokeMarshalAsProbe::ReturnByteArrayBytes()
@@ -248,7 +248,7 @@ namespace luainvoke
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalAsProbe_SumByteArrayBytes_A67DFE7B8618A02D06801B8F18169E84.funcRef);
         ArrayMarshal::PushAsBytes(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Boolean ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoBool(System.Boolean)
@@ -269,9 +269,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoBool_037DAB4DF00FCF7A63A785540218AAA3.funcRef);
-        DefaultMarshaling<bool>::Push(L, __p0);
+        DefaultTypedMarshal<bool>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     // System.Byte[] ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoByteArray(System.Byte[])
@@ -315,9 +315,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoByte_0F5653C84343ADC383A006BACF4B34A7.funcRef);
-        DefaultMarshaling<uint8_t>::Push(L, __p0);
+        DefaultTypedMarshal<uint8_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<uint8_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<uint8_t>::Pop(L, -1);
         return _retval;
     }
     // System.Char ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoChar(System.Char)
@@ -338,9 +338,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoChar_803063A68FDF20DA185E678A588DEE60.funcRef);
-        DefaultMarshaling<uint16_t>::Push(L, __p0);
+        DefaultTypedMarshal<uint16_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<uint16_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<uint16_t>::Pop(L, -1);
         return _retval;
     }
     // System.Double ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoDouble(System.Double)
@@ -361,9 +361,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoDouble_2600FC4B39FEC42A13D24B69736EAB19.funcRef);
-        DefaultMarshaling<double>::Push(L, __p0);
+        DefaultTypedMarshal<double>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<double>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<double>::Pop(L, -1);
         return _retval;
     }
     // System.Single ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoFloat(System.Single)
@@ -384,9 +384,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoFloat_D882E51C9D82455C86DBA70C1FA197FB.funcRef);
-        DefaultMarshaling<float>::Push(L, __p0);
+        DefaultTypedMarshal<float>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<float>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<float>::Pop(L, -1);
         return _retval;
     }
     // System.Int32[] ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoIntArray(System.Int32[])
@@ -430,9 +430,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoIntPtr_8EA762103EFFAF2A0D85746961DBE6B9.funcRef);
-        DefaultMarshaling<intptr_t>::Push(L, __p0);
+        DefaultTypedMarshal<intptr_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<intptr_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<intptr_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoInt(System.Int32)
@@ -453,9 +453,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoInt_E4921C16546C2F70EC1BBF52AABB2202.funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int64 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoLong(System.Int64)
@@ -476,9 +476,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoLong_B6C39BC3C50E4CD84ABAF950F051E154.funcRef);
-        DefaultMarshaling<int64_t>::Push(L, __p0);
+        DefaultTypedMarshal<int64_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int64_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int64_t>::Pop(L, -1);
         return _retval;
     }
     // System.SByte ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoSByte(System.SByte)
@@ -499,9 +499,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoSByte_A429C053229C2F6B86BF642A5759C73F.funcRef);
-        DefaultMarshaling<int8_t>::Push(L, __p0);
+        DefaultTypedMarshal<int8_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int8_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int8_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int16 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoShort(System.Int16)
@@ -522,9 +522,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoShort_401FE6AF749E527A98229ABFC5263D4D.funcRef);
-        DefaultMarshaling<int16_t>::Push(L, __p0);
+        DefaultTypedMarshal<int16_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int16_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int16_t>::Pop(L, -1);
         return _retval;
     }
     // System.String[] ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoStringArray(System.String[])
@@ -591,9 +591,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoUIntPtr_B8DCBC96F2B0FC8B9845C25A9FCA4835.funcRef);
-        DefaultMarshaling<uintptr_t>::Push(L, __p0);
+        DefaultTypedMarshal<uintptr_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<uintptr_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<uintptr_t>::Pop(L, -1);
         return _retval;
     }
     // System.UInt32 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoUInt(System.UInt32)
@@ -614,9 +614,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoUInt_87FCD78C97AB3E0C35E2CC0F2C884C30.funcRef);
-        DefaultMarshaling<uint32_t>::Push(L, __p0);
+        DefaultTypedMarshal<uint32_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<uint32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<uint32_t>::Pop(L, -1);
         return _retval;
     }
     // System.UInt64 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoULong(System.UInt64)
@@ -637,9 +637,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoULong_9E112F085E4843A1B4399427A43051E8.funcRef);
-        DefaultMarshaling<uint64_t>::Push(L, __p0);
+        DefaultTypedMarshal<uint64_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<uint64_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<uint64_t>::Pop(L, -1);
         return _retval;
     }
     // System.UInt16 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::EchoUShort(System.UInt16)
@@ -660,9 +660,9 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_EchoUShort_A7B125EFC0264BB7DB5D40E5B9193CBC.funcRef);
-        DefaultMarshaling<uint16_t>::Push(L, __p0);
+        DefaultTypedMarshal<uint16_t>::Push(L, __p0);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<uint16_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<uint16_t>::Pop(L, -1);
         return _retval;
     }
     // System.Void ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::Noop()
@@ -703,7 +703,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnBool_A142B4CE42361D857BD1CA26C427B88B.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<bool>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<bool>::Pop(L, -1);
         return _retval;
     }
     // System.Byte[] ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnByteArray()
@@ -747,7 +747,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnByte_9A60B36660A71E32CDC816EE1C70FF89.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<uint8_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<uint8_t>::Pop(L, -1);
         return _retval;
     }
     // System.Char ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnChar()
@@ -769,7 +769,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnChar_5A0F817646E2819913F5D81EE09F673D.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<uint16_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<uint16_t>::Pop(L, -1);
         return _retval;
     }
     // System.Double ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnDouble()
@@ -791,7 +791,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnDouble_5AF34ED250B901E0822AF59CD64962D7.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<double>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<double>::Pop(L, -1);
         return _retval;
     }
     // ZLua.Tests.Fixtures.ColorKind ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnEnum()
@@ -813,7 +813,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnEnum_CEE8FF00E29A555AA4352BF8CCD9ABDF.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Single ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnFloat()
@@ -835,7 +835,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnFloat_5CE75E288320514ACB6252CA3C1B808E.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<float>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<float>::Pop(L, -1);
         return _retval;
     }
     // System.Int32[] ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnIntArray()
@@ -879,7 +879,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnIntPtr_373EAD5DE04050BD465F7DEA58520000.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<intptr_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<intptr_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnInt()
@@ -901,7 +901,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnInt_68DF4139912B291A1CC20430DEC0F7A8.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int64 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnLong()
@@ -923,7 +923,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnLong_2D324D3C01B76E77BE8925BC82B1C1BA.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<int64_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int64_t>::Pop(L, -1);
         return _retval;
     }
     // System.SByte ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnSByte()
@@ -945,7 +945,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnSByte_611092F5E7113A05D90BE9502463A282.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<int8_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int8_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int16 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnShort()
@@ -967,7 +967,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnShort_B105E8A3ABB0ACBC2FA9604580F50B28.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<int16_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int16_t>::Pop(L, -1);
         return _retval;
     }
     // System.String ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnString()
@@ -1011,7 +1011,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnUIntPtr_F18E23F4AF03BCEB9D8E37B253903680.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<uintptr_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<uintptr_t>::Pop(L, -1);
         return _retval;
     }
     // System.UInt32 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnUInt()
@@ -1033,7 +1033,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnUInt_10EBE1A30B79D3C20ED7F06F35E9B50E.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<uint32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<uint32_t>::Pop(L, -1);
         return _retval;
     }
     // System.UInt64 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnULong()
@@ -1055,7 +1055,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnULong_2FA51A1B8D3F6C454652AFC3C1419873.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<uint64_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<uint64_t>::Pop(L, -1);
         return _retval;
     }
     // System.UInt16 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::ReturnUShort()
@@ -1077,7 +1077,7 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_ReturnUShort_2424B3B38FE7696E427E1A1274EDD466.funcRef);
         LuaUtil::PCall(L, 0, 1, errfunc);
-        _retval = DefaultMarshaling<uint16_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<uint16_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::SumByteArray(System.Byte[])
@@ -1100,7 +1100,7 @@ namespace luainvoke
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_SumByteArray_A43D56361D82F3BAA009824FA552401C.funcRef);
         ArrayMarshal::PushAsArrayObject(L, __p0, kMethodMarshalCtx_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_SumByteArray_A43D56361D82F3BAA009824FA552401C->paramsMeta[0]);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.LuaInvokeMarshalProbe::SumInt(System.Int32,System.Int32)
@@ -1121,10 +1121,10 @@ namespace luainvoke
         LuaStackGuard guard(L);
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeMarshalProbe_SumInt_D177B6027F34ACDF26A751D654FD6130.funcRef);
-        DefaultMarshaling<int32_t>::Push(L, __p0);
-        DefaultMarshaling<int32_t>::Push(L, __p1);
+        DefaultTypedMarshal<int32_t>::Push(L, __p0);
+        DefaultTypedMarshal<int32_t>::Push(L, __p1);
         LuaUtil::PCall(L, 2, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // UnityEngine.Vector3 ZLua.Tests.Fixtures.LuaInvokeUnityVectorProbe::AddVector3(UnityEngine.Vector3,UnityEngine.Vector3)
@@ -1306,7 +1306,7 @@ namespace luainvoke
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeUnityVectorProbe_SumVector2_4FCA41B286A8247C88E0794E53B98DAA.funcRef);
         StructMarshal::PushValue(L, &__p0, kMethodMarshalCtx_ZLua_Tests_Fixtures_LuaInvokeUnityVectorProbe_SumVector2_4FCA41B286A8247C88E0794E53B98DAA->paramsMeta[0]->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, kMethodMarshalCtx_ZLua_Tests_Fixtures_LuaInvokeUnityVectorProbe_SumVector2_4FCA41B286A8247C88E0794E53B98DAA->paramsMeta[0]));
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<float>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<float>::Pop(L, -1);
         return _retval;
     }
     // System.Single ZLua.Tests.Fixtures.LuaInvokeUnityVectorProbe::SumVector3(UnityEngine.Vector3)
@@ -1329,7 +1329,7 @@ namespace luainvoke
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeUnityVectorProbe_SumVector3_E4B57AAEE802A6EEFE570FDFDD988372.funcRef);
         StructMarshal::PushValue(L, &__p0, kMethodMarshalCtx_ZLua_Tests_Fixtures_LuaInvokeUnityVectorProbe_SumVector3_E4B57AAEE802A6EEFE570FDFDD988372->paramsMeta[0]->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, kMethodMarshalCtx_ZLua_Tests_Fixtures_LuaInvokeUnityVectorProbe_SumVector3_E4B57AAEE802A6EEFE570FDFDD988372->paramsMeta[0]));
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<float>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<float>::Pop(L, -1);
         return _retval;
     }
     // System.Single ZLua.Tests.Fixtures.LuaInvokeUnityVectorProbe::SumVector4(UnityEngine.Vector4)
@@ -1352,7 +1352,7 @@ namespace luainvoke
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_LuaInvokeUnityVectorProbe_SumVector4_E63B044B764A03E3B693B4B434D930AA.funcRef);
         StructMarshal::PushValue(L, &__p0, kMethodMarshalCtx_ZLua_Tests_Fixtures_LuaInvokeUnityVectorProbe_SumVector4_E63B044B764A03E3B693B4B434D930AA->paramsMeta[0]->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, kMethodMarshalCtx_ZLua_Tests_Fixtures_LuaInvokeUnityVectorProbe_SumVector4_E63B044B764A03E3B693B4B434D930AA->paramsMeta[0]));
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<float>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<float>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.OpaqueValueMarshalProbe::BumpRefInt(System.Int32&)
@@ -1375,7 +1375,7 @@ namespace luainvoke
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_BumpRefInt_97694458FC67DC4F4D5B56FE80C564A7.funcRef);
         OpaqueValueMarshal::Push(L, &__p0, kMethodMarshalCtx_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_BumpRefInt_97694458FC67DC4F4D5B56FE80C564A7->paramsMeta[0]->type);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.OpaqueValueMarshalProbe::EchoOpaqueInt(System.Int32&)
@@ -1398,7 +1398,7 @@ namespace luainvoke
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_EchoOpaqueInt_D97A7E246426E724B66DDE9CF9D11143.funcRef);
         OpaqueValueMarshal::Push(L, &__p0, kMethodMarshalCtx_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_EchoOpaqueInt_D97A7E246426E724B66DDE9CF9D11143->paramsMeta[0]->type);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.OpaqueValueMarshalProbe::ForwardIntOpaqueManual(System.Int32&)
@@ -1421,7 +1421,7 @@ namespace luainvoke
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_ForwardIntOpaqueManual_67E15CBFB53863F323B930A8E5D61997.funcRef);
         OpaqueValueMarshal::Push(L, &__p0, kMethodMarshalCtx_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_ForwardIntOpaqueManual_67E15CBFB53863F323B930A8E5D61997->paramsMeta[0]->type);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.OpaqueValueMarshalProbe::ForwardIntOpaqueRaw(System.Int32&)
@@ -1444,7 +1444,7 @@ namespace luainvoke
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_ForwardIntOpaqueRaw_70093D645D56A2249DE9E1811D0B2203.funcRef);
         OpaqueValueMarshal::Push(L, &__p0, kMethodMarshalCtx_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_ForwardIntOpaqueRaw_70093D645D56A2249DE9E1811D0B2203->paramsMeta[0]->type);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.OpaqueValueMarshalProbe::ForwardPointOpaqueRaw(ZLua.Tests.Fixtures.Point2D)
@@ -1468,7 +1468,7 @@ namespace luainvoke
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_ForwardPointOpaqueRaw_375AFDB334083F152767F38654630E44.funcRef);
         OpaqueValueMarshal::Push(L, &__p0, kMethodMarshalCtx_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_ForwardPointOpaqueRaw_375AFDB334083F152767F38654630E44->paramsMeta[0]->type);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.OpaqueValueMarshalProbe::RoundtripOpaqueInt(System.Int32&,System.Int32)
@@ -1490,9 +1490,9 @@ namespace luainvoke
         int errfunc = LuaEnv::PushErrorHandler();
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_RoundtripOpaqueInt_ED2C47E37DBFA1AC7B66E63E909112BA.funcRef);
         OpaqueValueMarshal::Push(L, &__p0, kMethodMarshalCtx_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_RoundtripOpaqueInt_ED2C47E37DBFA1AC7B66E63E909112BA->paramsMeta[0]->type);
-        DefaultMarshaling<int32_t>::Push(L, __p1);
+        DefaultTypedMarshal<int32_t>::Push(L, __p1);
         LuaUtil::PCall(L, 2, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Int32 ZLua.Tests.Fixtures.OpaqueValueMarshalProbe::SumPointOpaque(ZLua.Tests.Fixtures.Point2D)
@@ -1516,7 +1516,7 @@ namespace luainvoke
         LuaUtil::PushRef(L, kSite_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_SumPointOpaque_05124F7DA9BE5B9DB6C1987758D7C49F.funcRef);
         OpaqueValueMarshal::Push(L, &__p0, kMethodMarshalCtx_ZLua_Tests_Fixtures_OpaqueValueMarshalProbe_SumPointOpaque_05124F7DA9BE5B9DB6C1987758D7C49F->paramsMeta[0]->type);
         LuaUtil::PCall(L, 1, 1, errfunc);
-        _retval = DefaultMarshaling<int32_t>::Pop(L, -1);
+        _retval = DefaultTypedMarshal<int32_t>::Pop(L, -1);
         return _retval;
     }
     // System.Void ZLua.Tests.TC_LuaTestHost::RunAll()

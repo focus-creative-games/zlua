@@ -1,9 +1,6 @@
 using System;
 using System.Reflection;
-using ZLua;
-using ZLua.Marshal;
-using ZLua.MethodBridge;
-using ZLua.Mt;
+using ZLua.Lvm;
 
 namespace ZLua.DelegateImpl
 {

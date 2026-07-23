@@ -27,9 +27,8 @@ void MethodBridge::Initialize()
     }
 }
 
-int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStart, const MethodMarshalCtx* ctx)
+int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStart, const MethodInfo* method, const MethodMarshalCtx* ctx)
 {
-    const MethodInfo* method = ctx->method;
     void** params = (void**)alloca(method->parameters_count * sizeof(void*));
     for (uint8_t i = 0; i < method->parameters_count; i++)
     {
@@ -57,7 +56,6 @@ int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStar
 
 static std::string s_methodNameCache;
 
-
 /// we only need to check LuaMarshalAsAttribute on the method parameters and return type,
 /// not on the method itself or the method's declaring type. because we have considered the
 //  LuaMarshalAsAttribute on the method itself and the method's declaring type in generating
@@ -70,7 +68,7 @@ static bool DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(const MethodInfo* 
         uint32_t token = MetadataUtil::GetParameterToken(method, i);
         if (token != 0 && MetadataUtil::HasParameterMarshalAsAttribute(image, token))
         {
-                return true;
+            return true;
         }
     }
     uint32_t returnToken = MetadataUtil::GetParameterToken(method, -1);
@@ -83,10 +81,8 @@ static bool DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(const MethodInfo* 
 
 FnLua2CsInvoker MethodBridge::ResolveMethodInvoker(const MethodInfo* method)
 {
-    if (method->methodPointer == nullptr 
-        || il2cpp::metadata::GenericMethod::IsAnUnresolvedCallStubWasNotFound(method->methodPointer)
-        || DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(method)
-    )
+    if (method->methodPointer == nullptr || il2cpp::metadata::GenericMethod::IsAnUnresolvedCallStubWasNotFound(method->methodPointer) ||
+        DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(method))
     {
         return DefaultInvokeLuaMethod;
     }
@@ -98,7 +94,6 @@ FnLua2CsInvoker MethodBridge::ResolveMethodInvoker(const MethodInfo* method)
         return it->second;
     }
     return DefaultInvokeLuaMethod;
-    //return it != s_name2Invokers.end() ? it->second : DefaultInvokeLuaMethod;
 }
 
 } // namespace zlua

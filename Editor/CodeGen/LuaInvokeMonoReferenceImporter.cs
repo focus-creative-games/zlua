@@ -8,9 +8,8 @@ namespace ZLua
     {
         internal const string MonoAssemblyName = "ZLua.Mono";
         internal const string CommonAssemblyName = "ZLua.Common";
-        internal const string BridgeTypeFullName = "ZLua.MethodBridge.LuaInvokeBridge";
-        internal const string SiteRegistryTypeFullName = "ZLua.MethodBridge.LuaInvokeSiteRegistry";
-        internal const string AppDomainTypeFullName = "ZLua.LuaMonoAppDomain";
+        internal const string BridgeTypeFullName = "ZLua.Bridge.LuaInvokeBridge";
+        internal const string SiteRegistryTypeFullName = "ZLua.Bridge.LuaInvokeSiteRegistry";
         internal const string ProcessedAttributeTypeFullName = "ZLua.LuaInvokeWeaverProcessedAttribute";
 
         internal static IMethod ImportBridgeMethod(
@@ -72,117 +71,12 @@ namespace ZLua
             return methodDef != null ? module.Import(methodDef) : null;
         }
 
-        internal static IMethod ImportRunLuaFuncVoidWithMethodInfo(
-            ModuleDef module,
-            LuaInvokeILPostProcessorAssemblyResolver resolver)
-        {
-            return ImportRunLuaFunc(module, resolver, isGeneric: false);
-        }
-
-        internal static IMethod ImportRunLuaFuncGenericWithMethodInfoDefinition(
-            ModuleDef module,
-            LuaInvokeILPostProcessorAssemblyResolver resolver)
-        {
-            return ImportRunLuaFunc(module, resolver, isGeneric: true);
-        }
-
-        internal static IMethod ImportGetMethodFromHandle(ModuleDef module, bool withDeclaringType)
-        {
-            TypeDef objectType = module.CorLibTypes.Object.TypeDefOrRef.ResolveTypeDef();
-            TypeDef methodBaseType = objectType?.Module.Find("System.Reflection.MethodBase", isReflectionName: true);
-            if (methodBaseType == null)
-            {
-                return null;
-            }
-
-            string methodName = "GetMethodFromHandle";
-            foreach (MethodDef candidate in methodBaseType.Methods)
-            {
-                if (!candidate.IsStatic
-                    || !string.Equals(candidate.Name, methodName, StringComparison.Ordinal)
-                    || candidate.MethodSig == null)
-                {
-                    continue;
-                }
-
-                int paramCount = candidate.MethodSig.Params.Count;
-                if (withDeclaringType && paramCount == 2)
-                {
-                    return module.Import(candidate);
-                }
-
-                if (!withDeclaringType && paramCount == 1)
-                {
-                    return module.Import(candidate);
-                }
-            }
-
-            return null;
-        }
-
         internal static ITypeDefOrRef ImportProcessedAttributeType(
             ModuleDef module,
             LuaInvokeILPostProcessorAssemblyResolver resolver)
         {
             TypeDef attributeType = FindCommonType(resolver, ProcessedAttributeTypeFullName);
             return attributeType != null ? module.Import(attributeType) : null;
-        }
-
-        private static IMethod ImportRunLuaFunc(
-            ModuleDef module,
-            LuaInvokeILPostProcessorAssemblyResolver resolver,
-            bool isGeneric)
-        {
-            TypeDef appDomainType = FindMonoType(resolver, AppDomainTypeFullName);
-            if (appDomainType == null)
-            {
-                return null;
-            }
-
-            foreach (MethodDef candidate in appDomainType.Methods)
-            {
-                if (!candidate.IsStatic
-                    || !string.Equals(candidate.Name, "RunLuaFunc", StringComparison.Ordinal)
-                    || candidate.MethodSig == null
-                    || candidate.HasGenericParameters != isGeneric)
-                {
-                    continue;
-                }
-
-                MethodSig sig = candidate.MethodSig;
-                if (sig.Params.Count < 3 || !IsMethodInfoType(sig.Params[0]))
-                {
-                    continue;
-                }
-
-                if (sig.Params[1].ElementType != ElementType.String
-                    || sig.Params[2].ElementType != ElementType.String)
-                {
-                    continue;
-                }
-
-                if (!isGeneric && sig.RetType.ElementType != ElementType.Void)
-                {
-                    continue;
-                }
-
-                if (isGeneric && sig.RetType.ElementType == ElementType.Void)
-                {
-                    continue;
-                }
-
-                return module.Import(candidate);
-            }
-
-            return null;
-        }
-
-        private static bool IsMethodInfoType(TypeSig typeSig)
-        {
-            ITypeDefOrRef typeRef = typeSig?.ToTypeDefOrRef();
-            return typeRef != null
-                && string.Equals(typeRef.Name, "MethodInfo", StringComparison.Ordinal)
-                && string.Equals(typeRef.Namespace, "System.Reflection", StringComparison.Ordinal);
         }
 
         private static TypeDef FindMonoType(LuaInvokeILPostProcessorAssemblyResolver resolver, string fullName)

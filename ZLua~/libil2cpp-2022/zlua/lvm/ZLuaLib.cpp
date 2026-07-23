@@ -19,7 +19,7 @@
 #include "../marshal/DelegateMarshal.h"
 #include "../marshal/ArrayMarshal.h"
 #include "../marshal/ObjectMarshal.h"
-#include "../marshal/Marshaling.h"
+#include "../marshal/TypedMarshal.h"
 #include "../marshal/OpaqueValueMarshal.h"
 
 #include "vm/Array.h"
@@ -61,9 +61,9 @@ static int ZLuaBox(lua_State* L)
         LuaException::ThrowFormat("zlua.box expects value type, got: %s.%s", klass->namespaze, klass->name);
 
     void* storage = malloc(MetadataUtil::GetValueSize(&klass->byval_arg));
-    Marshaling::PopByType(L, 2, storage, &klass->byval_arg);
+    TypedMarshal::PopByType(L, 2, storage, &klass->byval_arg);
     Il2CppObject* boxed = il2cpp::vm::Object::Box(klass, storage);
-    ObjectMarshal::Push(L, boxed);
+    ObjectMarshal::Push(L, boxed, klass);
     return 1;
     ZLUA_TRY_END()
 }
@@ -79,7 +79,32 @@ static int ZLuaUnbox(lua_State* L)
     if (!MetadataUtil::IsValueTypeClass(klass))
         LuaException::ThrowFormat("zlua.unbox expects value type, got: %s.%s", klass->namespaze, klass->name);
     void* storage = il2cpp::vm::Object::Unbox(obj);
-    Marshaling::PushByType(L, storage, &klass->byval_arg);
+    TypedMarshal::PushByType(L, storage, &klass->byval_arg);
+    return 1;
+    ZLUA_TRY_END()
+}
+
+static int ZLuaCast(lua_State* L)
+{
+    ZLUA_TRY_BEGIN()
+    Il2CppObject* obj = ObjectRegistry::Pop(L, 1);
+    if (obj == nullptr)
+    {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    Il2CppClass* targetType = ResolveTypeArg(L, 2);
+    if (targetType == nullptr)
+        LuaException::Throw("zlua.cast expects type as second argument");
+
+    if (!il2cpp::vm::Class::IsAssignableFrom(targetType, obj->klass))
+    {
+        LuaException::ThrowFormat("zlua.cast failed: %s.%s is not assignable to %s.%s", obj->klass->namespaze, obj->klass->name, targetType->namespaze,
+                                  targetType->name);
+    }
+
+    ObjectMarshal::Push(L, obj, targetType);
     return 1;
     ZLUA_TRY_END()
 }
@@ -582,6 +607,8 @@ void ZLuaLib::RegisterGlobals(lua_State* L)
     lua_setglobal(L, "__zlua_box");
     lua_pushcfunction(L, ZLuaUnbox);
     lua_setglobal(L, "__zlua_unbox");
+    lua_pushcfunction(L, ZLuaCast);
+    lua_setglobal(L, "__zlua_cast");
     lua_pushcfunction(L, ZLuaToDelegate);
     lua_setglobal(L, "__zlua_to_delegate");
     lua_pushcfunction(L, ZLuaGetOpaqueValue);

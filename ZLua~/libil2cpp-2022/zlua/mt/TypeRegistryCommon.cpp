@@ -7,11 +7,12 @@
 #include "../utils/LuaStackGuard.h"
 #include "../utils/LuaUtil.h"
 #include "../utils/MetadataUtil.h"
+#include "../bridge/PropertyBridge.h"
 #include "../marshal/ObjectMarshal.h"
 #include "../marshal/StructMarshal.h"
 #include "../marshal/StructRegistry.h"
 #include "../marshal/StringMarshal.h"
-#include "../marshal/Marshaling.h"
+#include "../marshal/TypedMarshal.h"
 #include "../marshal/ObjectRegistry.h"
 
 #if ZLUA_FAST_METATABLE
@@ -103,7 +104,7 @@ void TypeRegistryCommon::RegisterStaticLiteralFields(lua_State* L, Il2CppClass* 
         case IL2CPP_TYPE_R8:
         case IL2CPP_TYPE_STRING:
         {
-            Marshaling::PushByType(L, value, type);
+            TypedMarshal::PushByType(L, value, type);
             break;
         }
         case IL2CPP_TYPE_VALUETYPE:
@@ -213,7 +214,7 @@ static int DelegateInstanceCall(lua_State* L)
             dataPtr = alloca(sz);
             params[i] = dataPtr;
         }
-        Marshaling::PopByType(L, i + 2, dataPtr, paramType);
+        TypedMarshal::PopByType(L, i + 2, dataPtr, paramType);
     }
 
     bool isVoidReturn = invokeMethod->return_type->type == IL2CPP_TYPE_VOID;
@@ -228,7 +229,7 @@ static int DelegateInstanceCall(lua_State* L)
     }
     else
     {
-        Marshaling::PushByType(L, ret, invokeMethod->return_type);
+        TypedMarshal::PushByType(L, ret, invokeMethod->return_type);
         return 1;
     }
 }
@@ -289,12 +290,11 @@ static int DispatchInstanceIndex(lua_State* L)
         }
         case MetaKind::Property:
         {
-            FnPropertyGetter getter = info->property.getter;
-            if (getter == nullptr)
+            if (info->property.getter == nullptr)
                 return luaL_error(L, "zlua: property has no getter: %s", key);
             void* target = resolveMethodTarget(L, 1);
             IL2CPP_ASSERT(target != nullptr);
-            getter(L, target, &info->property);
+            PropertyBridge::InvokeGetter(L, target, &info->property);
             return 1;
         }
         // case MetaKind::Event:
@@ -332,12 +332,11 @@ static int DispatchInstanceNewIndex(lua_State* L)
     }
     case MetaKind::Property:
     {
-        FnPropertySetter setter = info->property.setter;
-        if (setter == nullptr)
+        if (info->property.setter == nullptr)
             return luaL_error(L, "zlua: property is read-only: %s", key);
         void* target = resolveMethodTarget(L, 1);
         IL2CPP_ASSERT(target != nullptr);
-        setter(L, target, 3, &info->property);
+        PropertyBridge::InvokeSetter(L, target, 3, &info->property);
         return 0;
     }
     // case MetaKind::Event:
@@ -377,10 +376,9 @@ int StaticIndex(lua_State* L)
         }
         case MetaKind::Property:
         {
-            FnPropertyGetter getter = info->property.getter;
-            if (getter == nullptr)
+            if (info->property.getter == nullptr)
                 return luaL_error(L, "zlua: property has no getter: %s", key);
-            getter(L, nullptr, &info->property);
+            PropertyBridge::InvokeGetter(L, nullptr, &info->property);
             return 1;
         }
         // case MetaKind::Event:
@@ -419,10 +417,9 @@ static int DispatchStaticNewIndex(lua_State* L, const NameMetaMap* map)
     }
     case MetaKind::Property:
     {
-        FnPropertySetter setter = info->property.setter;
-        if (setter == nullptr)
+        if (info->property.setter == nullptr)
             return luaL_error(L, "zlua: member not found or read-only: %s", key);
-        setter(L, nullptr, 3, &info->property);
+        PropertyBridge::InvokeSetter(L, nullptr, 3, &info->property);
         return 0;
     }
     // case MetaKind::Event:

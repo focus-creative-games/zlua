@@ -24,8 +24,7 @@
 #include "../marshal/MarshalDefs.h"
 #include "../marshal/MethodOverloadResolver.h"
 
-#include "il2cpp-class-internals.h"
-#include "il2cpp-config.h"
+
 #include "vm/Class.h"
 #include "vm/Field.h"
 #include "vm/MetadataCache.h"
@@ -69,7 +68,7 @@ static int InvokeStaticMethodDirect(lua_State* L)
 {
     ZLUA_TRY_BEGIN()
     const MethodMarshalCtx* ctx = (const MethodMarshalCtx*)lua_touserdata(L, lua_upvalueindex(kUpvalueIndexGroupsOrCtx));
-    return ctx->lua2CsInvoker(L, nullptr, 1, ctx);
+    return MethodBridge::InvokeLua2Cs(L, nullptr, 1, ctx);
     ZLUA_TRY_END();
 }
 
@@ -78,7 +77,7 @@ static int InvokeInstanceMethodDirect(lua_State* L)
     ZLUA_TRY_BEGIN()
     const MethodMarshalCtx* ctx = (const MethodMarshalCtx*)lua_touserdata(L, lua_upvalueindex(kUpvalueIndexGroupsOrCtx));
     void* target = ctx->resolveThis(L, 1);
-    return ctx->lua2CsInvoker(L, target, 2, ctx);
+    return MethodBridge::InvokeLua2Cs(L, target, 2, ctx);
     ZLUA_TRY_END();
 }
 
@@ -91,6 +90,7 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
     ctx->resolveThis = resolveThis;
     ctx->lua2CsInvoker = MethodBridge::ResolveMethodInvoker(method);
     ctx->byVal = isByVal;
+    ctx->sealed = MetadataUtil::IsMethodSealed(method, isByVal);
     ctx->valueSize = MetadataUtil::GetValueSize(&method->klass->byval_arg);
     if (method->parameters_count > 0)
     {
@@ -184,7 +184,7 @@ static int InvokeStaticMethodDispatch(lua_State* L)
     const int argStart = 1;
     const MethodMarshalCtx* ctx = FindBestMethod(L, binding, groups, argStart);
 
-    return MethodBridge::DefaultInvokeLuaMethod(L, nullptr, argStart, ctx);
+    return MethodBridge::InvokeLua2Cs(L, nullptr, argStart, ctx);
     ZLUA_TRY_END();
 }
 
@@ -197,7 +197,7 @@ static int InvokeInstanceMethodDispatch(lua_State* L)
     const MethodMarshalCtx* ctx = FindBestMethod(L, binding, groups, argStart);
 
     void* target = ctx->resolveThis(L, 1);
-    return MethodBridge::DefaultInvokeLuaMethod(L, target, argStart, ctx);
+    return MethodBridge::InvokeLua2Cs(L, target, argStart, ctx);
     ZLUA_TRY_END();
 }
 
@@ -307,15 +307,35 @@ static void RegisterProperties(lua_State* L, Il2CppClass* klass, NameMetaMap& in
 
         MetaInfo info = {};
         info.kind = MetaKind::Property;
-        info.property.property = property;
+
+        PropertyMarshalCtx& pmCtx = info.property;
+        pmCtx.property = property;
         const Il2CppType* type = MetadataUtil::GetPropertyReturnType(property);
-        info.property.valueTypeKlass = il2cpp::vm::Class::FromIl2CppType(type, true);
-        info.property.meta = MarshalMeta::Create(L, property);
+        pmCtx.valueTypeKlass = il2cpp::vm::Class::FromIl2CppType(type, true);
+        pmCtx.meta = MarshalMeta::Create(L, property);
 
         PropertyAccessor accessor = PropertyBridge::ResolvePropertyAccessor(property, isStatic);
 
-        info.property.getter = property->get != nullptr ? accessor.getter : nullptr;
-        info.property.setter = property->set != nullptr ? accessor.setter : nullptr;
+        if (property->get != nullptr)
+        {
+            pmCtx.getter = accessor.getter;
+            pmCtx.getterSealed = MetadataUtil::IsMethodSealed(property->get, /*byVal*/ false);
+        }
+        else
+        {
+            pmCtx.getter = nullptr;
+            pmCtx.getterSealed = true;
+        }
+        if (property->set != nullptr)
+        {
+            pmCtx.setter = accessor.setter;
+            pmCtx.setterSealed = MetadataUtil::IsMethodSealed(property->set, /*byVal*/ false);
+        }
+        else
+        {
+            pmCtx.setter = nullptr;
+            pmCtx.setterSealed = true;
+        }
         map[property->name] = info;
     }
 }

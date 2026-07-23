@@ -1,6 +1,6 @@
 {
     "name": "ZLua.Mono",
-    "rootNamespace": "ZLlua",
+    "rootNamespace": "ZLua",
     "references": [
         "GUID:3167dc7e1d2ee214bb989969ab9b286c"
     ],

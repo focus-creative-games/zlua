@@ -1,6 +1,6 @@
 #include "StructMarshal.h"
 #include "StructRegistry.h"
-#include "Marshaling.h"
+#include "TypedMarshal.h"
 
 #include "../LuaConsts.h"
 #include "../utils/MetadataUtil.h"
@@ -97,7 +97,7 @@ void StructMarshal::PushNullableValue(lua_State* L, void* dataAddr, Il2CppClass*
     Il2CppClass* elementClass = klass->element_class;
     if (elementClass->enumtype)
     {
-        Marshaling::PushByType(L, ptr, il2cpp::vm::Class::GetEnumBaseType(elementClass));
+        TypedMarshal::PushByType(L, ptr, il2cpp::vm::Class::GetEnumBaseType(elementClass));
         return;
     }
     Il2CppTypeEnum typeEnum = elementClass->byval_arg.type;
@@ -107,7 +107,7 @@ void StructMarshal::PushNullableValue(lua_State* L, void* dataAddr, Il2CppClass*
         return;
     }
 
-    Marshaling::PushByType(L, ptr, &elementClass->byval_arg);
+    TypedMarshal::PushByType(L, ptr, &elementClass->byval_arg);
 }
 
 void StructMarshal::PopNullableValue(lua_State* L, int index, Il2CppClass* klass, void* outDataAddr)
@@ -120,7 +120,7 @@ void StructMarshal::PopNullableValue(lua_State* L, int index, Il2CppClass* klass
     }
     Il2CppClass* elementClass = klass->element_class;
     void* valueAddr = MetadataUtil::GetNullableValue(outDataAddr, klass);
-    Marshaling::PopByType(L, index, valueAddr, elementClass->enumtype ? il2cpp::vm::Class::GetEnumBaseType(elementClass) : &elementClass->byval_arg);
+    TypedMarshal::PopByType(L, index, valueAddr, elementClass->enumtype ? il2cpp::vm::Class::GetEnumBaseType(elementClass) : &elementClass->byval_arg);
     MetadataUtil::NullableSetHasValue(outDataAddr, klass);
 }
 

@@ -6,6 +6,7 @@
 #include "TypeRegistry.h"
 
 #include "../LuaConsts.h"
+#include "../bridge/PropertyBridge.h"
 #include "../utils/LuaUtil.h"
 
 extern "C"
@@ -84,7 +85,7 @@ extern "C" LUA_API int zlua_index_getter(lua_State* L)
         if (getter == nullptr)
             return luaL_error(L, "zlua: property has no getter");
         void* target = ResolvePropertyTarget(L, 1, ctx->kind);
-        getter(L, target, &ctx->info.property);
+        PropertyBridge::InvokeGetter(L, target, &ctx->info.property);
         return 1;
     }
     default:
@@ -117,7 +118,7 @@ extern "C" LUA_API int zlua_index_setter(lua_State* L)
         if (setter == nullptr)
             return luaL_error(L, "zlua: property is read-only");
         void* target = ResolvePropertyTarget(L, 1, ctx->kind);
-        setter(L, target, 2, &ctx->info.property);
+        PropertyBridge::InvokeSetter(L, target, 2, &ctx->info.property);
         return 0;
     }
     default:

@@ -1,123 +1,41 @@
 using System;
-using ZLua;
-using ZLua.Marshal;
-using ZLua.MethodBridge;
-using ZLua.DelegateImpl;
+using ZLua.Marshaling;
+using ZLua.Utils;
 
 namespace ZLua.Mt
 {
+    /// <summary>
+    /// Resolves instance <c>this</c> for ByObj / ByVal userdata. Full Emit use in Phase 3.
+    /// </summary>
     internal static class InstanceTarget
     {
-        internal static int Get(IntPtr luaState)
+        internal static object PopByObjThis(IntPtr L, int index)
         {
-            try
-            {
-                if (!TryGetArray(luaState, 1, out Array array, out Type elementType))
-                {
-                    LuaCallbackBoundary.Throw("zlua: get expects array userdata");
-                }
-
-                int rank = array.Rank;
-                int indexCount = LuaDll.lua_gettop(luaState) - 1;
-                if (indexCount != rank)
-                {
-                    LuaCallbackBoundary.Throw($"zlua: get expects {rank} index argument(s)");
-                }
-
-                if (!TryReadIndices(luaState, 2, rank, out int[] indices))
-                {
-                    LuaCallbackBoundary.Throw("zlua: get expects integer indices");
-                }
-
-                object value = array.GetValue(indices);
-                return MethodBridgeCore.PushReturnDefaultPublic(luaState, elementType, value);
-            }
-            catch (Exception ex)
-            {
-                return LuaCallbackBoundary.ToLuaError(luaState, ex);
-            }
+            return ObjectMarshal.Pop(L, index, typeof(object));
         }
 
-        internal static int Set(IntPtr luaState)
+        internal static object PopByObjThisAs(IntPtr L, int index, Type declaredType)
         {
-            try
-            {
-                if (!TryGetArray(luaState, 1, out Array array, out Type elementType))
-                {
-                    LuaCallbackBoundary.Throw("zlua: set expects array userdata");
-                }
-
-                int rank = array.Rank;
-                int argCount = LuaDll.lua_gettop(luaState) - 1;
-                if (argCount != rank + 1)
-                {
-                    LuaCallbackBoundary.Throw($"zlua: set expects {rank} index argument(s) and a value");
-                }
-
-                if (!TryReadIndices(luaState, 2, rank, out int[] indices))
-                {
-                    LuaCallbackBoundary.Throw("zlua: set expects integer indices");
-                }
-
-                int valueIndex = LuaDll.lua_gettop(luaState);
-                if (!MethodBridgeCore.CanConvertArgumentValue(luaState, valueIndex, elementType))
-                {
-                    LuaCallbackBoundary.Throw("zlua: argument mismatch");
-                }
-
-                object value = MethodBridgeCore.ReadValuePublic(luaState, valueIndex, elementType);
-                value = ArrayMarshaling.CoerceToElementType(value, elementType);
-                array.SetValue(value, indices);
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                return LuaCallbackBoundary.ToLuaError(luaState, ex);
-            }
+            return ObjectMarshal.Pop(L, index, declaredType);
         }
 
-        private static bool TryGetArray(IntPtr luaState, int index, out Array array, out Type elementType)
+        internal static object PopByValAsBoxed(IntPtr L, int index, Type structType)
         {
-            array = null;
-            elementType = null;
-
-            if (!StructMarshaling.TryGetBoxedTarget(luaState, index, out object target) || target is not Array typedArray)
-            {
-                return false;
-            }
-
-            array = typedArray;
-            elementType = array.GetType().GetElementType();
-            return elementType != null;
+            return StructMarshal.PopValue(L, index, structType);
         }
 
-        private static bool TryReadIndices(IntPtr luaState, int startIndex, int rank, out int[] indices)
+        internal static UserDataKind PeekKind(IntPtr L, int index)
         {
-            indices = new int[rank];
-            for (int i = 0; i < rank; i++)
+            if (LuaDll.lua_type(L, index) != LuaDataType.UserData)
             {
-                int luaIndex = startIndex + i;
-                if (LuaDll.lua_type(luaState, luaIndex) != LuaDataType.Number)
-                {
-                    return false;
-                }
-
-                if (LuaDll.lua_isinteger(luaState, luaIndex) != 0)
-                {
-                    indices[i] = (int)LuaDll.lua_tointeger(luaState, luaIndex);
-                    continue;
-                }
-
-                double number = LuaDll.lua_tonumber(luaState, luaIndex);
-                if (Math.Truncate(number) != number)
-                {
-                    return false;
-                }
-
-                indices[i] = (int)number;
+                return UserDataKind.Unknown;
             }
 
-            return true;
+            unsafe
+            {
+                UserDataHeader* header = (UserDataHeader*)LuaDll.lua_touserdata(L, index);
+                return header != null ? header->Kind : UserDataKind.Unknown;
+            }
         }
     }
 }

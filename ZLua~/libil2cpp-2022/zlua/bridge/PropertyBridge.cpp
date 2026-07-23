@@ -1,4 +1,4 @@
-﻿#include "PropertyBridge.h"
+#include "PropertyBridge.h"
 
 #include "../marshal/IntrinsicTypes.h"
 #include "../marshal/PrimitiveMarshal.h"
@@ -16,167 +16,150 @@
 #include "vm/Class.h"
 #include "vm/Field.h"
 #include "vm/Property.h"
-#include "vm/Object.h"
 
 namespace zlua
 {
-static void PropertyInstanceGetterBoolean(lua_State* L, void* target, const void* ctx)
+
+static void PropertyInstanceGetterBoolean(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef bool (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     bool value = getValue(target, getter);
     lua_pushboolean(L, value);
 }
 
-static void PropertyInstanceSetterBoolean(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterBoolean(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, bool value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, lua_toboolean(L, valueIdx) ? 1 : 0, setter);
 }
 
-static void PropertyInstanceGetterInt8(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterInt8(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef int8_t (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     int8_t value = getValue(target, getter);
     lua_pushinteger(L, value);
 }
 
-static void PropertyInstanceSetterInt8(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterInt8(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, int8_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, (int8_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyInstanceGetterUInt8(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterUInt8(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef uint8_t (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     uint8_t value = getValue(target, getter);
     lua_pushinteger(L, value);
 }
 
-static void PropertyInstanceSetterUInt8(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterUInt8(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, uint8_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, (uint8_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyInstanceGetterInt16(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterInt16(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef int16_t (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     int16_t value = getValue(target, getter);
     lua_pushinteger(L, value);
 }
 
-static void PropertyInstanceSetterInt16(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterInt16(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, int16_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, (int16_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyInstanceGetterUInt16(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterUInt16(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef uint16_t (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     uint16_t value = getValue(target, getter);
     lua_pushinteger(L, value);
 }
 
-static void PropertyInstanceSetterUInt16(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterUInt16(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, uint16_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, (uint16_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyInstanceGetterInt32(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterInt32(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef int32_t (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     int32_t value = getValue(target, getter);
     lua_pushinteger(L, value);
 }
 
-static void PropertyInstanceSetterInt32(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterInt32(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, int32_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, (int32_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyInstanceGetterUInt32(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterUInt32(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef uint32_t (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     uint32_t value = getValue(target, getter);
     lua_pushinteger(L, (lua_Integer)value);
 }
 
-static void PropertyInstanceSetterUInt32(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterUInt32(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, uint32_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, (uint32_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyInstanceGetterInt64(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterInt64(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef int64_t (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     int64_t value = getValue(target, getter);
     lua_pushinteger(L, (lua_Integer)value);
 }
 
-static void PropertyInstanceSetterInt64(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterInt64(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, int64_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, (int64_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyInstanceGetterUInt64(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterUInt64(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef uint64_t (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     uint64_t value = getValue(target, getter);
     if (value <= (uint64_t)LUA_MAXINTEGER)
@@ -185,11 +168,10 @@ static void PropertyInstanceGetterUInt64(lua_State* L, void* target, const void*
         lua_pushnumber(L, (lua_Number)value);
 }
 
-static void PropertyInstanceSetterUInt64(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterUInt64(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, uint64_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     uint64_t v;
     if (lua_isinteger(L, valueIdx))
@@ -199,159 +181,143 @@ static void PropertyInstanceSetterUInt64(lua_State* L, void* target, int valueId
     setValue(target, v, setter);
 }
 
-static void PropertyInstanceGetterFloat(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterFloat(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef float (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     float value = getValue(target, getter);
     lua_pushnumber(L, value);
 }
 
-static void PropertyInstanceSetterFloat(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterFloat(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, float value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, (float)lua_tonumber(L, valueIdx), setter);
 }
 
-static void PropertyInstanceGetterDouble(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterDouble(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef double (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     double value = getValue(target, getter);
     lua_pushnumber(L, value);
 }
 
-static void PropertyInstanceSetterDouble(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterDouble(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, double value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, lua_tonumber(L, valueIdx), setter);
 }
 
-static void PropertyInstanceGetterIntPtr(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterIntPtr(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef intptr_t (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     intptr_t value = getValue(target, getter);
     PrimitiveMarshal::PushIntPtr(L, value);
 }
 
-static void PropertyInstanceSetterIntPtr(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterIntPtr(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, intptr_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, PrimitiveMarshal::PopIntPtr(L, valueIdx), setter);
 }
 
-static void PropertyInstanceGetterUIntPtr(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterUIntPtr(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef uintptr_t (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     uintptr_t value = getValue(target, getter);
     PrimitiveMarshal::PushUIntPtr(L, value);
 }
 
-static void PropertyInstanceSetterUIntPtr(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterUIntPtr(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, uintptr_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, PrimitiveMarshal::PopUIntPtr(L, valueIdx), setter);
 }
 
-static void PropertyInstanceGetterPointer(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterPointer(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void* (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     void* value = getValue(target, getter);
     PrimitiveMarshal::PushPointer(L, value);
 }
 
-static void PropertyInstanceSetterPointer(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterPointer(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, void* value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(target, PrimitiveMarshal::PopPointer(L, valueIdx), setter);
 }
 
-static void PropertyInstanceGetterString(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterString(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef Il2CppString* (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     Il2CppString* value = getValue(target, getter);
     StringMarshal::Push(L, value);
 }
 
-static void PropertyInstanceSetterString(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterString(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, Il2CppString* value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     Il2CppString* value = StringMarshal::Pop(L, valueIdx);
     setValue(target, value, setter);
 }
 
-static void PropertyInstanceGetterObject(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterObject(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef Il2CppObject* (*FnGetValue)(void* target, const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     Il2CppObject* value = getValue(target, getter);
-    ObjectMarshal::Push(L, value, marshalCtx->meta);
+    ObjectMarshal::Push(L, value, ctx->meta);
 }
 
-static void PropertyInstanceSetterObject(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterObject(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* target, Il2CppObject* value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
-    Il2CppObject* value = ObjectMarshal::Pop(L, valueIdx, marshalCtx->valueTypeKlass);
+    Il2CppObject* value = ObjectMarshal::Pop(L, valueIdx, ctx->valueTypeKlass);
     setValue(target, value, setter);
 }
 
-static void PropertyInstanceGetterValueType(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterValueType(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    const MethodInfo* getter = marshalCtx->property->get;
-    void* ret = alloca(marshalCtx->meta->size);
+    const MethodInfo* getter = method;
+    void* ret = alloca(ctx->meta->size);
     getter->invoker_method(getter->methodPointer, getter, target, nullptr, ret);
-    StructMarshal::PushValue(L, ret, marshalCtx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, marshalCtx->meta));
+    StructMarshal::PushValue(L, ret, ctx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));
 }
 
-static void PropertyInstanceSetterValueType(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterValueType(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     const Il2CppType* type = setter->parameters[0];
-    size_t size = marshalCtx->meta->size;
+    size_t size = ctx->meta->size;
     void* value = alloca(size);
 
-    Marshaling::PopByType(L, valueIdx, value, type);
+    TypedMarshal::PopByType(L, valueIdx, value, type);
 
     void* params[1] = {value};
     setter->invoker_method(setter->methodPointer, setter, target, params, nullptr);
@@ -359,180 +325,163 @@ static void PropertyInstanceSetterValueType(lua_State* L, void* target, int valu
 
 // static getter and setter
 
-static void PropertyStaticGetterBoolean(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterBoolean(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef bool (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     bool value = getValue(getter);
     lua_pushboolean(L, value);
 }
 
-static void PropertyStaticSetterBoolean(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterBoolean(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(bool value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(lua_toboolean(L, valueIdx) ? 1 : 0, setter);
 }
 
-static void PropertyStaticGetterInt8(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterInt8(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef int8_t (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     int8_t value = getValue(getter);
     lua_pushinteger(L, value);
 }
 
-static void PropertyStaticSetterInt8(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterInt8(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(int8_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue((int8_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyStaticGetterUInt8(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterUInt8(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef uint8_t (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     uint8_t value = getValue(getter);
     lua_pushinteger(L, value);
 }
 
-static void PropertyStaticSetterUInt8(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterUInt8(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(uint8_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue((uint8_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyStaticGetterInt16(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterInt16(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef int16_t (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     int16_t value = getValue(getter);
     lua_pushinteger(L, value);
 }
 
-static void PropertyStaticSetterInt16(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterInt16(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(int16_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue((int16_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyStaticGetterUInt16(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterUInt16(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef uint16_t (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     uint16_t value = getValue(getter);
     lua_pushinteger(L, value);
 }
 
-static void PropertyStaticSetterUInt16(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterUInt16(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(uint16_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue((uint16_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyStaticGetterInt32(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterInt32(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef int32_t (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     int32_t value = getValue(getter);
     lua_pushinteger(L, value);
 }
 
-static void PropertyStaticSetterInt32(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterInt32(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(int32_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue((int32_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyStaticGetterUInt32(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterUInt32(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef uint32_t (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     uint32_t value = getValue(getter);
     lua_pushinteger(L, (lua_Integer)value);
 }
 
-static void PropertyStaticSetterUInt32(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterUInt32(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(uint32_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue((uint32_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyStaticGetterInt64(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterInt64(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef int64_t (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     int64_t value = getValue(getter);
     lua_pushinteger(L, (lua_Integer)value);
 }
 
-static void PropertyStaticSetterInt64(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterInt64(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(int64_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue((int64_t)lua_tointeger(L, valueIdx), setter);
 }
 
-static void PropertyStaticGetterUInt64(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterUInt64(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef uint64_t (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     uint64_t value = getValue(getter);
     if (value <= (uint64_t)LUA_MAXINTEGER)
@@ -541,12 +490,11 @@ static void PropertyStaticGetterUInt64(lua_State* L, void* target, const void* c
         lua_pushnumber(L, (lua_Number)value);
 }
 
-static void PropertyStaticSetterUInt64(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterUInt64(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(uint64_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     uint64_t v;
     if (lua_isinteger(L, valueIdx))
@@ -556,395 +504,359 @@ static void PropertyStaticSetterUInt64(lua_State* L, void* target, int valueIdx,
     setValue(v, setter);
 }
 
-static void PropertyStaticGetterFloat(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterFloat(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef float (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     float value = getValue(getter);
     lua_pushnumber(L, value);
 }
 
-static void PropertyStaticSetterFloat(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterFloat(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(float value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue((float)lua_tonumber(L, valueIdx), setter);
 }
 
-static void PropertyStaticGetterDouble(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterDouble(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef double (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     double value = getValue(getter);
     lua_pushnumber(L, value);
 }
 
-static void PropertyStaticSetterDouble(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterDouble(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(double value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(lua_tonumber(L, valueIdx), setter);
 }
 
-static void PropertyStaticGetterIntPtr(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterIntPtr(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef intptr_t (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     intptr_t value = getValue(getter);
     PrimitiveMarshal::PushIntPtr(L, value);
 }
 
-static void PropertyStaticSetterIntPtr(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterIntPtr(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(intptr_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(PrimitiveMarshal::PopIntPtr(L, valueIdx), setter);
 }
 
-static void PropertyStaticGetterUIntPtr(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterUIntPtr(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef uintptr_t (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     uintptr_t value = getValue(getter);
     PrimitiveMarshal::PushUIntPtr(L, value);
 }
 
-static void PropertyStaticSetterUIntPtr(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterUIntPtr(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(uintptr_t value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(PrimitiveMarshal::PopUIntPtr(L, valueIdx), setter);
 }
 
-static void PropertyStaticGetterPointer(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterPointer(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void* (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     void* value = getValue(getter);
     PrimitiveMarshal::PushPointer(L, value);
 }
 
-static void PropertyStaticSetterPointer(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterPointer(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(void* value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     setValue(PrimitiveMarshal::PopPointer(L, valueIdx), setter);
 }
 
-static void PropertyStaticGetterString(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterString(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef Il2CppString* (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     Il2CppString* value = getValue(getter);
     StringMarshal::Push(L, value);
 }
 
-static void PropertyStaticSetterString(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterString(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(Il2CppString* value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     Il2CppString* value = StringMarshal::Pop(L, valueIdx);
     setValue(value, setter);
 }
 
-static void PropertyStaticGetterObject(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterObject(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef Il2CppObject* (*FnGetValue)(const MethodInfo* getter);
-    const MethodInfo* getter = marshalCtx->property->get;
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     Il2CppObject* value = getValue(getter);
-    ObjectMarshal::Push(L, value, marshalCtx->meta);
+    ObjectMarshal::Push(L, value, ctx->meta);
 }
 
-static void PropertyStaticSetterObject(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterObject(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
     typedef void (*FnSetValue)(Il2CppObject* value, const MethodInfo* setter);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
-    Il2CppObject* value = ObjectMarshal::Pop(L, valueIdx, marshalCtx->valueTypeKlass);
+    Il2CppObject* value = ObjectMarshal::Pop(L, valueIdx, ctx->valueTypeKlass);
     setValue(value, setter);
 }
 
-static void PropertyStaticGetterValueType(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterValueType(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    const MethodInfo* getter = marshalCtx->property->get;
-    void* ret = alloca(marshalCtx->meta->size);
+    const MethodInfo* getter = method;
+    void* ret = alloca(ctx->meta->size);
     getter->invoker_method(getter->methodPointer, getter, nullptr, nullptr, ret);
-    StructMarshal::PushValue(L, ret, marshalCtx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, marshalCtx->meta));
+    StructMarshal::PushValue(L, ret, ctx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));
 }
 
-static void PropertyStaticSetterValueType(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterValueType(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    const MethodInfo* setter = marshalCtx->property->set;
+    const MethodInfo* setter = method;
     const Il2CppType* type = setter->parameters[0];
-    size_t size = marshalCtx->meta->size;
+    size_t size = ctx->meta->size;
     void* value = alloca(size);
-    Marshaling::PopByType(L, valueIdx, value, type);
+    TypedMarshal::PopByType(L, valueIdx, value, type);
     void* params[1] = {value};
     setter->invoker_method(setter->methodPointer, setter, nullptr, params, nullptr);
 }
 
-static void PropertyStaticGetterNullable(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterNullable(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    const MethodInfo* getter = marshalCtx->property->get;
-    void* value = alloca(marshalCtx->meta->size);
+    const MethodInfo* getter = method;
+    void* value = alloca(ctx->meta->size);
     getter->invoker_method(getter->methodPointer, getter, nullptr, nullptr, value);
-    StructMarshal::PushNullableValue(L, value, marshalCtx->meta->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, marshalCtx->meta));
+    StructMarshal::PushNullableValue(L, value, ctx->meta->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));
 }
 
-static void PropertyStaticSetterNullable(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterNullable(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    const MethodInfo* setter = marshalCtx->property->set;
-    void* value = alloca(marshalCtx->meta->size);
-    StructMarshal::PopNullableValue(L, valueIdx, marshalCtx->meta->typeKlass, value);
+    const MethodInfo* setter = method;
+    void* value = alloca(ctx->meta->size);
+    StructMarshal::PopNullableValue(L, valueIdx, ctx->meta->typeKlass, value);
 }
 
-static void PropertyInstanceGetterNullable(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterNullable(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    const MethodInfo* getter = marshalCtx->property->get;
-    void* value = alloca(marshalCtx->meta->size);
+    const MethodInfo* getter = method;
+    void* value = alloca(ctx->meta->size);
     getter->invoker_method(getter->methodPointer, getter, nullptr, nullptr, value);
-    StructMarshal::PushNullableValue(L, value, marshalCtx->meta->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, marshalCtx->meta));
+    StructMarshal::PushNullableValue(L, value, ctx->meta->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));
 }
 
-static void PropertyInstanceSetterNullable(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterNullable(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    const MethodInfo* setter = marshalCtx->property->set;
-    void* value = alloca(marshalCtx->meta->size);
-    StructMarshal::PopNullableValue(L, valueIdx, marshalCtx->meta->typeKlass, value);
+    const MethodInfo* setter = method;
+    void* value = alloca(ctx->meta->size);
+    StructMarshal::PopNullableValue(L, valueIdx, ctx->meta->typeKlass, value);
 }
 
-static void PropertyStaticGetOpaqueValue(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetOpaqueValue(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    const MethodInfo* getter = marshalCtx->property->get;
-    void* value = alloca(marshalCtx->meta->size);
+    const MethodInfo* getter = method;
+    void* value = alloca(ctx->meta->size);
     getter->invoker_method(getter->methodPointer, getter, nullptr, nullptr, value);
-    OpaqueValueMarshal::Push(L, value, marshalCtx->meta->type);
+    OpaqueValueMarshal::Push(L, value, ctx->meta->type);
 }
 
-static void PropertyStaticSetOpaqueValue(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetOpaqueValue(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    const MethodInfo* setter = marshalCtx->property->set;
-    void* value = alloca(marshalCtx->meta->size);
-    OpaqueValueMarshal::Pop(L, valueIdx, value, marshalCtx->meta->type);
+    const MethodInfo* setter = method;
+    void* value = alloca(ctx->meta->size);
+    OpaqueValueMarshal::Pop(L, valueIdx, value, ctx->meta->type);
 }
 
-static void PropertyInstanceGetOpaqueValue(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetOpaqueValue(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    const MethodInfo* getter = marshalCtx->property->get;
-    void* value = alloca(marshalCtx->meta->size);
+    const MethodInfo* getter = method;
+    void* value = alloca(ctx->meta->size);
     getter->invoker_method(getter->methodPointer, getter, nullptr, nullptr, value);
-    OpaqueValueMarshal::Push(L, value, marshalCtx->meta->type);
+    OpaqueValueMarshal::Push(L, value, ctx->meta->type);
 }
 
-static void PropertyInstanceSetOpaqueValue(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetOpaqueValue(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    const MethodInfo* setter = marshalCtx->property->set;
-    void* value = alloca(marshalCtx->meta->size);
-    OpaqueValueMarshal::Pop(L, valueIdx, value, marshalCtx->meta->type);
+    const MethodInfo* setter = method;
+    void* value = alloca(ctx->meta->size);
+    OpaqueValueMarshal::Pop(L, valueIdx, value, ctx->meta->type);
 }
 
-static void PropertyStaticGetterUnityVector2(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterUnityVector2(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
     typedef UnityVector2 (*FnGetValue)(const MethodInfo* getter);
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    IL2CPP_ASSERT(marshalCtx->meta->size == sizeof(UnityVector2));
-    const MethodInfo* getter = marshalCtx->property->get;
+    IL2CPP_ASSERT(ctx->meta->size == sizeof(UnityVector2));
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     UnityVector2 value = getValue(getter);
-    StructMarshal::PushValue(L, &value, marshalCtx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, marshalCtx->meta));
+    StructMarshal::PushValue(L, &value, ctx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));
 }
 
-static void PropertyStaticSetterUnityVector2(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterUnityVector2(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
     typedef void (*FnSetValue)(UnityVector2 value, const MethodInfo* setter);
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    IL2CPP_ASSERT(marshalCtx->meta->size == sizeof(UnityVector2));
-    const MethodInfo* setter = marshalCtx->property->set;
+    IL2CPP_ASSERT(ctx->meta->size == sizeof(UnityVector2));
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     UnityVector2 value;
-    StructMarshal::PopValue(L, valueIdx, marshalCtx->valueTypeKlass, &value);
+    StructMarshal::PopValue(L, valueIdx, ctx->valueTypeKlass, &value);
     setValue(value, setter);
 }
 
-static void PropertyInstanceGetterUnityVector2(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterUnityVector2(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     typedef UnityVector2 (*FnGetValue)(void* target, const MethodInfo* getter);
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    IL2CPP_ASSERT(marshalCtx->meta->size == sizeof(UnityVector2));
-    const MethodInfo* getter = marshalCtx->property->get;
+    IL2CPP_ASSERT(ctx->meta->size == sizeof(UnityVector2));
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     UnityVector2 value = getValue(target, getter);
-    StructMarshal::PushValue(L, &value, marshalCtx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, marshalCtx->meta));
+    StructMarshal::PushValue(L, &value, ctx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));
 }
 
-static void PropertyInstanceSetterUnityVector2(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterUnityVector2(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     typedef void (*FnSetValue)(void* target, UnityVector2 value, const MethodInfo* setter);
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    IL2CPP_ASSERT(marshalCtx->meta->size == sizeof(UnityVector2));
-    const MethodInfo* setter = marshalCtx->property->set;
+    IL2CPP_ASSERT(ctx->meta->size == sizeof(UnityVector2));
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     UnityVector2 value;
-    StructMarshal::PopValue(L, valueIdx, marshalCtx->valueTypeKlass, &value);
+    StructMarshal::PopValue(L, valueIdx, ctx->valueTypeKlass, &value);
     setValue(target, value, setter);
 }
 
-static void PropertyStaticGetterUnityVector3(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterUnityVector3(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
     typedef UnityVector3 (*FnGetValue)(const MethodInfo* getter);
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    IL2CPP_ASSERT(marshalCtx->meta->size == sizeof(UnityVector3));
-    const MethodInfo* getter = marshalCtx->property->get;
+    IL2CPP_ASSERT(ctx->meta->size == sizeof(UnityVector3));
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     UnityVector3 value = getValue(getter);
-    StructMarshal::PushValue(L, &value, marshalCtx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, marshalCtx->meta));
+    StructMarshal::PushValue(L, &value, ctx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));
 }
 
-static void PropertyStaticSetterUnityVector3(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterUnityVector3(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
     typedef void (*FnSetValue)(UnityVector3 value, const MethodInfo* setter);
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    IL2CPP_ASSERT(marshalCtx->meta->size == sizeof(UnityVector3));
-    const MethodInfo* setter = marshalCtx->property->set;
+    IL2CPP_ASSERT(ctx->meta->size == sizeof(UnityVector3));
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     UnityVector3 value;
-    StructMarshal::PopValue(L, valueIdx, marshalCtx->valueTypeKlass, &value);
+    StructMarshal::PopValue(L, valueIdx, ctx->valueTypeKlass, &value);
     setValue(value, setter);
 }
 
-static void PropertyInstanceGetterUnityVector3(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterUnityVector3(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     typedef UnityVector3 (*FnGetValue)(void* target, const MethodInfo* getter);
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    IL2CPP_ASSERT(marshalCtx->meta->size == sizeof(UnityVector3));
-    const MethodInfo* getter = marshalCtx->property->get;
+    IL2CPP_ASSERT(ctx->meta->size == sizeof(UnityVector3));
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     UnityVector3 value = getValue(target, getter);
-    StructMarshal::PushValue(L, &value, marshalCtx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, marshalCtx->meta));
+    StructMarshal::PushValue(L, &value, ctx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));
 }
 
-static void PropertyInstanceSetterUnityVector3(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterUnityVector3(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     typedef void (*FnSetValue)(void* target, UnityVector3 value, const MethodInfo* setter);
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    IL2CPP_ASSERT(marshalCtx->meta->size == sizeof(UnityVector3));
-    const MethodInfo* setter = marshalCtx->property->set;
+    IL2CPP_ASSERT(ctx->meta->size == sizeof(UnityVector3));
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     UnityVector3 value;
-    StructMarshal::PopValue(L, valueIdx, marshalCtx->valueTypeKlass, &value);
+    StructMarshal::PopValue(L, valueIdx, ctx->valueTypeKlass, &value);
     setValue(target, value, setter);
 }
 
-static void PropertyStaticGetterUnityVector4(lua_State* L, void* target, const void* ctx)
+static void PropertyStaticGetterUnityVector4(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
     typedef UnityVector4 (*FnGetValue)(const MethodInfo* getter);
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    IL2CPP_ASSERT(marshalCtx->meta->size == sizeof(UnityVector4));
-    const MethodInfo* getter = marshalCtx->property->get;
+    IL2CPP_ASSERT(ctx->meta->size == sizeof(UnityVector4));
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     UnityVector4 value = getValue(getter);
-    StructMarshal::PushValue(L, &value, marshalCtx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, marshalCtx->meta));
+    StructMarshal::PushValue(L, &value, ctx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));
 }
 
-static void PropertyStaticSetterUnityVector4(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyStaticSetterUnityVector4(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
     typedef void (*FnSetValue)(UnityVector4 value, const MethodInfo* setter);
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    IL2CPP_ASSERT(marshalCtx->meta->size == sizeof(UnityVector4));
-    const MethodInfo* setter = marshalCtx->property->set;
+    IL2CPP_ASSERT(ctx->meta->size == sizeof(UnityVector4));
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     UnityVector4 value;
-    StructMarshal::PopValue(L, valueIdx, marshalCtx->valueTypeKlass, &value);
+    StructMarshal::PopValue(L, valueIdx, ctx->valueTypeKlass, &value);
     setValue(value, setter);
 }
 
-static void PropertyInstanceGetterUnityVector4(lua_State* L, void* target, const void* ctx)
+static void PropertyInstanceGetterUnityVector4(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     typedef UnityVector4 (*FnGetValue)(void* target, const MethodInfo* getter);
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    IL2CPP_ASSERT(marshalCtx->meta->size == sizeof(UnityVector4));
-    const MethodInfo* getter = marshalCtx->property->get;
+    IL2CPP_ASSERT(ctx->meta->size == sizeof(UnityVector4));
+    const MethodInfo* getter = method;
     FnGetValue getValue = reinterpret_cast<FnGetValue>(getter->methodPointer);
     UnityVector4 value = getValue(target, getter);
-    StructMarshal::PushValue(L, &value, marshalCtx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, marshalCtx->meta));
+    StructMarshal::PushValue(L, &value, ctx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));
 }
 
-static void PropertyInstanceSetterUnityVector4(lua_State* L, void* target, int valueIdx, const void* ctx)
+static void PropertyInstanceSetterUnityVector4(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     typedef void (*FnSetValue)(void* target, UnityVector4 value, const MethodInfo* setter);
-    const PropertyMarshalCtx* marshalCtx = reinterpret_cast<const PropertyMarshalCtx*>(ctx);
-    IL2CPP_ASSERT(marshalCtx->meta->size == sizeof(UnityVector4));
-    const MethodInfo* setter = marshalCtx->property->set;
+    IL2CPP_ASSERT(ctx->meta->size == sizeof(UnityVector4));
+    const MethodInfo* setter = method;
     FnSetValue setValue = reinterpret_cast<FnSetValue>(setter->methodPointer);
     UnityVector4 value;
-    StructMarshal::PopValue(L, valueIdx, marshalCtx->valueTypeKlass, &value);
+    StructMarshal::PopValue(L, valueIdx, ctx->valueTypeKlass, &value);
     setValue(target, value, setter);
 }
 

@@ -1,0 +1,199 @@
+using System;
+using System.Collections.Generic;
+using ZLua.Emit;
+using ZLua.Marshaling;
+using ZLua.Utils;
+
+namespace ZLua.Mt
+{
+    internal static class TypeRegistryArray
+    {
+        private static readonly List<LuaCSFunction> s_pins = new List<LuaCSFunction>();
+        private static readonly LuaCSFunction s_arrayLen = ArrayInstanceLen;
+        private static readonly LuaCSFunction s_arrayGet = ArrayInstanceGet;
+        private static readonly LuaCSFunction s_arraySet = ArrayInstanceSet;
+        private static bool s_pinned;
+
+        internal static void CreateTypeTable(IntPtr L, Type type)
+        {
+            EnsurePinned();
+            TypeBinding binding = MetaBinding.EnsureBinding(type);
+            // CLR exposes DeclaredOnly Get/Set/Address on T[]; Address returns T& and fails Emit
+            // (declaredOn==binding.Type → hard error). Native get/set replace them. Also clear
+            // leftover lowercase get/set if a prior CreateTypeTable failed after RegisterNative.
+            StripClrArrayAccessors(binding);
+
+            LuaDll.lua_createtable(L, 0, 8);
+            int typeTableIndex = LuaDll.lua_gettop(L);
+
+            TypeRegistryCommon.WriteCommonTypeFields(L, type, typeTableIndex);
+            TypeRegistryCommon.AttachReferenceInstanceMetatable(L, type, typeTableIndex, binding);
+
+            // Il2Cpp: native get/set on instance method table + __len on IMT.
+            RegisterArrayElementAccessMethods(L, binding);
+
+            LuaDll.lua_getfield(L, typeTableIndex, LuaConsts.ByObjInstanceMt);
+            if (LuaDll.lua_istable(L, -1))
+            {
+                LuaDll.lua_pushcfunction(L, global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_arrayLen));
+                LuaDll.lua_setfield(L, -2, LuaConsts.MetaLen);
+            }
+
+            LuaDll.lua_pop(L, 1);
+
+            TypeRegistryCommon.AttachStaticTypeMetatable(
+                L,
+                type,
+                typeTableIndex,
+                binding,
+                enableConstructorCall: false,
+                enableStructDefault: false);
+            MemberTableEmitter.Fill(L, binding, typeTableIndex);
+        }
+
+        private static void StripClrArrayAccessors(TypeBinding binding)
+        {
+            // Pascal CLR accessors + lowercase native keys from a failed prior bind attempt.
+            string[] names = { "Get", "Set", "Address", LuaConsts.Get, LuaConsts.Set };
+            for (int i = 0; i < names.Length; i++)
+            {
+                binding.ByObjInstanceMap.Remove(names[i]);
+                binding.ByValInstanceMap.Remove(names[i]);
+                binding.StaticMap.Remove(names[i]);
+            }
+        }
+
+        private static void RegisterArrayElementAccessMethods(IntPtr L, TypeBinding binding)
+        {
+            TypeRegistryCommon.RegisterNativeInstanceMethod(L, binding, LuaConsts.Get, s_arrayGet);
+            TypeRegistryCommon.RegisterNativeInstanceMethod(L, binding, LuaConsts.Set, s_arraySet);
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int ArrayInstanceLen(IntPtr L)
+        {
+            try
+            {
+                object obj = ObjectRegistry.PopThis(L, 1);
+                if (obj is Array array)
+                {
+                    LuaDll.lua_pushinteger(L, array.LongLength);
+                    return 1;
+                }
+
+                LuaCallbackBoundary.Throw("zlua: __len expects array userdata");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                return LuaCallbackBoundary.ToLuaError(L, ex);
+            }
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int ArrayInstanceGet(IntPtr L)
+        {
+            try
+            {
+                Array array = RequireArrayThis(L, 1);
+                int rank = array.Rank;
+                int argCount = LuaDll.lua_gettop(L) - 1;
+                if (argCount != rank)
+                {
+                    LuaCallbackBoundary.Throw($"zlua: get expects {rank} index argument(s)");
+                }
+
+                int[] indices = ReadIndices(L, array, indexStart: 2, indexCount: rank);
+                object element = array.GetValue(indices);
+                Type elementType = array.GetType().GetElementType();
+                TypedMarshal.PushObject(L, element, elementType);
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                return LuaCallbackBoundary.ToLuaError(L, ex);
+            }
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int ArrayInstanceSet(IntPtr L)
+        {
+            try
+            {
+                Array array = RequireArrayThis(L, 1);
+                int rank = array.Rank;
+                int argCount = LuaDll.lua_gettop(L) - 1;
+                if (argCount != rank + 1)
+                {
+                    LuaCallbackBoundary.Throw($"zlua: set expects {rank} index argument(s) and a value");
+                }
+
+                int valueIndex = LuaDll.lua_gettop(L);
+                int[] indices = ReadIndices(L, array, indexStart: 2, indexCount: rank);
+                Type elementType = array.GetType().GetElementType();
+                object value = TypedMarshal.PopObject(L, valueIndex, elementType);
+                value = ArrayMarshal.CoerceToElementType(value, elementType);
+                array.SetValue(value, indices);
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                return LuaCallbackBoundary.ToLuaError(L, ex);
+            }
+        }
+
+        private static Array RequireArrayThis(IntPtr L, int index)
+        {
+            object obj = ObjectRegistry.PopThis(L, index);
+            if (obj is Array array)
+            {
+                return array;
+            }
+
+            LuaCallbackBoundary.Throw("zlua: expected array userdata");
+            return null;
+        }
+
+        private static int[] ReadIndices(IntPtr L, Array array, int indexStart, int indexCount)
+        {
+            var indices = new int[indexCount];
+            for (int i = 0; i < indexCount; i++)
+            {
+                int stackIndex = indexStart + i;
+                if (LuaDll.lua_type(L, stackIndex) != LuaDataType.Number
+                    || LuaDll.lua_isinteger(L, stackIndex) == 0)
+                {
+                    LuaCallbackBoundary.Throw(indexCount == 1
+                        ? "zlua: expected integer index"
+                        : "zlua: expected integer indices");
+                }
+
+                long raw = LuaDll.lua_tointeger(L, stackIndex);
+                int index = checked((int)raw);
+                int lower = array.GetLowerBound(i);
+                int upper = lower + array.GetLength(i) - 1;
+                if (index < lower || index > upper)
+                {
+                    LuaCallbackBoundary.Throw($"zlua: array index out of range: {index}");
+                }
+
+                indices[i] = index;
+            }
+
+            return indices;
+        }
+
+        private static void EnsurePinned()
+        {
+            if (s_pinned)
+            {
+                return;
+            }
+
+            s_pins.Add(s_arrayLen);
+            s_pins.Add(s_arrayGet);
+            s_pins.Add(s_arraySet);
+            s_pinned = true;
+        }
+    }
+}

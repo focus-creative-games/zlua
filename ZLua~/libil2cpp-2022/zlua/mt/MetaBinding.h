@@ -5,7 +5,7 @@
 #include "../utils/Collection.h"
 #include "../bridge/PropertyBridge.h"
 #include "../bridge/FieldBridge.h"
-#include "../marshal/Marshaling.h"
+#include "../marshal/TypedMarshal.h"
 #include "../marshal/MarshalDefs.h"
 #include "../marshal/MarshalMeta.h"
 

@@ -9,7 +9,7 @@
 #include "../LuaConsts.h"
 #include "../utils/LuaStackGuard.h"
 #include "../utils/LuaUtil.h"
-#include "../marshal/Marshaling.h"
+#include "../marshal/TypedMarshal.h"
 #include "../marshal/ObjectMarshal.h"
 
 #include "vm/Array.h"
@@ -78,7 +78,7 @@ static int PushArrayElement(lua_State* L, Il2CppArray* array, il2cpp_array_size_
     const int elementSize = il2cpp::vm::Array::GetElementSize(arrayClass);
     void* elementAddress = il2cpp_array_addr_with_size(array, elementSize, arrayIndex);
     const Il2CppType* elementType = &elementClass->byval_arg;
-    Marshaling::PushByType(L, elementAddress, elementType);
+    TypedMarshal::PushByType(L, elementAddress, elementType);
     return 1;
 }
 
@@ -96,7 +96,7 @@ static int SetArrayElement(lua_State* L, Il2CppArray* array, il2cpp_array_size_t
     void* elementAddress = il2cpp_array_addr_with_size(array, elementSize, arrayIndex);
     const Il2CppType* elementType = &elementClass->byval_arg;
 
-    Marshaling::PopByType(L, valueIndex, elementAddress, elementType);
+    TypedMarshal::PopByType(L, valueIndex, elementAddress, elementType);
 
     if (il2cpp::vm::Type::IsReference(elementType))
         il2cpp::gc::GarbageCollector::SetWriteBarrier((void**)elementAddress);

@@ -69,6 +69,10 @@ function zlua.unbox(boxedValue)
     return __zlua_unbox(boxedValue)
 end
 
+function zlua.cast(obj, targetType)
+    return __zlua_cast(obj, targetType)
+end
+
 function zlua.register_method(aliasName, methodOrClosure)
     return __zlua_register_method(aliasName, methodOrClosure)
 end

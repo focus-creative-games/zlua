@@ -13,6 +13,14 @@ namespace ZLua
     {
         public override ILPostProcessor GetInstance() => this;
 
+
+        private static bool IsReferenceToZLuaAssembly(string reference)
+        {
+            return string.Equals(reference, LuaInvokeMonoReferenceImporter.MonoAssemblyName, StringComparison.Ordinal)
+                || string.Equals(reference, LuaInvokeMonoReferenceImporter.CommonAssemblyName, StringComparison.Ordinal)
+                || string.Equals(reference, "ZLua.Il2Cpp", StringComparison.Ordinal);
+        }
+
         public override bool WillProcess(ICompiledAssembly compiledAssembly)
         {
             if (ShouldSkipAssemblyName(compiledAssembly.Name))
@@ -23,9 +31,7 @@ namespace ZLua
             return compiledAssembly.References.Any(reference =>
             {
                 string fileName = Path.GetFileNameWithoutExtension(reference);
-                return string.Equals(fileName, LuaInvokeMonoReferenceImporter.MonoAssemblyName, StringComparison.Ordinal)
-                    || string.Equals(fileName, LuaInvokeMonoReferenceImporter.CommonAssemblyName, StringComparison.Ordinal)
-                    || string.Equals(fileName, "ZLua.Il2Cpp", StringComparison.Ordinal);
+                return IsReferenceToZLuaAssembly(fileName);
             });
         }
 

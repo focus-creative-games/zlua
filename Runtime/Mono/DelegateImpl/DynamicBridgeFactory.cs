@@ -4,9 +4,8 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using ZLua;
-using ZLua.Marshal;
-using ZLua.MethodBridge;
-using ZLua.Mt;
+using ZLua.Lvm;
+using ZLua.Utils;
 
 namespace ZLua.DelegateImpl
 {

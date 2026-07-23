@@ -1,10 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using ZLua.Mt;
-using ZLua.MethodBridge;
-using ZLua.Marshal;
-using ZLua.DelegateImpl;
 
 namespace ZLua
 {
@@ -18,6 +14,9 @@ namespace ZLua
         private static uint _generation = 1;
         private static int _luaToCSharpDepth;
         private static readonly List<(GCHandle handle, Type type)> Entries = new List<(GCHandle, Type)>();
+
+        /// <summary>True while executing a Lua→C# bridge callback (MethodEmitter Wrap, etc.).</summary>
+        internal static bool IsInsideLuaToCSharp => _luaToCSharpDepth > 0;
 
         /// <summary>Lua→C# method/constructor callback entry.</summary>
         internal static void EnterLuaToCSharp()
@@ -37,7 +36,7 @@ namespace ZLua
             }
         }
 
-        /// <summary>Standalone C#→Lua (RunLuaFunc / top-level pcall), only when not nested in Lua→C#.</summary>
+        /// <summary>Standalone C#→Lua (LuaInvoke / top-level pcall), only when not nested in Lua→C#.</summary>
         internal static void EnterStandaloneCSharpToLua()
         {
             if (_luaToCSharpDepth == 0)
@@ -114,6 +113,41 @@ namespace ZLua
                 value = entry.handle.Target;
                 valueType = entry.type;
                 return value != null && valueType != null;
+            }
+        }
+
+        internal static bool TryUpdate(IntPtr handleId, object newValue)
+        {
+            if (newValue == null || handleId == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            if (!TryDecodeHandle(handleId, out uint generation, out int index))
+            {
+                return false;
+            }
+
+            lock (Sync)
+            {
+                if (generation != _generation || index < 0 || index >= Entries.Count)
+                {
+                    return false;
+                }
+
+                (GCHandle handle, Type type) entry = Entries[index];
+                if (!entry.handle.IsAllocated)
+                {
+                    return false;
+                }
+
+                if (entry.type == null || newValue.GetType() != entry.type)
+                {
+                    return false;
+                }
+
+                entry.handle.Target = newValue;
+                return true;
             }
         }
 

@@ -1,7 +1,7 @@
 #include <vector>
 
 #include "OpaqueValueMarshal.h"
-#include "Marshaling.h"
+#include "TypedMarshal.h"
 
 #include "../utils/LuaException.h"
 #include "../utils/MetadataUtil.h"
@@ -186,11 +186,11 @@ void OpaqueValueMarshal::PushValueFromHandle(lua_State* L, int handleIndex)
         Il2CppType derefType = *data.type;
         derefType.byref = false;
         void* derefValueAddress = *((void**)data.valueAddress);
-        Marshaling::PushByType(L, derefValueAddress, &derefType);
+        TypedMarshal::PushByType(L, derefValueAddress, &derefType);
     }
     else
     {
-        Marshaling::PushByType(L, data.valueAddress, data.type);
+        TypedMarshal::PushByType(L, data.valueAddress, data.type);
     }
 }
 
@@ -202,11 +202,11 @@ void OpaqueValueMarshal::SetValueToHandle(lua_State* L, int handleIndex, int val
         Il2CppType derefType = *data.type;
         derefType.byref = false;
         void* derefValueAddress = *((void**)data.valueAddress);
-        Marshaling::PopByType(L, valueIndex, derefValueAddress, &derefType);
+        TypedMarshal::PopByType(L, valueIndex, derefValueAddress, &derefType);
     }
     else
     {
-        Marshaling::PopByType(L, valueIndex, data.valueAddress, data.type);
+        TypedMarshal::PopByType(L, valueIndex, data.valueAddress, data.type);
     }
 }
 } // namespace zlua

@@ -6,6 +6,7 @@
 #include "../LuaConsts.h"
 #include "../marshal/ObjectMarshal.h"
 #include "../marshal/MethodOverloadResolver.h"  
+#include "../bridge/MethodBridge.h"
 #include "../utils/LuaStackGuard.h"
 #include "../utils/LuaException.h"
 
@@ -52,8 +53,8 @@ int CreateReferenceTypeInstance(lua_State* L)
         LuaException::ThrowFormat("zlua: no constructor found for type: %s", klass->name);
     }
     Il2CppObject* obj = il2cpp::vm::Object::New(klass);
-    ObjectMarshal::Push(L, obj);
-    int ret = targetMethodCtx->lua2CsInvoker(L, obj, argStartIdx, targetMethodCtx);
+    ObjectMarshal::Push(L, obj, klass);
+    int ret = MethodBridge::InvokeLua2Cs(L, obj, argStartIdx, targetMethodCtx);
     IL2CPP_ASSERT(ret == 0);
     return 1;
     ZLUA_TRY_END();

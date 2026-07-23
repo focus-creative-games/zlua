@@ -2,23 +2,22 @@ using System;
 using System.Linq.Expressions;
 using System.Reflection;
 using ZLua;
-using ZLua.Marshal;
-using ZLua.MethodBridge;
-using ZLua.Mt;
+using ZLua.Marshaling;
+using ZLua.Utils;
 
 namespace ZLua.DelegateImpl
 {
     /// <summary>
-    /// Expression trees for C# â†?Lua compiled delegate bridges (P1: typed push/pop without object[]).
+    /// Expression trees for C# â†’ Lua compiled delegate bridges (typed push/pop without object[]).
     /// </summary>
     internal static class CSharpToLuaBridgeExpressionBuilder
     {
-        private static readonly MethodInfo PushArgumentValueMethod = typeof(MethodBridgeCore).GetMethod(
-            nameof(MethodBridgeCore.PushArgumentValue),
+        private static readonly MethodInfo PushObjectMethod = typeof(TypedMarshal).GetMethod(
+            nameof(TypedMarshal.PushObject),
             BindingFlags.NonPublic | BindingFlags.Static);
 
-        private static readonly MethodInfo PopReturnMethod = typeof(LuaInvokeMarshaling).GetMethod(
-            nameof(LuaInvokeMarshaling.PopReturn),
+        private static readonly MethodInfo PopObjectMethod = typeof(TypedMarshal).GetMethod(
+            nameof(TypedMarshal.PopObject),
             BindingFlags.NonPublic | BindingFlags.Static);
 
         private static readonly MethodInfo LuaPushBoolean = typeof(LuaDll).GetMethod(
@@ -63,6 +62,17 @@ namespace ZLua.DelegateImpl
             Type parameterType)
         {
             Type targetType = Nullable.GetUnderlyingType(parameterType) ?? parameterType;
+
+            if (parameterType != targetType)
+            {
+                return Expression.IfThenElse(
+                    Expression.Property(valueExpression, nameof(Nullable<int>.HasValue)),
+                    BuildPushArgument(
+                        luaStateParam,
+                        Expression.Property(valueExpression, nameof(Nullable<int>.Value)),
+                        targetType),
+                    Expression.Call(LuaPushNil, luaStateParam));
+            }
 
             if (targetType == typeof(bool))
             {
@@ -134,7 +144,7 @@ namespace ZLua.DelegateImpl
             }
 
             return Expression.Call(
-                PushArgumentValueMethod,
+                PushObjectMethod,
                 luaStateParam,
                 Expression.Convert(valueExpression, typeof(object)),
                 Expression.Constant(parameterType));
@@ -152,113 +162,108 @@ namespace ZLua.DelegateImpl
 
             Type unwrapped = Nullable.GetUnderlyingType(returnType) ?? returnType;
 
+            Expression popResult;
             if (unwrapped == typeof(bool))
             {
-                return Expression.NotEqual(
+                popResult = Expression.NotEqual(
                     Expression.Call(LuaToBoolean, luaStateParam, Expression.Constant(-1)),
                     Expression.Constant(0));
             }
-
-            if (unwrapped == typeof(char))
+            else if (unwrapped == typeof(char))
             {
-                return Expression.Convert(
+                popResult = Expression.Convert(
                     Expression.Call(LuaToInteger, luaStateParam, Expression.Constant(-1)),
                     typeof(char));
             }
-
-            if (unwrapped == typeof(byte))
+            else if (unwrapped == typeof(byte))
             {
-                return Expression.Convert(
+                popResult = Expression.Convert(
                     Expression.Call(LuaToInteger, luaStateParam, Expression.Constant(-1)),
                     typeof(byte));
             }
-
-            if (unwrapped == typeof(sbyte))
+            else if (unwrapped == typeof(sbyte))
             {
-                return Expression.Convert(
+                popResult = Expression.Convert(
                     Expression.Call(LuaToInteger, luaStateParam, Expression.Constant(-1)),
                     typeof(sbyte));
             }
-
-            if (unwrapped == typeof(short))
+            else if (unwrapped == typeof(short))
             {
-                return Expression.Convert(
+                popResult = Expression.Convert(
                     Expression.Call(LuaToInteger, luaStateParam, Expression.Constant(-1)),
                     typeof(short));
             }
-
-            if (unwrapped == typeof(ushort))
+            else if (unwrapped == typeof(ushort))
             {
-                return Expression.Convert(
+                popResult = Expression.Convert(
                     Expression.Call(LuaToInteger, luaStateParam, Expression.Constant(-1)),
                     typeof(ushort));
             }
-
-            if (unwrapped == typeof(int))
+            else if (unwrapped == typeof(int))
             {
-                return Expression.Convert(
+                popResult = Expression.Convert(
                     Expression.Call(LuaToInteger, luaStateParam, Expression.Constant(-1)),
                     typeof(int));
             }
-
-            if (unwrapped == typeof(uint))
+            else if (unwrapped == typeof(uint))
             {
-                return Expression.Convert(
+                popResult = Expression.Convert(
                     Expression.Call(LuaToInteger, luaStateParam, Expression.Constant(-1)),
                     typeof(uint));
             }
-
-            if (unwrapped == typeof(long))
+            else if (unwrapped == typeof(long))
             {
-                return Expression.Call(LuaToInteger, luaStateParam, Expression.Constant(-1));
+                popResult = Expression.Call(LuaToInteger, luaStateParam, Expression.Constant(-1));
             }
-
-            if (unwrapped == typeof(ulong))
+            else if (unwrapped == typeof(ulong))
             {
-                return Expression.Convert(
+                popResult = Expression.Convert(
                     Expression.Call(LuaToInteger, luaStateParam, Expression.Constant(-1)),
                     typeof(ulong));
             }
-
-            if (unwrapped == typeof(float))
+            else if (unwrapped == typeof(float))
             {
-                return Expression.Convert(
+                popResult = Expression.Convert(
                     Expression.Call(LuaToNumber, luaStateParam, Expression.Constant(-1)),
                     typeof(float));
             }
-
-            if (unwrapped == typeof(double))
+            else if (unwrapped == typeof(double))
             {
-                return Expression.Call(LuaToNumber, luaStateParam, Expression.Constant(-1));
+                popResult = Expression.Call(LuaToNumber, luaStateParam, Expression.Constant(-1));
             }
-
-            if (unwrapped == typeof(IntPtr))
+            else if (unwrapped == typeof(IntPtr))
             {
-                return Expression.New(
+                popResult = Expression.New(
                     typeof(IntPtr).GetConstructor(new[] { typeof(long) }),
                     Expression.Call(LuaToInteger, luaStateParam, Expression.Constant(-1)));
             }
-
-            if (unwrapped == typeof(UIntPtr))
+            else if (unwrapped == typeof(UIntPtr))
             {
-                return Expression.New(
+                popResult = Expression.New(
                     typeof(UIntPtr).GetConstructor(new[] { typeof(ulong) }),
                     Expression.Convert(
                         Expression.Call(LuaToInteger, luaStateParam, Expression.Constant(-1)),
                         typeof(ulong)));
             }
-
-            if (unwrapped == typeof(string))
+            else if (unwrapped == typeof(string))
             {
-                return Expression.Call(ToStringMethod, luaStateParam, Expression.Constant(-1));
+                popResult = Expression.Call(ToStringMethod, luaStateParam, Expression.Constant(-1));
+            }
+            else
+            {
+                popResult = Expression.Call(
+                    PopObjectMethod,
+                    luaStateParam,
+                    Expression.Constant(-1),
+                    Expression.Constant(returnType));
             }
 
-            return Expression.Call(
-                PopReturnMethod,
-                luaStateParam,
-                Expression.Constant(invokeMethod, typeof(MethodInfo)),
-                Expression.Constant(returnType),
-                Expression.Constant(-1));
+            if (popResult.Type == returnType)
+            {
+                return popResult;
+            }
+
+            return Expression.Convert(popResult, returnType);
         }
     }
 }

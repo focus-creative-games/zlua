@@ -177,16 +177,14 @@ namespace ZLua.CppCodeGen
         {
             string retTypeName = NameUtil.GetTypeName(binding.retType);
             
-            writer.WriteLine($"static void {binding.StaticGetterMethodName}(lua_State* L, void* target /* nullptr */, const void* ctx)");
+            writer.WriteLine($"static void {binding.StaticGetterMethodName}(lua_State* L, void* target /* nullptr */, {ConstStrings.typeMethodInfo} method, {ConstStrings.typeConstPropertyMarshalCtxPtr} ctx)");
             writer.WriteLine("{");
             writer.IncreaseIndent();
             writer.WriteLine($"typedef {retTypeName} (*FnGetter)({ConstStrings.typeMethodInfo});");
-            writer.WriteLine($"{ConstStrings.typeConstPropertyMarshalCtxPtr} marshalCtx = ({ConstStrings.typeConstPropertyMarshalCtxPtr})ctx;");
-            writer.WriteLine($"{ConstStrings.typeMethodInfo} getter = marshalCtx->property->get;");
-            writer.WriteLine($"FnGetter fnGetter = (FnGetter)getter->{ConstStrings.nameMethodPointer};");
-            writer.WriteLine($"{retTypeName} result = fnGetter(getter);");
+            writer.WriteLine($"FnGetter fnGetter = (FnGetter)method->{ConstStrings.nameMethodPointer};");
+            writer.WriteLine($"{retTypeName} result = fnGetter(method);");
             string marshalMethodName = MetaUtil.IsNullable(binding.retType) ? "PushNullableValue" : "PushValue";
-            writer.WriteLine($"StructMarshal::{marshalMethodName}(L, &result, marshalCtx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, marshalCtx->meta));");
+            writer.WriteLine($"StructMarshal::{marshalMethodName}(L, &result, ctx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));");
             writer.DecreaseIndent();
             writer.WriteLine("}");
         }
@@ -195,17 +193,15 @@ namespace ZLua.CppCodeGen
         {
             string retTypeName = NameUtil.GetTypeName(binding.retType);
 
-            writer.WriteLine($"static void {binding.StaticSetterMethodName}(lua_State* L, void* target, int valueIdx, const void* ctx)");
+            writer.WriteLine($"static void {binding.StaticSetterMethodName}(lua_State* L, void* target, int valueIdx, {ConstStrings.typeMethodInfo} method, {ConstStrings.typeConstPropertyMarshalCtxPtr} ctx)");
             writer.WriteLine("{");
             writer.IncreaseIndent();
             writer.WriteLine($"typedef void (*FnSetter)({retTypeName}, {ConstStrings.typeMethodInfo});");
-            writer.WriteLine($"{ConstStrings.typeConstPropertyMarshalCtxPtr} marshalCtx = ({ConstStrings.typeConstPropertyMarshalCtxPtr})ctx;");
             writer.WriteLine($"{retTypeName} value;");
             string marshalMethodName = MetaUtil.IsNullable(binding.retType) ? "PopNullableValue" : "PopValue";
-            writer.WriteLine($"StructMarshal::{marshalMethodName}(L, valueIdx, marshalCtx->valueTypeKlass, &value);");
-            writer.WriteLine($"{ConstStrings.typeMethodInfo} setter = marshalCtx->property->set;");
-            writer.WriteLine($"FnSetter fnSetter = (FnSetter)setter->{ConstStrings.nameMethodPointer};");
-            writer.WriteLine($"fnSetter(value, setter);");
+            writer.WriteLine($"StructMarshal::{marshalMethodName}(L, valueIdx, ctx->valueTypeKlass, &value);");
+            writer.WriteLine($"FnSetter fnSetter = (FnSetter)method->{ConstStrings.nameMethodPointer};");
+            writer.WriteLine($"fnSetter(value, method);");
             writer.DecreaseIndent();
             writer.WriteLine("}");
         }
@@ -214,16 +210,14 @@ namespace ZLua.CppCodeGen
         {
             string retTypeName = NameUtil.GetTypeName(binding.retType);
             
-            writer.WriteLine($"static void {binding.InstanceGetterMethodName}(lua_State* L, void* target, const void* ctx)");
+            writer.WriteLine($"static void {binding.InstanceGetterMethodName}(lua_State* L, void* target, {ConstStrings.typeMethodInfo} method, {ConstStrings.typeConstPropertyMarshalCtxPtr} ctx)");
             writer.WriteLine("{");
             writer.IncreaseIndent();
             writer.WriteLine($"typedef {retTypeName} (*FnGetter)(void*, {ConstStrings.typeMethodInfo});");
-            writer.WriteLine($"{ConstStrings.typeConstPropertyMarshalCtxPtr} marshalCtx = ({ConstStrings.typeConstPropertyMarshalCtxPtr})ctx;");
-            writer.WriteLine($"{ConstStrings.typeMethodInfo} getter = marshalCtx->property->get;");
-            writer.WriteLine($"FnGetter fnGetter = (FnGetter)getter->{ConstStrings.nameMethodPointer};");
-            writer.WriteLine($"{retTypeName} result = fnGetter(target, getter);");
+            writer.WriteLine($"FnGetter fnGetter = (FnGetter)method->{ConstStrings.nameMethodPointer};");
+            writer.WriteLine($"{retTypeName} result = fnGetter(target, method);");
             string marshalMethodName = MetaUtil.IsNullable(binding.retType) ? "PushNullableValue" : "PushValue";
-            writer.WriteLine($"StructMarshal::{marshalMethodName}(L, &result, marshalCtx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, marshalCtx->meta));");
+            writer.WriteLine($"StructMarshal::{marshalMethodName}(L, &result, ctx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));");
             writer.DecreaseIndent();
             writer.WriteLine("}");
         }
@@ -231,17 +225,15 @@ namespace ZLua.CppCodeGen
         private void GenerateInstanceSetterFunction(CodeWriter writer, PropertyBindingInfo binding)
         {
             string retTypeName = NameUtil.GetTypeName(binding.retType);
-            writer.WriteLine($"static void {binding.InstanceSetterMethodName}(lua_State* L, void* target, int valueIdx, const void* ctx)");
+            writer.WriteLine($"static void {binding.InstanceSetterMethodName}(lua_State* L, void* target, int valueIdx, {ConstStrings.typeMethodInfo} method, {ConstStrings.typeConstPropertyMarshalCtxPtr} ctx)");
             writer.WriteLine("{");
             writer.IncreaseIndent();
             writer.WriteLine($"typedef void (*FnSetter)(void*, {retTypeName}, {ConstStrings.typeMethodInfo});");
-            writer.WriteLine($"{ConstStrings.typeConstPropertyMarshalCtxPtr} marshalCtx = ({ConstStrings.typeConstPropertyMarshalCtxPtr})ctx;");
             writer.WriteLine($"{retTypeName} value;");
             string marshalMethodName = MetaUtil.IsNullable(binding.retType) ? "PopNullableValue" : "PopValue";
-            writer.WriteLine($"StructMarshal::{marshalMethodName}(L, valueIdx, marshalCtx->valueTypeKlass, &value);");
-            writer.WriteLine($"{ConstStrings.typeMethodInfo} setter = marshalCtx->property->set;");
-            writer.WriteLine($"FnSetter fnSetter = (FnSetter)setter->{ConstStrings.nameMethodPointer};");
-            writer.WriteLine($"fnSetter(target, value, setter);");
+            writer.WriteLine($"StructMarshal::{marshalMethodName}(L, valueIdx, ctx->valueTypeKlass, &value);");
+            writer.WriteLine($"FnSetter fnSetter = (FnSetter)method->{ConstStrings.nameMethodPointer};");
+            writer.WriteLine($"fnSetter(target, value, method);");
             writer.DecreaseIndent();
             writer.WriteLine("}");
         }

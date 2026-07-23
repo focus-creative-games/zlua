@@ -21,7 +21,8 @@ void DelegateMarshal::Push(lua_State* L, Il2CppDelegate* delegate, int metatable
         LuaUtil::PushRef(L, luaMethod->funcRef);
         return;
     }
-    ObjectRegistry::Push(L, target, metatableRefIndex);
+    Il2CppObject* obj = reinterpret_cast<Il2CppObject*>(delegate);
+    ObjectRegistry::Push(L, obj, obj->klass, metatableRefIndex);
 }
 
 Il2CppDelegate* Create(lua_State* L, Il2CppClass* delegateClass, int funcRef)

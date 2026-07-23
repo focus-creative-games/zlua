@@ -4,6 +4,7 @@
 #include "../LuaConsts.h"
 #include "../mt/MetaTableCache.h"
 #include "../mt/TypeRegistry.h"
+#include "../utils/Collection.h"
 #include "../utils/LuaException.h"
 
 #include "gc/GarbageCollector.h"
@@ -18,6 +19,33 @@ namespace zlua
 
 static const uint32_t kInvalidSlotIndex = UINT32_MAX;
 static int s_objectCacheRef = LUA_NOREF;
+
+struct ObjectViewKey
+{
+    Il2CppObject* obj;
+    Il2CppClass* viewKlass;
+};
+
+struct ObjectViewKeyHash
+{
+    size_t operator()(const ObjectViewKey& key) const
+    {
+        size_t h = reinterpret_cast<size_t>(key.obj);
+        h ^= reinterpret_cast<size_t>(key.viewKlass) + 0x9e3779b9u + (h << 6) + (h >> 2);
+        return h;
+    }
+};
+
+struct ObjectViewKeyEqual
+{
+    bool operator()(const ObjectViewKey& lhs, const ObjectViewKey& rhs) const
+    {
+        return lhs.obj == rhs.obj && lhs.viewKlass == rhs.viewKlass;
+    }
+};
+
+/* C++ map: (obj, view) -> int key in a single weak-values Lua table (no nested tables). */
+static HashMap<ObjectViewKey, int, ObjectViewKeyHash, ObjectViewKeyEqual> s_objectViewRefs;
 
 class ObjectSlotRegistry
 {
@@ -109,7 +137,9 @@ static ObjectSlotRegistry s_objectSlots;
 void ObjectRegistry::Initialize(lua_State* L)
 {
     IL2CPP_ASSERT(s_objectCacheRef == LUA_NOREF);
+    IL2CPP_ASSERT(s_objectViewRefs.empty());
 
+    /* Single weak-values table; C++ HashMap holds integer keys into this table. */
     lua_newtable(L);
     lua_newtable(L);
     lua_pushstring(L, LuaConsts::WeakModeValue);
@@ -120,6 +150,7 @@ void ObjectRegistry::Initialize(lua_State* L)
 
 void ObjectRegistry::Shutdown(lua_State* L)
 {
+    s_objectViewRefs.clear();
     if (s_objectCacheRef != LUA_NOREF)
     {
         luaL_unref(L, LUA_REGISTRYINDEX, s_objectCacheRef);
@@ -127,57 +158,93 @@ void ObjectRegistry::Shutdown(lua_State* L)
     }
 }
 
-static void RemoveFromObjectCache(lua_State* L, Il2CppObject* obj)
+static void RemoveFromObjectCache(lua_State* L, Il2CppObject* obj, Il2CppClass* viewKlass)
 {
-    if (obj == nullptr)
+    if (obj == nullptr || viewKlass == nullptr)
         return;
 
     IL2CPP_ASSERT(s_objectCacheRef != LUA_NOREF);
 
+    ObjectViewKey key{obj, viewKlass};
+    auto it = s_objectViewRefs.find(key);
+    if (it == s_objectViewRefs.end())
+        return;
+
+    const int cacheKey = it->second;
+    s_objectViewRefs.erase(it);
+
     lua_rawgeti(L, LUA_REGISTRYINDEX, s_objectCacheRef);
-    lua_pushlightuserdata(L, obj);
-    lua_pushnil(L);
-    lua_rawset(L, -3);
+    luaL_unref(L, -1, cacheKey);
     lua_pop(L, 1);
 }
 
-static bool TryPushCachedObject(lua_State* L, Il2CppObject* obj)
+static bool TryPushCachedObject(lua_State* L, Il2CppObject* obj, Il2CppClass* viewKlass)
 {
     IL2CPP_ASSERT(s_objectCacheRef != LUA_NOREF);
+    IL2CPP_ASSERT(viewKlass != nullptr);
+
+    ObjectViewKey key{obj, viewKlass};
+    auto it = s_objectViewRefs.find(key);
+    if (it == s_objectViewRefs.end())
+        return false;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, s_objectCacheRef);
-    lua_pushlightuserdata(L, obj);
-    lua_rawget(L, -2);
+    lua_rawgeti(L, -1, it->second);
+    lua_remove(L, -2); /* drop weak table */
+
     if (!lua_isuserdata(L, -1))
     {
-        lua_pop(L, 2);
+        lua_pop(L, 1);
+        /* Stale entry (value already collected); drop C++ map slot. */
+        const int cacheKey = it->second;
+        s_objectViewRefs.erase(it);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, s_objectCacheRef);
+        luaL_unref(L, -1, cacheKey);
+        lua_pop(L, 1);
         return false;
     }
 
     ZLuaObjectUserData* ud = (ZLuaObjectUserData*)lua_touserdata(L, -1);
-    if (ud == nullptr || ud->obj != obj || ud->slotIndex == kInvalidSlotIndex)
+    if (ud == nullptr || ud->obj != obj || ud->viewKlass != viewKlass || ud->slotIndex == kInvalidSlotIndex)
     {
-        lua_pop(L, 2);
+        lua_pop(L, 1);
+        const int cacheKey = it->second;
+        s_objectViewRefs.erase(it);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, s_objectCacheRef);
+        luaL_unref(L, -1, cacheKey);
+        lua_pop(L, 1);
         return false;
     }
 
-    lua_remove(L, -2);
     return true;
 }
 
-static void AddToObjectCache(lua_State* L, Il2CppObject* obj, int userdataIndex)
+static void AddToObjectCache(lua_State* L, Il2CppObject* obj, Il2CppClass* viewKlass, int userdataIndex)
 {
     IL2CPP_ASSERT(s_objectCacheRef != LUA_NOREF);
+    IL2CPP_ASSERT(viewKlass != nullptr);
 
     const int absUserdataIndex = lua_absindex(L, userdataIndex);
+    ObjectViewKey key{obj, viewKlass};
+
+    auto existing = s_objectViewRefs.find(key);
+    if (existing != s_objectViewRefs.end())
+    {
+        lua_rawgeti(L, LUA_REGISTRYINDEX, s_objectCacheRef);
+        luaL_unref(L, -1, existing->second);
+        lua_pop(L, 1);
+        s_objectViewRefs.erase(existing);
+    }
+
     lua_rawgeti(L, LUA_REGISTRYINDEX, s_objectCacheRef);
-    lua_pushlightuserdata(L, obj);
     lua_pushvalue(L, absUserdataIndex);
-    lua_rawset(L, -3);
-    lua_pop(L, 1);
+    const int cacheKey = luaL_ref(L, -2);
+    lua_pop(L, 1); /* weak table */
+
+    s_objectViewRefs.insert({key, cacheKey});
 }
 
-static void AttachObjectMetatable(lua_State* L, Il2CppClass* klass, int metatableRefIndex)
+static void AttachObjectMetatable(lua_State* L, Il2CppClass* viewKlass, int metatableRefIndex)
 {
     if (metatableRefIndex != LUA_NOREF)
     {
@@ -186,12 +253,12 @@ static void AttachObjectMetatable(lua_State* L, Il2CppClass* klass, int metatabl
     }
     else
     {
-        MetaTableCache::PushByObjMetatable(L, klass);
+        MetaTableCache::PushByObjMetatable(L, viewKlass);
         lua_setmetatable(L, -2);
     }
 }
 
-void ObjectRegistry::Push(lua_State* L, Il2CppObject* obj, int metatableRefIndex)
+void ObjectRegistry::Push(lua_State* L, Il2CppObject* obj, Il2CppClass* viewKlass, int metatableRefIndex)
 {
     if (obj == nullptr)
     {
@@ -199,12 +266,15 @@ void ObjectRegistry::Push(lua_State* L, Il2CppObject* obj, int metatableRefIndex
         return;
     }
 
-    if (TryPushCachedObject(L, obj))
+    IL2CPP_ASSERT(viewKlass != nullptr);
+
+    if (TryPushCachedObject(L, obj, viewKlass))
         return;
 
     ZLuaObjectUserData* ud = (ZLuaObjectUserData*)lua_newuserdatauv(L, sizeof(ZLuaObjectUserData), 0);
     ud->header.kind = UserDataKind::ByObj;
     ud->obj = obj;
+    ud->viewKlass = viewKlass;
     ud->slotIndex = s_objectSlots.RegisterObject(obj);
     if (ud->slotIndex == kInvalidSlotIndex)
     {
@@ -212,8 +282,8 @@ void ObjectRegistry::Push(lua_State* L, Il2CppObject* obj, int metatableRefIndex
         LuaException::Throw("zlua internal error: failed to register managed object");
     }
 
-    AttachObjectMetatable(L, obj->klass, metatableRefIndex);
-    AddToObjectCache(L, obj, -1);
+    AttachObjectMetatable(L, viewKlass, metatableRefIndex);
+    AddToObjectCache(L, obj, viewKlass, -1);
 }
 
 Il2CppObject* ObjectRegistry::Pop(lua_State* L, int idx)
@@ -235,8 +305,9 @@ int ObjectRegistry::OnReleaseObjectUserData(lua_State* L)
     IL2CPP_ASSERT(ud->slotIndex != kInvalidSlotIndex);
 
     Il2CppObject* obj = ud->obj;
+    Il2CppClass* viewKlass = ud->viewKlass;
     s_objectSlots.UnregisterObject(ud->slotIndex);
-    RemoveFromObjectCache(L, obj);
+    RemoveFromObjectCache(L, obj, viewKlass);
     return 0;
 }
 } // namespace zlua

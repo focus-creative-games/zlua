@@ -167,10 +167,9 @@ namespace ZLua.CppCodeGen
             string retTypeName = NameUtil.GetTypeName(retType);
             bool isVoidReturn = MetaUtil.IsVoid(retType);
             writer.WriteLine($"// {binding.methodDef.FullName}");
-            writer.WriteLine($"static int {binding.BridgeMethodName}(lua_State* L, void* target, int argStart, {ConstStrings.typeConstMethodMarshalCtxPtr} ctx)");
+            writer.WriteLine($"static int {binding.BridgeMethodName}(lua_State* L, void* target, int argStart, {ConstStrings.typeMethodInfo} method, {ConstStrings.typeConstMethodMarshalCtxPtr} ctx)");
             writer.WriteLine("{");
             writer.IncreaseIndent();
-            writer.WriteLine($"{ConstStrings.typeMethodInfo} method = ctx->method;");
             foreach (var param in binding.parameters)
             {
                 string metaExpr = $"ctx->paramsMeta[{param.indexExcludedThis}]";

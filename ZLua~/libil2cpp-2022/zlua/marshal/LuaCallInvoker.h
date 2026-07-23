@@ -1,7 +1,7 @@
 // #pragma once
 
 // #include "../LuaEnv.h"
-// #include "../marshal/Marshaling.h"
+// #include "../marshal/TypedMarshal.h"
 // #include "../marshal/PrimitiveMarshal.h"
 
 // #include "lua/lauxlib.h"

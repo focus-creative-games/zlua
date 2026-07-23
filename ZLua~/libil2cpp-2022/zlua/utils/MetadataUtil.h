@@ -3,8 +3,8 @@
 #include "../ZLuaCommon.h"
 #include "../marshal/MarshalDefs.h"
 
-#include "il2cpp-api-types.h"
 #include "vm/Class.h"
+#include "vm/Object.h"
 
 namespace zlua
 {
@@ -55,6 +55,29 @@ class MetadataUtil
     static bool IsStaticMethod(const MethodInfo* method)
     {
         return method->flags & METHOD_ATTRIBUTE_STATIC;
+    }
+
+    /* Effectively sealed for virtual dispatch: non-virtual, method final, klass sealed, or by-val this. */
+    static bool IsMethodSealed(const MethodInfo* method, bool byVal)
+    {
+        if (byVal)
+            return true;
+        const uint16_t flags = method->flags;
+        if ((flags & METHOD_ATTRIBUTE_VIRTUAL) == 0)
+            return true;
+        if ((flags & METHOD_ATTRIBUTE_FINAL) != 0)
+            return true;
+        if ((method->klass->flags & TYPE_ATTRIBUTE_SEALED) != 0)
+            return true;
+        return false;
+    }
+
+    /* declared MethodInfo + runtime this → final MethodInfo (no-op when sealed). */
+    static inline const MethodInfo* ResolveInvokeMethod(const MethodInfo* declared, void* target, bool sealed)
+    {
+        if (sealed)
+            return declared;
+        return il2cpp::vm::Object::GetVirtualMethod(reinterpret_cast<Il2CppObject*>(target), declared);
     }
 
     static bool IsStaticField(const FieldInfo* field)

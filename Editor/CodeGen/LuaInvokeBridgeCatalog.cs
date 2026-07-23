@@ -45,7 +45,7 @@ namespace ZLua
                 }
                 catch (NotSupportedException)
                 {
-                    // e.g. Default UnityEngine.Vector3 — fall back to legacy RunLuaFunc weave.
+                    // e.g. Default UnityEngine.Vector3 — no typed Invoke_* bridge; weaver reports error.
                     return false;
                 }
             }
@@ -300,6 +300,29 @@ namespace ZLua
                     {
                         sb.Append("Int32");
                         return;
+                    }
+
+                    ITypeDefOrRef typeRef = typeSig.ToTypeDefOrRef();
+                    if (typeRef != null
+                        && string.Equals(typeRef.Namespace, "UnityEngine", StringComparison.Ordinal))
+                    {
+                        if (string.Equals(typeRef.Name, "Vector2", StringComparison.Ordinal))
+                        {
+                            sb.Append("Vector2");
+                            return;
+                        }
+
+                        if (string.Equals(typeRef.Name, "Vector3", StringComparison.Ordinal))
+                        {
+                            sb.Append("Vector3");
+                            return;
+                        }
+
+                        if (string.Equals(typeRef.Name, "Vector4", StringComparison.Ordinal))
+                        {
+                            sb.Append("Vector4");
+                            return;
+                        }
                     }
 
                     throw new NotSupportedException($"unsupported value type for fast LuaInvoke: {typeSig}");

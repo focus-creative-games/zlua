@@ -138,7 +138,7 @@ Il2CppString* StringMarshal::Pop(lua_State* L, int idx)
     {
         return nullptr;
     }
-    LuaException::ThrowFormat("zlua.string expects string or nil, got: %s", lua_typename(L, lua_type(L, idx)));
+    LuaException::ThrowFormat("zlua argument mismatch: expected string or nil, got: %s", lua_typename(L, lua_type(L, idx)));
     return nullptr;
 }
 } // namespace zlua

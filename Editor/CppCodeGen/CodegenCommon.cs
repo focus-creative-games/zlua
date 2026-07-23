@@ -1,4 +1,4 @@
-﻿using dnlib.DotNet;
+using dnlib.DotNet;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,7 +17,7 @@ namespace ZLua.CppCodeGen
         {
             writer.WriteLine("#include \"../lvm/LuaEnv.h\"");
             writer.WriteLine("#include \"../marshal/MarshalDefs.h\"");
-            writer.WriteLine("#include \"../marshal/Marshaling.h\"");
+            writer.WriteLine("#include \"../marshal/TypedMarshal.h\"");
             writer.WriteLine("#include \"../marshal/ArrayMarshal.h\"");
             writer.WriteLine("#include \"../marshal/ObjectMarshal.h\"");
             writer.WriteLine("#include \"../marshal/StringMarshal.h\"");
@@ -95,7 +95,7 @@ namespace ZLua.CppCodeGen
                     }
                     return $"StructMarshal::PushValue(L, {addressExpr}, {typeKlassExpr}, {metatableRefExpr});";
                 }
-                return $"DefaultMarshaling<{paramTypeName}>::Push(L, {paramName});";
+                return $"DefaultTypedMarshal<{paramTypeName}>::Push(L, {paramName});";
             }
             case LuaMarshalType.UserData:
             {
@@ -189,7 +189,7 @@ namespace ZLua.CppCodeGen
                 {
                     return $"OpaqueValueMarshal::Pop(L, -1, &{paramName}, {typeExpr});";
                 }
-                return $"{paramName} = DefaultMarshaling<{paramTypeName}>::Pop(L, {luaValueIndex});";
+                return $"{paramName} = DefaultTypedMarshal<{paramTypeName}>::Pop(L, {luaValueIndex});";
             }
             case LuaMarshalType.UserData:
             {
