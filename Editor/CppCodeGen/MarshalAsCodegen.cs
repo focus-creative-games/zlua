@@ -65,60 +65,64 @@ namespace ZLua.CppCodeGen
             writer.WriteLine("namespace");
             writer.WriteLine("{");
 
-            for (int i = 0; i < rules.Count; i++)
+            if (rules.Count > 0)
             {
-                string[] members = rules[i].Members ?? Array.Empty<string>();
-                if (members.Length == 0)
+                for (int i = 0; i < rules.Count; i++)
                 {
-                    continue;
+                    string[] members = rules[i].Members ?? Array.Empty<string>();
+                    if (members.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    writer.WriteLine("static const char* const kMembers_" + i + "[] = {");
+                    writer.IncreaseIndent();
+                    for (int m = 0; m < members.Length; m++)
+                    {
+                        writer.WriteLine(ToCStringLiteral(members[m]) + ",");
+                    }
+
+                    writer.DecreaseIndent();
+                    writer.WriteLine("};");
+                    writer.WriteLine();
                 }
 
-                writer.WriteLine("static const char* const kMembers_" + i + "[] = {");
+                writer.WriteLine("static const LuaMarshalAsXmlEntry kEntries[] = {");
                 writer.IncreaseIndent();
-                for (int m = 0; m < members.Length; m++)
+                for (int i = 0; i < rules.Count; i++)
                 {
-                    writer.WriteLine(ToCStringLiteral(members[m]) + ",");
+                    LuaMarshalAsXmlRule rule = rules[i];
+                    string[] members = rule.Members ?? Array.Empty<string>();
+                    string membersRef = members.Length == 0 ? "nullptr" : ("kMembers_" + i);
+                    string memberName = rule.Kind == LuaMarshalAsXmlTargetKind.Type
+                        ? "nullptr"
+                        : ToCStringLiteral(rule.Kind == LuaMarshalAsXmlTargetKind.Field || rule.Kind == LuaMarshalAsXmlTargetKind.Property
+                            ? rule.MemberName
+                            : rule.MethodName);
+                    string signature = (rule.Kind == LuaMarshalAsXmlTargetKind.Param || rule.Kind == LuaMarshalAsXmlTargetKind.Return)
+                        ? ToCStringLiteral(rule.Signature)
+                        : "nullptr";
+                    int paramIndex = rule.Kind == LuaMarshalAsXmlTargetKind.Param ? rule.ParamIndex : -1;
+
+                    writer.WriteLine("{");
+                    writer.IncreaseIndent();
+                    writer.WriteLine("LuaMarshalAsXmlKind::" + rule.Kind + ",");
+                    writer.WriteLine(ToCStringLiteral(rule.AssemblyName) + ",");
+                    writer.WriteLine(ToCStringLiteral(rule.TypeFullName) + ",");
+                    writer.WriteLine(memberName + ",");
+                    writer.WriteLine(signature + ",");
+                    writer.WriteLine(paramIndex + ",");
+                    writer.WriteLine("LuaMarshalType::" + rule.MarshalType + ",");
+                    writer.WriteLine(membersRef + ",");
+                    writer.WriteLine(members.Length + ",");
+                    writer.DecreaseIndent();
+                    writer.WriteLine("},");
                 }
 
                 writer.DecreaseIndent();
                 writer.WriteLine("};");
-                writer.WriteLine();
             }
 
-            writer.WriteLine("static const LuaMarshalAsXmlEntry kEntries[] = {");
-            writer.IncreaseIndent();
-            for (int i = 0; i < rules.Count; i++)
-            {
-                LuaMarshalAsXmlRule rule = rules[i];
-                string[] members = rule.Members ?? Array.Empty<string>();
-                string membersRef = members.Length == 0 ? "nullptr" : ("kMembers_" + i);
-                string memberName = rule.Kind == LuaMarshalAsXmlTargetKind.Type
-                    ? "nullptr"
-                    : ToCStringLiteral(rule.Kind == LuaMarshalAsXmlTargetKind.Field || rule.Kind == LuaMarshalAsXmlTargetKind.Property
-                        ? rule.MemberName
-                        : rule.MethodName);
-                string signature = (rule.Kind == LuaMarshalAsXmlTargetKind.Param || rule.Kind == LuaMarshalAsXmlTargetKind.Return)
-                    ? ToCStringLiteral(rule.Signature)
-                    : "nullptr";
-                int paramIndex = rule.Kind == LuaMarshalAsXmlTargetKind.Param ? rule.ParamIndex : -1;
-
-                writer.WriteLine("{");
-                writer.IncreaseIndent();
-                writer.WriteLine("LuaMarshalAsXmlKind::" + rule.Kind + ",");
-                writer.WriteLine(ToCStringLiteral(rule.AssemblyName) + ",");
-                writer.WriteLine(ToCStringLiteral(rule.TypeFullName) + ",");
-                writer.WriteLine(memberName + ",");
-                writer.WriteLine(signature + ",");
-                writer.WriteLine(paramIndex + ",");
-                writer.WriteLine("LuaMarshalType::" + rule.MarshalType + ",");
-                writer.WriteLine(membersRef + ",");
-                writer.WriteLine(members.Length + ",");
-                writer.DecreaseIndent();
-                writer.WriteLine("},");
-            }
-
-            writer.DecreaseIndent();
-            writer.WriteLine("};");
             writer.WriteLine("} // namespace");
             writer.WriteLine();
             writer.WriteLine("void RegisterMarshalBindingTables()");
