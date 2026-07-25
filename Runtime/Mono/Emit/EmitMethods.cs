@@ -1,6 +1,5 @@
 using System;
 using System.Reflection;
-using ZLua.Marshaling;
 using ZLua.Mt;
 
 namespace ZLua.Emit
@@ -25,14 +24,26 @@ namespace ZLua.Emit
         internal static readonly MethodInfo PushReturn =
             Require(typeof(BridgeMarshaling), nameof(BridgeMarshaling.PushReturn));
 
-        internal static readonly MethodInfo StructWriteBack =
-            Require(typeof(StructMarshal), nameof(StructMarshal.WriteBack));
-
         internal static readonly MethodInfo PushConstructorInstance =
             Require(typeof(TypeRegistry), nameof(TypeRegistry.PushConstructorInstance));
 
         internal static readonly MethodInfo PointerInvoke =
             Require(typeof(PointerMethodInvoker), nameof(PointerMethodInvoker.Invoke));
+
+        internal static readonly MethodInfo ByValGetField =
+            Require(typeof(ByValInstanceOps), nameof(ByValInstanceOps.GetField));
+
+        internal static readonly MethodInfo ByValSetField =
+            Require(typeof(ByValInstanceOps), nameof(ByValInstanceOps.SetField));
+
+        internal static readonly MethodInfo ByValInvokeInstance =
+            Require(typeof(ByValInstanceOps), nameof(ByValInstanceOps.InvokeInstance));
+
+        internal static readonly MethodInfo ByValInvokePropertyGetter =
+            Require(typeof(ByValInstanceOps), nameof(ByValInstanceOps.InvokePropertyGetter));
+
+        internal static readonly MethodInfo ByValInvokePropertySetter =
+            Require(typeof(ByValInstanceOps), nameof(ByValInstanceOps.InvokePropertySetter));
 
         private static MethodInfo Require(Type type, string name)
         {

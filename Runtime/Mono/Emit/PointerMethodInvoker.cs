@@ -71,7 +71,14 @@ namespace ZLua.Emit
                 EmitLoadArgumentFromObjectArray(il, parameters[i].ParameterType, i);
             }
 
-            il.Emit(method.IsStatic ? OpCodes.Call : OpCodes.Callvirt, method);
+            if (method.IsStatic || method.DeclaringType.IsValueType)
+            {
+                il.Emit(OpCodes.Call, method);
+            }
+            else
+            {
+                il.Emit(OpCodes.Callvirt, method);
+            }
             EmitBoxReturnValue(il, method.ReturnType);
             il.Emit(OpCodes.Ret);
 
@@ -83,7 +90,8 @@ namespace ZLua.Emit
             il.Emit(OpCodes.Ldarg_0);
             if (declaringType.IsValueType)
             {
-                il.Emit(OpCodes.Unbox_Any, declaringType);
+                // Managed pointer into the box — mutate in place (no copy / WriteBack).
+                il.Emit(OpCodes.Unbox, declaringType);
             }
             else
             {

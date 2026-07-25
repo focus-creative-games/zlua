@@ -6,7 +6,7 @@ using ZLua.Utils;
 namespace ZLua.Marshaling
 {
     /// <summary>
-    /// Tracks non-blittable ByVal userdata via boxed companions (Mono GC equivalent of Il2Cpp roots).
+    /// Tracks non-blittable ByVal userdata boxed companions (GC roots). Blittable ByVal uses payload only.
     /// </summary>
     internal static class StructRegistry
     {

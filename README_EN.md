@@ -19,7 +19,7 @@ Compared with xLua / toLua / SLua, ZLua's core claims are:
 | **More efficient** | Il2Cpp measured: about **98%** of aligned cases faster than xLua; Lua→C# average about **2.62×**; common field / property / call cases about **4×** |
 | **Less GC** | Reference types and structs (including structs with reference fields) are **0 GC** by default; plus OpaqueValue and other strategies |
 | **Tiny bridging** | Efficient **C++** stubs with same-signature merging; footprint can be an order of magnitude smaller; supports **0 bridge functions** |
-| **Wider version support** | Lua **5.1–5.5**, **LuaJIT**; Unity **2021+**, **Tuanjie Engine** |
+| **Wider version support** | Lua **5.3 / 5.4 / 5.5**; Unity **2021.3 / 2022.3 / 6000.0 / 6000.3**; **Tuanjie Engine** (all releases) |
 | **More active maintenance** | Full-time professional team; faster bug response and feature iteration |
 
 For performance details, see [Performance Comparison](https://doc.zlua.cn/docs/compare/PERFORMANCE).
@@ -48,9 +48,13 @@ Including but not limited to: class / struct / interface / enum / nullable, stat
 
 ### Platforms and Versions
 
-- Lua 5.1 / 5.3 / 5.4 / 5.5, LuaJIT (primary validation line: Lua **5.4**)
-- Unity **2021+** LTS, Tuanjie Engine; Mono + Il2Cpp
-- Platforms supported by Il2Cpp (including WebGL, WeChat Mini Games, HarmonyOS / automotive, etc.)
+| Category | Supported |
+|----------|-----------|
+| **Lua** | **5.3.x**, **5.4.x**, **5.5.x** |
+| **Unity** | **2021.3.x**, **2022.3.x**, **6000.0.x**, **6000.3.x** |
+| **Tuanjie Engine** | All **x.y.z** releases |
+| **Runtime** | Editor **Mono** + Player **Il2Cpp** |
+| **Platforms** | Platforms supported by Il2Cpp (including WebGL, WeChat Mini Games, HarmonyOS / automotive, etc.) |
 
 ---
 
@@ -141,7 +145,7 @@ print(d.x)
 | **Il2Cpp (Player)** | Complete |
 | **Mono (Editor)** | Complete (semantics consistent with Il2Cpp) |
 
-Primary validation environment: Unity **2022.3.62f3** + Lua **5.4**. Features and semantics follow the [specification](https://doc.zlua.cn/docs/spec/00-OVERVIEW).
+Primary validation environment: Unity **2022.3.62f3** + Lua **5.4**. See “Platforms and Versions” above for the supported matrix. Features and semantics follow the [specification](https://doc.zlua.cn/docs/spec/00-OVERVIEW).
 
 ---
 

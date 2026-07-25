@@ -76,11 +76,14 @@ namespace ZLua.Emit
             return IsSupportedType(type);
         }
 
+        /// <summary>
+        /// ByObj instance target only. ByVal field/method/property use <see cref="ByValInstanceOps"/>.
+        /// </summary>
         internal static object PopTarget(IntPtr L, int index, Type declaringType, bool isByVal)
         {
             if (isByVal)
             {
-                return StructMarshal.GetMutableBoxed(L, index, declaringType);
+                LuaCallbackBoundary.Throw("zlua internal error: ByVal target must use ByValInstanceOps");
             }
 
             return InstanceTarget.PopByObjThisAs(L, index, declaringType);

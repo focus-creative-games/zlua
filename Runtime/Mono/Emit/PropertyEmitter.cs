@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
 using ZLua.Utils;
@@ -56,6 +55,20 @@ namespace ZLua.Emit
                     Expression.Constant(propertyType, typeof(Type)),
                     Expression.Convert(value, typeof(object)));
             }
+            else if (isByVal && declaringType.IsValueType)
+            {
+                Expression value = Expression.Call(
+                    EmitMethods.ByValInvokePropertyGetter,
+                    L,
+                    Expression.Constant(1),
+                    Expression.Constant(declaringType, typeof(Type)),
+                    Expression.Constant(getter, typeof(MethodInfo)));
+                body = Expression.Call(
+                    EmitMethods.PushReturn,
+                    L,
+                    Expression.Constant(propertyType, typeof(Type)),
+                    value);
+            }
             else
             {
                 Expression targetObj = Expression.Call(
@@ -63,7 +76,7 @@ namespace ZLua.Emit
                     L,
                     Expression.Constant(1),
                     Expression.Constant(declaringType, typeof(Type)),
-                    Expression.Constant(isByVal));
+                    Expression.Constant(false));
                 Expression typedTarget = Expression.Convert(targetObj, declaringType);
                 Expression value = Expression.Call(typedTarget, getter);
                 body = Expression.Call(
@@ -88,43 +101,30 @@ namespace ZLua.Emit
                 L,
                 Expression.Constant(2),
                 Expression.Constant(propertyType, typeof(Type)));
-            Expression typedValue = Expression.Convert(valueObj, propertyType);
 
             Expression body;
             if (isStatic)
             {
+                Expression typedValue = Expression.Convert(valueObj, propertyType);
                 body = Expression.Block(
                     Expression.Call(setter, typedValue),
                     Expression.Constant(0));
             }
             else if (isByVal && declaringType.IsValueType)
             {
-                ParameterExpression targetLocal = Expression.Variable(typeof(object), "target");
-                ParameterExpression typedTarget = Expression.Variable(declaringType, "typedTarget");
-                var exprs = new List<Expression>
-                {
-                    Expression.Assign(
-                        targetLocal,
-                        Expression.Call(
-                            EmitMethods.PopTarget,
-                            L,
-                            Expression.Constant(1),
-                            Expression.Constant(declaringType, typeof(Type)),
-                            Expression.Constant(true))),
-                    Expression.Assign(typedTarget, Expression.Convert(targetLocal, declaringType)),
-                    Expression.Call(typedTarget, setter, typedValue),
+                body = Expression.Block(
                     Expression.Call(
-                        EmitMethods.StructWriteBack,
+                        EmitMethods.ByValInvokePropertySetter,
                         L,
                         Expression.Constant(1),
-                        Expression.Convert(typedTarget, typeof(object)),
-                        Expression.Constant(declaringType, typeof(Type))),
-                    Expression.Constant(0),
-                };
-                body = Expression.Block(new[] { targetLocal, typedTarget }, exprs);
+                        Expression.Constant(declaringType, typeof(Type)),
+                        Expression.Constant(setter, typeof(MethodInfo)),
+                        valueObj),
+                    Expression.Constant(0));
             }
             else
             {
+                Expression typedValue = Expression.Convert(valueObj, propertyType);
                 Expression targetObj = Expression.Call(
                     EmitMethods.PopTarget,
                     L,

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
 using ZLua.Utils;
@@ -38,6 +37,16 @@ namespace ZLua.Emit
             if (isStatic)
             {
                 value = Expression.Field(null, field);
+                value = Expression.Convert(value, typeof(object));
+            }
+            else if (isByVal && declaringType.IsValueType)
+            {
+                value = Expression.Call(
+                    EmitMethods.ByValGetField,
+                    L,
+                    Expression.Constant(1),
+                    Expression.Constant(declaringType, typeof(Type)),
+                    Expression.Constant(field, typeof(FieldInfo)));
             }
             else
             {
@@ -46,15 +55,17 @@ namespace ZLua.Emit
                     L,
                     Expression.Constant(1),
                     Expression.Constant(declaringType, typeof(Type)),
-                    Expression.Constant(isByVal));
-                value = Expression.Field(Expression.Convert(targetObj, declaringType), field);
+                    Expression.Constant(false));
+                value = Expression.Convert(
+                    Expression.Field(Expression.Convert(targetObj, declaringType), field),
+                    typeof(object));
             }
 
             Expression body = Expression.Call(
                 EmitMethods.PushReturn,
                 L,
                 Expression.Constant(fieldType, typeof(Type)),
-                Expression.Convert(value, typeof(object)));
+                value);
 
             Func<IntPtr, int> core = Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
             return Wrap(core);
@@ -71,43 +82,30 @@ namespace ZLua.Emit
                 L,
                 Expression.Constant(2),
                 Expression.Constant(fieldType, typeof(Type)));
-            Expression typedValue = Expression.Convert(valueObj, fieldType);
 
             Expression body;
             if (isStatic)
             {
+                Expression typedValue = Expression.Convert(valueObj, fieldType);
                 body = Expression.Block(
                     Expression.Assign(Expression.Field(null, field), typedValue),
                     Expression.Constant(0));
             }
             else if (isByVal && declaringType.IsValueType)
             {
-                ParameterExpression targetLocal = Expression.Variable(typeof(object), "target");
-                ParameterExpression typedTarget = Expression.Variable(declaringType, "typedTarget");
-                var exprs = new List<Expression>
-                {
-                    Expression.Assign(
-                        targetLocal,
-                        Expression.Call(
-                            EmitMethods.PopTarget,
-                            L,
-                            Expression.Constant(1),
-                            Expression.Constant(declaringType, typeof(Type)),
-                            Expression.Constant(true))),
-                    Expression.Assign(typedTarget, Expression.Convert(targetLocal, declaringType)),
-                    Expression.Assign(Expression.Field(typedTarget, field), typedValue),
+                body = Expression.Block(
                     Expression.Call(
-                        EmitMethods.StructWriteBack,
+                        EmitMethods.ByValSetField,
                         L,
                         Expression.Constant(1),
-                        Expression.Convert(typedTarget, typeof(object)),
-                        Expression.Constant(declaringType, typeof(Type))),
-                    Expression.Constant(0),
-                };
-                body = Expression.Block(new[] { targetLocal, typedTarget }, exprs);
+                        Expression.Constant(declaringType, typeof(Type)),
+                        Expression.Constant(field, typeof(FieldInfo)),
+                        valueObj),
+                    Expression.Constant(0));
             }
             else
             {
+                Expression typedValue = Expression.Convert(valueObj, fieldType);
                 Expression targetObj = Expression.Call(
                     EmitMethods.PopTarget,
                     L,

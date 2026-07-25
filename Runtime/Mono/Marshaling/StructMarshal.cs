@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
+using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.InteropServices;
 using Unity.Collections.LowLevel.Unsafe;
 using ZLua.Utils;
@@ -12,6 +14,8 @@ namespace ZLua.Marshaling
         private static readonly Dictionary<Type, bool> s_blittableCache = new Dictionary<Type, bool>();
         private static readonly Dictionary<Type, Func<object, object>> s_copyCache =
             new Dictionary<Type, Func<object, object>>();
+        private static readonly Dictionary<Type, Func<object, IntPtr>> s_unboxPtrCache =
+            new Dictionary<Type, Func<object, IntPtr>>();
 
         internal static bool IsStructType(Type type)
         {
@@ -61,6 +65,82 @@ namespace ZLua.Marshaling
             return (byte*)(header + 1);
         }
 
+        /// <summary>
+        /// Live data pointer for ByVal userdata: blittable payload, or unboxed companion interior.
+        /// </summary>
+        internal static unsafe IntPtr GetDataPointer(IntPtr L, int index, Type structType)
+        {
+            ByValUserDataHeader* header = GetByValHeader(L, index);
+            if (header == null)
+            {
+                LuaCallbackBoundary.Throw("zlua internal error: GetDataPointer expects ByVal userdata");
+            }
+
+            Type headerType = TypeHandleStore.GetType(header->TypeHandle);
+            if (headerType != structType)
+            {
+                LuaCallbackBoundary.Throw(
+                    $"zlua argument mismatch: cannot convert userdata {headerType?.FullName} to struct: {structType.FullName}");
+            }
+
+            if (IsBlittable(structType))
+            {
+                return (IntPtr)PayloadOf(header);
+            }
+
+            IntPtr udPtr = (IntPtr)header;
+            if (!StructRegistry.TryGetBoxed(udPtr, out object boxed) || boxed == null)
+            {
+                LuaCallbackBoundary.Throw($"zlua internal error: missing boxed companion for {structType.FullName}");
+            }
+
+            if (!structType.IsInstanceOfType(boxed))
+            {
+                LuaCallbackBoundary.Throw(
+                    $"zlua internal error: companion type mismatch for {structType.FullName}, got {boxed.GetType().FullName}");
+            }
+
+            return GetUnboxedDataPointer(boxed, structType);
+        }
+
+        /// <summary>
+        /// Non-blittable GC root box for ByVal userdata (null for blittable).
+        /// </summary>
+        internal static unsafe object GetCompanionBoxed(IntPtr L, int index, Type structType)
+        {
+            if (IsBlittable(structType))
+            {
+                return null;
+            }
+
+            ByValUserDataHeader* header = GetByValHeader(L, index);
+            if (header == null)
+            {
+                LuaCallbackBoundary.Throw("zlua internal error: GetCompanionBoxed expects ByVal userdata");
+            }
+
+            Type headerType = TypeHandleStore.GetType(header->TypeHandle);
+            if (headerType != structType)
+            {
+                LuaCallbackBoundary.Throw(
+                    $"zlua argument mismatch: cannot convert userdata {headerType?.FullName} to struct: {structType.FullName}");
+            }
+
+            IntPtr udPtr = (IntPtr)header;
+            if (!StructRegistry.TryGetBoxed(udPtr, out object boxed) || boxed == null)
+            {
+                LuaCallbackBoundary.Throw($"zlua internal error: missing boxed companion for {structType.FullName}");
+            }
+
+            return boxed;
+        }
+
+        /// <summary>Blittable ByVal payload as <c>ref T</c> (requires unmanaged / blittable T).</summary>
+        internal static unsafe ref T AsRef<T>(IntPtr L, int index) where T : unmanaged
+        {
+            return ref *(T*)(void*)GetDataPointer(L, index, typeof(T));
+        }
+
         internal static void PushValue(IntPtr L, object boxedOrValue, Type structType, int metatableRefIndex)
         {
             if (structType == null)
@@ -85,8 +165,7 @@ namespace ZLua.Marshaling
                 {
                     global::System.Runtime.InteropServices.Marshal.StructureToPtr(owned, (IntPtr)PayloadOf(header), false);
                 }
-
-                if (!IsBlittable(structType))
+                else if (!IsBlittable(structType))
                 {
                     StructRegistry.RegisterBoxed(udPtr, owned);
                 }
@@ -105,6 +184,9 @@ namespace ZLua.Marshaling
             return zero;
         }
 
+        /// <summary>
+        /// By-val ownership copy out of userdata (Lua → C# argument).
+        /// </summary>
         internal static object PopValue(IntPtr L, int index, Type structType)
         {
             unsafe
@@ -123,83 +205,52 @@ namespace ZLua.Marshaling
                         $"zlua argument mismatch: cannot convert userdata {headerType?.FullName} to struct: {structType.FullName}");
                 }
 
-                IntPtr udPtr = (IntPtr)header;
-                if (StructRegistry.TryGetBoxed(udPtr, out object boxed))
-                {
-                    return CopyValue(boxed, structType);
-                }
-
-                if (!IsBlittable(structType))
-                {
-                    LuaCallbackBoundary.Throw($"zlua internal error: missing boxed companion for {structType.FullName}");
-                }
-
-                return global::System.Runtime.InteropServices.Marshal.PtrToStructure((IntPtr)PayloadOf(header), structType);
-            }
-        }
-
-        /// <summary>
-        /// After mutating a ByVal boxed/copy, write it back into userdata storage.
-        /// </summary>
-        internal static void WriteBack(IntPtr L, int index, object boxed, Type structType)
-        {
-            unsafe
-            {
-                ByValUserDataHeader* header = GetByValHeader(L, index);
-                if (header == null)
-                {
-                    LuaCallbackBoundary.Throw("zlua internal error: WriteBack expects ByVal userdata");
-                }
-
-                IntPtr udPtr = (IntPtr)header;
                 if (IsBlittable(structType))
                 {
-                    int payloadSize = GetPayloadSize(structType);
-                    if (payloadSize > 0)
-                    {
-                        global::System.Runtime.InteropServices.Marshal.StructureToPtr(
-                            boxed,
-                            (IntPtr)PayloadOf(header),
-                            false);
-                    }
-                }
-
-                // Always refresh companion: Expression unbox/mutate/rebox yields a new box;
-                // getters prefer companion and would otherwise read a stale copy.
-                StructRegistry.RegisterBoxed(udPtr, boxed);
-            }
-        }
-
-        /// <summary>
-        /// Returns the mutable boxed value for ByVal userdata (companion or fresh box from payload).
-        /// </summary>
-        internal static object GetMutableBoxed(IntPtr L, int index, Type structType)
-        {
-            unsafe
-            {
-                ByValUserDataHeader* header = GetByValHeader(L, index);
-                if (header == null)
-                {
-                    LuaCallbackBoundary.Throw("zlua internal error: GetMutableBoxed expects ByVal userdata");
+                    return global::System.Runtime.InteropServices.Marshal.PtrToStructure(
+                        (IntPtr)PayloadOf(header),
+                        structType);
                 }
 
                 IntPtr udPtr = (IntPtr)header;
-                if (StructRegistry.TryGetBoxed(udPtr, out object boxed))
-                {
-                    return boxed;
-                }
-
-                if (!IsBlittable(structType))
+                if (!StructRegistry.TryGetBoxed(udPtr, out object boxed) || boxed == null)
                 {
                     LuaCallbackBoundary.Throw($"zlua internal error: missing boxed companion for {structType.FullName}");
                 }
 
-                object fromPayload = global::System.Runtime.InteropServices.Marshal.PtrToStructure(
-                    (IntPtr)PayloadOf(header),
-                    structType);
-                StructRegistry.RegisterBoxed(udPtr, fromPayload);
-                return fromPayload;
+                return CopyValue(boxed, structType);
             }
+        }
+
+        private static IntPtr GetUnboxedDataPointer(object boxed, Type structType)
+        {
+            Func<object, IntPtr> getter;
+            lock (s_unboxPtrCache)
+            {
+                if (!s_unboxPtrCache.TryGetValue(structType, out getter))
+                {
+                    getter = BuildUnboxDataPointer(structType);
+                    s_unboxPtrCache[structType] = getter;
+                }
+            }
+
+            return getter(boxed);
+        }
+
+        private static Func<object, IntPtr> BuildUnboxDataPointer(Type structType)
+        {
+            DynamicMethod dm = new DynamicMethod(
+                $"zlua_unbox_ptr_{structType.Name}",
+                typeof(IntPtr),
+                new[] { typeof(object) },
+                typeof(StructMarshal).Module,
+                skipVisibility: true);
+            ILGenerator il = dm.GetILGenerator();
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Unbox, structType);
+            il.Emit(OpCodes.Conv_I);
+            il.Emit(OpCodes.Ret);
+            return (Func<object, IntPtr>)dm.CreateDelegate(typeof(Func<object, IntPtr>));
         }
 
         private static unsafe ByValUserDataHeader* CreateByValUserDataHeader(IntPtr L, Type klass, int payloadSize, int metatableRefIndex)
@@ -239,10 +290,6 @@ namespace ZLua.Marshaling
             return UnsafeUtility.SizeOf(structType);
         }
 
-        /// <summary>
-        /// Ownership copy for ByVal push/pop: unbox+rebox via a per-type compiled cloner
-        /// (no AllocHGlobal / MemberwiseClone.Invoke).
-        /// </summary>
         private static object CopyValue(object value, Type structType)
         {
             if (value == null)
@@ -266,7 +313,6 @@ namespace ZLua.Marshaling
         private static Func<object, object> BuildCopy(Type structType)
         {
             ParameterExpression valueParam = Expression.Parameter(typeof(object), "value");
-            // (object)(T)boxed — unbox then rebox yields a shallow value-type copy.
             Expression body = Expression.Convert(Expression.Convert(valueParam, structType), typeof(object));
             return Expression.Lambda<Func<object, object>>(body, valueParam).Compile();
         }

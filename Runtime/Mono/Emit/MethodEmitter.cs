@@ -192,9 +192,14 @@ namespace ZLua.Emit
 
         private static Func<IntPtr, int> BuildDirectCore(MethodInfo method, bool isStatic, bool isByVal)
         {
+            if (!isStatic && isByVal && method.DeclaringType != null && method.DeclaringType.IsValueType)
+            {
+                return BuildByValCore(method);
+            }
+
             if (PointerMarshal.MethodRequiresPointerInvoke(method))
             {
-                return BuildPointerCore(method, isStatic, isByVal);
+                return BuildPointerCore(method, isStatic);
             }
 
             Type declaringType = method.DeclaringType;
@@ -214,7 +219,6 @@ namespace ZLua.Emit
             };
 
             Expression targetExpr = null;
-            ParameterExpression typedTargetLocal = null;
             if (!isStatic)
             {
                 ParameterExpression targetLocal = Expression.Variable(typeof(object), "target");
@@ -226,19 +230,8 @@ namespace ZLua.Emit
                         L,
                         Expression.Constant(1),
                         Expression.Constant(declaringType, typeof(Type)),
-                        Expression.Constant(isByVal))));
-
-                if (isByVal && declaringType.IsValueType)
-                {
-                    typedTargetLocal = Expression.Variable(declaringType, "typedTarget");
-                    locals.Add(typedTargetLocal);
-                    exprs.Add(Expression.Assign(typedTargetLocal, Expression.Convert(targetLocal, declaringType)));
-                    targetExpr = typedTargetLocal;
-                }
-                else
-                {
-                    targetExpr = Expression.Convert(targetLocal, declaringType);
-                }
+                        Expression.Constant(false))));
+                targetExpr = Expression.Convert(targetLocal, declaringType);
             }
 
             var argExprs = new Expression[parameters.Length];
@@ -257,25 +250,9 @@ namespace ZLua.Emit
                 ? Expression.Call(method, argExprs)
                 : Expression.Call(targetExpr, method, argExprs);
 
-            Expression writeBack = null;
-            if (typedTargetLocal != null)
-            {
-                writeBack = Expression.Call(
-                    EmitMethods.StructWriteBack,
-                    L,
-                    Expression.Constant(1),
-                    Expression.Convert(typedTargetLocal, typeof(object)),
-                    Expression.Constant(declaringType, typeof(Type)));
-            }
-
             if (method.ReturnType == typeof(void))
             {
                 exprs.Add(call);
-                if (writeBack != null)
-                {
-                    exprs.Add(writeBack);
-                }
-
                 exprs.Add(Expression.Constant(0));
             }
             else
@@ -283,11 +260,6 @@ namespace ZLua.Emit
                 ParameterExpression resultLocal = Expression.Variable(method.ReturnType, "result");
                 locals.Add(resultLocal);
                 exprs.Add(Expression.Assign(resultLocal, call));
-                if (writeBack != null)
-                {
-                    exprs.Add(writeBack);
-                }
-
                 exprs.Add(Expression.Call(
                     EmitMethods.PushReturn,
                     L,
@@ -299,7 +271,76 @@ namespace ZLua.Emit
             return Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
         }
 
-        private static Func<IntPtr, int> BuildPointerCore(MethodInfo method, bool isStatic, bool isByVal)
+        /// <summary>
+        /// ByVal instance: in-place via payload / companion (no copy + WriteBack).
+        /// </summary>
+        private static Func<IntPtr, int> BuildByValCore(MethodInfo method)
+        {
+            Type declaringType = method.DeclaringType;
+            ParameterInfo[] parameters = method.GetParameters();
+            const int argStart = 2;
+            int expectedArgs = parameters.Length;
+
+            ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
+            var locals = new List<ParameterExpression>();
+            var exprs = new List<Expression>
+            {
+                Expression.Call(
+                    EmitMethods.ValidateExactArgCount,
+                    L,
+                    Expression.Constant(expectedArgs),
+                    Expression.Constant(argStart)),
+            };
+
+            ParameterExpression argsLocal = Expression.Variable(typeof(object[]), "args");
+            locals.Add(argsLocal);
+            exprs.Add(Expression.Assign(
+                argsLocal,
+                Expression.NewArrayBounds(typeof(object), Expression.Constant(parameters.Length))));
+
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                Type paramType = parameters[i].ParameterType;
+                Expression popped = Expression.Call(
+                    EmitMethods.PopArg,
+                    L,
+                    Expression.Constant(argStart + i),
+                    Expression.Constant(paramType, typeof(Type)));
+                exprs.Add(Expression.Assign(
+                    Expression.ArrayAccess(argsLocal, Expression.Constant(i)),
+                    popped));
+            }
+
+            ParameterExpression resultLocal = Expression.Variable(typeof(object), "result");
+            locals.Add(resultLocal);
+            exprs.Add(Expression.Assign(
+                resultLocal,
+                Expression.Call(
+                    EmitMethods.ByValInvokeInstance,
+                    L,
+                    Expression.Constant(1),
+                    Expression.Constant(declaringType, typeof(Type)),
+                    Expression.Constant(method, typeof(MethodInfo)),
+                    argsLocal)));
+
+            if (method.ReturnType == typeof(void))
+            {
+                exprs.Add(Expression.Constant(0));
+            }
+            else
+            {
+                exprs.Add(Expression.Call(
+                    EmitMethods.PushReturn,
+                    L,
+                    Expression.Constant(method.ReturnType, typeof(Type)),
+                    resultLocal));
+            }
+
+            Expression body = Expression.Block(locals, exprs);
+            return Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
+        }
+
+        private static Func<IntPtr, int> BuildPointerCore(MethodInfo method, bool isStatic)
         {
             Type declaringType = method.DeclaringType;
             ParameterInfo[] parameters = method.GetParameters();
@@ -332,7 +373,7 @@ namespace ZLua.Emit
                         L,
                         Expression.Constant(1),
                         Expression.Constant(declaringType, typeof(Type)),
-                        Expression.Constant(isByVal))));
+                        Expression.Constant(false))));
             }
 
             ParameterExpression argsLocal = Expression.Variable(typeof(object[]), "args");
@@ -363,16 +404,6 @@ namespace ZLua.Emit
                     Expression.Constant(method, typeof(MethodInfo)),
                     targetLocal,
                     argsLocal)));
-
-            if (isByVal && !isStatic)
-            {
-                exprs.Add(Expression.Call(
-                    EmitMethods.StructWriteBack,
-                    L,
-                    Expression.Constant(1),
-                    targetLocal,
-                    Expression.Constant(declaringType, typeof(Type))));
-            }
 
             if (method.ReturnType == typeof(void))
             {
