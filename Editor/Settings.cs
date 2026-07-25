@@ -63,17 +63,25 @@ namespace ZLua
         private static Settings LoadOrCreate()
         {
             string filePath = SettingsPath;
-            var arr = InternalEditorUtility.LoadSerializedFileAndForget(filePath);
-            //Debug.Log($"typeof arr:{arr?.GetType()} arr[0]:{(arr != null && arr.Length > 0 ? arr[0].GetType(): null)}");
+            Object[] arr = InternalEditorUtility.LoadSerializedFileAndForget(filePath);
 
-            if (arr != null && arr.Length > 0 && arr[0] is Settings obfuzSettings)
+            // After package upgrade, ZLua.asset may deserialize as Missing Script / Unity "fake null".
+            // C# `??` does not treat Unity fake-null as null — must use Unity's overloaded ==.
+            Settings loaded = null;
+            if (arr != null && arr.Length > 0 && arr[0] is Settings settings && settings)
             {
-                s_Instance = obfuzSettings;
+                loaded = settings;
             }
-            else
+
+            if (!loaded)
             {
-                s_Instance = s_Instance ?? CreateInstance<Settings>();
+                // Drop any stale fake-null singleton before creating a new asset.
+                s_Instance = CreateInstance<Settings>();
+                Save();
+                return s_Instance;
             }
+
+            s_Instance = loaded;
             return s_Instance;
         }
 
