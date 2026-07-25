@@ -25,7 +25,6 @@ namespace ZLua.CppCodeGen
             writer.WriteLine("#include \"../marshal/DelegateMarshal.h\"");
             writer.WriteLine("#include \"../marshal/MarshalMeta.h\"");
             writer.WriteLine("#include \"../marshal/OpaqueValueMarshal.h\"");
-            writer.WriteLine("#include \"../bridge/LuaInvokeHelper.h\"");
             writer.WriteLine("#include \"../utils/LuaException.h\"");
             writer.WriteLine("#include \"../utils/LuaUtil.h\"");
             writer.WriteLine("#include \"../utils/LuaStackGuard.h\"");
@@ -131,7 +130,7 @@ namespace ZLua.CppCodeGen
                 marshalType = LuaMarshalType.Default;
                 goto restart;
             }
-            case LuaMarshalType.OpaqueLightUserData:
+            case LuaMarshalType.OpaqueValue:
             {
                 return $"OpaqueValueMarshal::Push(L, {addressExpr}, {typeExpr});";
             }
@@ -225,7 +224,7 @@ namespace ZLua.CppCodeGen
                 marshalType = LuaMarshalType.Default;
                 goto restart;
             }
-            case LuaMarshalType.OpaqueLightUserData:
+            case LuaMarshalType.OpaqueValue:
             {
                 return $"OpaqueValueMarshal::Pop(L, {luaValueIndex}, &{paramName}, {typeExpr});";
             }

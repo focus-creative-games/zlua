@@ -33,8 +33,34 @@ namespace ZLua
                 return binding;
             }
 
+            if (LuaMarshalAsXmlRegistry.TryGetParameterRule(parameter, method, out LuaMarshalAsXmlRule paramRule)
+                && TryGetDeclaredBinding(
+                    paramRule.ToAttribute(),
+                    parameter,
+                    method,
+                    clrType,
+                    direction,
+                    isReturnValue: false,
+                    out binding))
+            {
+                return binding;
+            }
+
             if (TryGetDeclaredBinding(
-                    clrType.GetCustomAttribute<LuaMarshalAsAttribute>(inherit: false),
+                    GetTypeLevelAttribute(clrType),
+                    parameter,
+                    method,
+                    clrType,
+                    direction,
+                    isReturnValue: false,
+                    out binding))
+            {
+                return binding;
+            }
+
+            if (LuaMarshalAsXmlRegistry.TryGetTypeRule(clrType, out LuaMarshalAsXmlRule typeRule)
+                && TryGetDeclaredBinding(
+                    typeRule.ToAttribute(),
                     parameter,
                     method,
                     clrType,
@@ -48,7 +74,7 @@ namespace ZLua
             // MARSHAL_SPEC §4.3: ref/in/out default to OpaqueValue on C#→Lua.
             if (direction == LuaMarshalDirection.CSharpToLua && clrType.IsByRef)
             {
-                return new LuaMarshalBinding(LuaMarshalType.OpaqueLightUserData);
+                return new LuaMarshalBinding(LuaMarshalType.OpaqueValue);
             }
 
             return LuaMarshalBinding.Default;
@@ -76,7 +102,20 @@ namespace ZLua
                 }
             }
 
-            LuaMarshalAsAttribute typeAttribute = method.ReturnType.GetCustomAttribute<LuaMarshalAsAttribute>(inherit: false);
+            if (LuaMarshalAsXmlRegistry.TryGetReturnRule(method, out LuaMarshalAsXmlRule returnRule)
+                && TryGetDeclaredBinding(
+                    returnRule.ToAttribute(),
+                    method.ReturnParameter,
+                    method,
+                    method.ReturnType,
+                    direction,
+                    isReturnValue: true,
+                    out LuaMarshalBinding bindingFromXml))
+            {
+                return bindingFromXml;
+            }
+
+            LuaMarshalAsAttribute typeAttribute = GetTypeLevelAttribute(method.ReturnType);
             if (typeAttribute != null
                 && TryGetDeclaredBinding(
                     typeAttribute,
@@ -86,6 +125,19 @@ namespace ZLua
                     direction,
                     isReturnValue: true,
                     out LuaMarshalBinding binding))
+            {
+                return binding;
+            }
+
+            if (LuaMarshalAsXmlRegistry.TryGetTypeRule(method.ReturnType, out LuaMarshalAsXmlRule typeRule)
+                && TryGetDeclaredBinding(
+                    typeRule.ToAttribute(),
+                    method.ReturnParameter,
+                    method,
+                    method.ReturnType,
+                    direction,
+                    isReturnValue: true,
+                    out binding))
             {
                 return binding;
             }
@@ -108,6 +160,8 @@ namespace ZLua
                     + method.DeclaringType?.FullName + "." + method.Name
                     + "\n  LuaMarshalAsAttribute must not be applied to methods.");
             }
+
+            ValidateTypeLevelConfiguration(method.DeclaringType);
 
             if (method is MethodInfo methodInfo && methodInfo.ReturnType != typeof(void))
             {
@@ -161,7 +215,7 @@ namespace ZLua
             LuaMarshalMemberBinding[] members = ExpandMembers(
                 marshalType,
                 targetType,
-                attribute.FieldOrPropertyNames,
+                attribute.Members,
                 direction,
                 memberSignature);
 
@@ -178,22 +232,30 @@ namespace ZLua
             LuaMarshalDirection direction,
             string memberSignature)
         {
+            if (!LuaMarshalAsXmlRegistry.IsDeterminedMarshalTargetType(targetType))
+            {
+                throw new LuaMarshalAsConfigurationException(
+                    "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
+                    + "LuaMarshalAs cannot be applied to undetermined generic types "
+                    + "(e.g. type parameter T, List<T>, or open generic definitions).");
+            }
+
             switch (marshalType)
             {
                 case LuaMarshalType.Table:
                 case LuaMarshalType.UnpackedValues:
-                    if (attribute.FieldOrPropertyNames == null || attribute.FieldOrPropertyNames.Length == 0)
+                    if (attribute.Members == null || attribute.Members.Length == 0)
                     {
                         throw new LuaMarshalAsConfigurationException(
                             "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                            + "LuaMarshalType." + marshalType + " requires non-empty FieldOrPropertyNames.");
+                            + "LuaMarshalType." + marshalType + " requires non-empty Members.");
                     }
 
                     if (marshalType == LuaMarshalType.UnpackedValues)
                     {
-                        for (int i = 0; i < attribute.FieldOrPropertyNames.Length; i++)
+                        for (int i = 0; i < attribute.Members.Length; i++)
                         {
-                            if (HasOptionalSuffix(attribute.FieldOrPropertyNames[i]))
+                            if (HasOptionalSuffix(attribute.Members[i]))
                             {
                                 throw new LuaMarshalAsConfigurationException(
                                     "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
@@ -235,12 +297,12 @@ namespace ZLua
             }
 
             if (marshalType != LuaMarshalType.Table
-                && attribute.FieldOrPropertyNames != null
-                && attribute.FieldOrPropertyNames.Length > 0)
+                && attribute.Members != null
+                && attribute.Members.Length > 0)
             {
-                for (int i = 0; i < attribute.FieldOrPropertyNames.Length; i++)
+                for (int i = 0; i < attribute.Members.Length; i++)
                 {
-                    if (HasOptionalSuffix(attribute.FieldOrPropertyNames[i]))
+                    if (HasOptionalSuffix(attribute.Members[i]))
                     {
                         throw new LuaMarshalAsConfigurationException(
                             "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
@@ -270,7 +332,7 @@ namespace ZLua
                 {
                     throw new LuaMarshalAsConfigurationException(
                         "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                        + "FieldOrPropertyNames contains an empty entry.");
+                        + "Members contains an empty entry.");
                 }
 
                 bool optional = marshalType == LuaMarshalType.Table && HasOptionalSuffix(rawName);
@@ -279,7 +341,7 @@ namespace ZLua
                 {
                     throw new LuaMarshalAsConfigurationException(
                         "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                        + "FieldOrPropertyNames entry '" + rawName + "' is invalid.");
+                        + "Members entry '" + rawName + "' is invalid.");
                 }
 
                 MemberInfo member = ResolveMember(targetType, clrName);
@@ -287,7 +349,7 @@ namespace ZLua
                 {
                     throw new LuaMarshalAsConfigurationException(
                         "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                        + "FieldOrPropertyNames entry '" + clrName + "' is not a public field or property on "
+                        + "Members entry '" + clrName + "' is not a public field or property on "
                         + targetType.FullName + ".");
                 }
 
@@ -310,7 +372,7 @@ namespace ZLua
                 {
                     throw new LuaMarshalAsConfigurationException(
                         "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                        + "FieldOrPropertyNames entry '" + clrName + "' must be an instance member.");
+                        + "Members entry '" + clrName + "' must be an instance member.");
                 }
 
                 return;
@@ -359,11 +421,11 @@ namespace ZLua
                 return null;
             }
 
-            if (marshalType == LuaMarshalType.OpaqueLightUserData)
+            if (marshalType == LuaMarshalType.OpaqueValue)
             {
                 if (direction != LuaMarshalDirection.CSharpToLua)
                 {
-                    return "LuaMarshalType.OpaqueLightUserData is CSharpToLua-only; falling back to Default.";
+                    return "LuaMarshalType.OpaqueValue is CSharpToLua-only; falling back to Default.";
                 }
 
                 // ref/in/out (any T): always allowed (default OpaqueValue).
@@ -532,10 +594,47 @@ namespace ZLua
             return type != null && type.IsArray && type.GetArrayRank() == 1;
         }
 
+        /// <summary>
+        /// Type-level [LuaMarshalAs] is only valid on non-generic class/struct definitions (spec §1.1).
+        /// </summary>
+        public static void ValidateTypeLevelConfiguration(Type type)
+        {
+            if (type == null)
+            {
+                return;
+            }
+
+            LuaMarshalAsAttribute attr = type.GetCustomAttribute<LuaMarshalAsAttribute>(inherit: false);
+            if (attr == null || attr.LuaMarshalType == LuaMarshalType.Default)
+            {
+                return;
+            }
+
+            if (type.IsGenericTypeDefinition || type.IsGenericType)
+            {
+                throw new LuaMarshalAsConfigurationException(
+                    "[ZLua] LuaMarshalAs configuration error: " + (type.FullName ?? type.Name) + "\n  "
+                    + "LuaMarshalAsAttribute must not be applied to generic type definitions "
+                    + "(only non-generic types; closed generic positions use member-level attributes).");
+            }
+        }
+
+        private static LuaMarshalAsAttribute GetTypeLevelAttribute(Type clrType)
+        {
+            Type owner = UnwrapType(clrType);
+            // Type-level rules never apply to open or closed generic types (spec §1.1).
+            if (owner == null || owner.IsGenericType)
+            {
+                return null;
+            }
+
+            return owner.GetCustomAttribute<LuaMarshalAsAttribute>(inherit: false);
+        }
+
         private static Type UnwrapType(Type clrType)
         {
             Type targetType = Nullable.GetUnderlyingType(clrType) ?? clrType;
-            if (targetType.IsByRef)
+            if (targetType != null && targetType.IsByRef)
             {
                 targetType = targetType.GetElementType();
             }

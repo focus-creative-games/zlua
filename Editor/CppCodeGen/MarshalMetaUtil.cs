@@ -21,6 +21,13 @@ namespace ZLua.CppCodeGen
         public List<string> fieldOrProperties;
     }
 
+    public sealed class ParamMarshalInfo
+    {
+        public int indexExcludedThis; // start from 0
+        public string name;
+        public LuaMarshalMetaInfo marshalMetaInfo;
+    }
+
     public static class MarshalMetaUtil
     {
         private static LuaMarshalAsInfo GetLuaMarshalAsInfoImpl(IHasCustomAttribute provider)
@@ -43,9 +50,16 @@ namespace ZLua.CppCodeGen
             {
                 info.marshalType = (LuaMarshalType)(int)attr.ConstructorArguments[0].Value;
             }
-            if (attr.NamedArguments.Count == 1)
+            if (attr.NamedArguments.Count >= 1)
             {
-                info.fieldOrProperties = ((UTF8String[])attr.NamedArguments[0].Value)?.Select(s => s.ToString()).ToList();
+                foreach (var named in attr.NamedArguments)
+                {
+                    string argName = named.Name;
+                    if (argName == "Members" || argName == "FieldOrPropertyNames")
+                    {
+                        info.fieldOrProperties = ((UTF8String[])named.Value)?.Select(s => s.ToString()).ToList();
+                    }
+                }
             }
             return info;
         }
@@ -55,10 +69,23 @@ namespace ZLua.CppCodeGen
 
         private static LuaMarshalAsInfo GetLuaMarshalAsInfo(TypeDef typeDef)
         {
+            if (typeDef == null)
+            {
+                return null;
+            }
+
             if (_luaMarshalAsInfoCache.TryGetValue(typeDef, out var info))
             {
                 return info;
             }
+
+            // Type-level MarshalAs is illegal on generic type definitions (spec §1.1).
+            if (typeDef.GenericParameters.Count > 0)
+            {
+                _luaMarshalAsInfoCache[typeDef] = null;
+                return null;
+            }
+
             info = GetLuaMarshalAsInfoImpl(typeDef);
             _luaMarshalAsInfoCache[typeDef] = info;
             return info;
@@ -78,7 +105,14 @@ namespace ZLua.CppCodeGen
                     return info;
                 }
             }
-            return GetLuaMarshalAsInfo(paramDef.DeclaringMethod.DeclaringType);
+
+            TypeDef declaringType = paramDef.DeclaringMethod?.DeclaringType;
+            if (declaringType == null || declaringType.GenericParameters.Count > 0)
+            {
+                return null;
+            }
+
+            return GetLuaMarshalAsInfo(declaringType);
         }
 
         public static TypeSig ToSharedGenericInstTypeSig(TypeSig typeSig)

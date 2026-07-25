@@ -1,39 +1,64 @@
 using System;
-using System.Linq;
-using System.Reflection;
-using UnityEngine;
 
 namespace ZLua
 {
-    public class LuaAppDomain
+    /// <summary>
+    /// Host-facing facade. Concrete work is performed by an <see cref="ILuaRuntime"/>
+    /// registered from <c>ZLua.Mono</c> (Editor) or <c>ZLua.Il2Cpp</c> (Player).
+    /// </summary>
+    public static class LuaAppDomain
     {
-        private static Action _processPendingRefReleases;
+        private static ILuaRuntime s_runtime;
+
+        /// <summary>
+        /// Called by backend assemblies at <c>SubsystemRegistration</c>.
+        /// </summary>
+        public static void SetRuntime(ILuaRuntime runtime)
+        {
+            s_runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+        }
 
         public static void Initialize(Func<string, object> moduleLoader)
         {
-            MethodInfo initializeMethod = ResolveBackendMethod("Initialize", BindingFlags.Public | BindingFlags.Static);
-            initializeMethod?.Invoke(null, new object[] { moduleLoader });
-
-            MethodInfo processPendingMethod = ResolveBackendMethod(
-                nameof(ProcessPendingRefReleases),
-                BindingFlags.NonPublic | BindingFlags.Static);
-            _processPendingRefReleases = (Action)Delegate.CreateDelegate(typeof(Action), processPendingMethod);
-
+            EnsureRuntime();
+            s_runtime.Initialize(moduleLoader);
             LuaFramePump.EnsureRegistered();
+        }
+
+        /// <summary>
+        /// Bind a Lua module function to a closed delegate of type <typeparamref name="T"/>.
+        /// Must be called after <see cref="Initialize"/>. Does not guarantee instance reuse across calls.
+        /// </summary>
+        public static T GetFunction<T>(string luaModule, string luaMethodName)
+            where T : MulticastDelegate
+        {
+            EnsureRuntime();
+            if (string.IsNullOrEmpty(luaModule))
+            {
+                throw new ArgumentException("luaModule must be non-empty.", nameof(luaModule));
+            }
+
+            if (string.IsNullOrEmpty(luaMethodName))
+            {
+                throw new ArgumentException("luaMethodName must be non-empty.", nameof(luaMethodName));
+            }
+
+            Delegate bound = s_runtime.GetFunction(typeof(T), luaModule, luaMethodName);
+            return (T)bound;
         }
 
         internal static void ProcessPendingRefReleases()
         {
-            _processPendingRefReleases();
+            s_runtime?.ProcessPendingRefReleases();
         }
 
-        private static MethodInfo ResolveBackendMethod(string methodName, BindingFlags bindingFlags)
+        private static void EnsureRuntime()
         {
-            string assemblyName = Application.isEditor ? "ZLua.Mono" : "ZLua.Il2Cpp";
-            Assembly assembly = AppDomain.CurrentDomain.GetAssemblies()
-                .FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName, StringComparison.Ordinal));
-            string typeName = Application.isEditor ? "ZLua.LuaMonoAppDomain" : "ZLua.LuaIl2CppAppDomain";
-            return assembly.GetType(typeName)?.GetMethod(methodName, bindingFlags);
+            if (s_runtime == null)
+            {
+                throw new InvalidOperationException(
+                    "ZLua runtime is not registered. Ensure ZLua.Mono (Editor) or ZLua.Il2Cpp (Player) is loaded.");
+            }
         }
     }
 }

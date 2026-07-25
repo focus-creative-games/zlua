@@ -30,8 +30,8 @@ ZLua是一个针对Il2Cpp极致优化的现代、简洁、易用的Unity Lua脚�
 
 ### 互操作模型
 
-- **C# → Lua**：`[LuaInvoke("module", "fn")]` + `static extern`，类比 P/Invoke
-- **编组覆盖**：`[LuaMarshalAs]`
+- **C# → Lua**：`LuaAppDomain.GetFunction<T>("module", "fn")`，绑定后直接调用
+- **Marshal 覆盖**：`[LuaMarshalAs]`
 - **Lua → C#**：`CSharp` 根表懒加载类型；语法贴近 C#（`Type.Static()` / `obj:Method()` / `obj.field`）
 - **双后端**：Editor **Mono** 与 Player **Il2Cpp** Lua 可见语义一致
 
@@ -85,17 +85,15 @@ public static class ZLuaBootstrap
 
 无需 `LuaCallCSharp` 列表，无需为每个类型 Generate C# Wrap。
 
-### 2. C# 调用 Lua（`[LuaInvoke]`）
+### 2. C# 调用 Lua（`GetFunction`）
 
 ```csharp
 public class GameEntry : MonoBehaviour
 {
-    [LuaInvoke("app", "add")]
-    static extern int AppAdd(int a, int b);
-
     void Start()
     {
-        Debug.Log(AppAdd(10, 20)); // 30
+        var add = LuaAppDomain.GetFunction<Func<int, int, int>>("app", "add");
+        Debug.Log(add(10, 20)); // 30
     }
 }
 ```

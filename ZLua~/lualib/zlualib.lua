@@ -4,6 +4,10 @@ function zlua.typeof(typeTable)
     return __zlua_typeof(typeTable)
 end
 
+function zlua.get_type_from_name(typeFullName)
+    return __zlua_get_type_from_name(typeFullName)
+end
+
 function zlua.make_generic_type(genericType, ...)
     return __zlua_make_generic_type(genericType, ...)
 end

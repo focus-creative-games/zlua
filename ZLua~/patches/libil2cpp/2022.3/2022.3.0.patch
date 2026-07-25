@@ -1,0 +1,64 @@
+From 91fa2ad1a112fa5504f84d0e6381a15d57c215df Mon Sep 17 00:00:00 2001
+From: walon <walon@code-philosophy.com>
+Date: Sat, 25 Jul 2026 09:46:46 +0800
+Subject: [PATCH] 2022.3.62f1-zlua
+
+---
+ libil2cpp/metadata/GenericMethod.cpp | 5 +++++
+ libil2cpp/metadata/GenericMethod.h   | 1 +
+ libil2cpp/vm/Runtime.cpp             | 4 +++-
+ 3 files changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/libil2cpp/metadata/GenericMethod.cpp b/libil2cpp/metadata/GenericMethod.cpp
+index ab02cd9..71e952d 100644
+--- a/libil2cpp/metadata/GenericMethod.cpp
++++ b/libil2cpp/metadata/GenericMethod.cpp
+@@ -138,6 +138,11 @@ namespace metadata
+ 
+     static FullySharedGenericMethodInfo ambiguousMethodInfo;
+ 
++    bool GenericMethod::IsAnUnresolvedCallStubWasNotFound(Il2CppMethodPointer methodPointer)
++    {
++        return methodPointer == (Il2CppMethodPointer)AnUnresolvedCallStubWasNotFound || methodPointer == (Il2CppMethodPointer)AnUnresolvedCallStubWasNotFoundValueType;
++    }
++
+     bool GenericMethod::IsGenericAmbiguousMethodInfo(const MethodInfo* method)
+     {
+         return method == &ambiguousMethodInfo;
+diff --git a/libil2cpp/metadata/GenericMethod.h b/libil2cpp/metadata/GenericMethod.h
+index 06efe41..24a005e 100644
+--- a/libil2cpp/metadata/GenericMethod.h
++++ b/libil2cpp/metadata/GenericMethod.h
+@@ -31,6 +31,7 @@ namespace metadata
+ 
+         static void ClearStatics();
+         static const Il2CppRGCTXData* InflateRGCTX(const MethodInfo* method);
++        static bool IsAnUnresolvedCallStubWasNotFound(Il2CppMethodPointer methodPointer);
+ 
+     private:
+         static const MethodInfo* GetMethod(const Il2CppGenericMethod* gmethod, bool copyMethodPtr);
+diff --git a/libil2cpp/vm/Runtime.cpp b/libil2cpp/vm/Runtime.cpp
+index d2b407f..94cee4f 100644
+--- a/libil2cpp/vm/Runtime.cpp
++++ b/libil2cpp/vm/Runtime.cpp
+@@ -62,6 +62,8 @@
+ #include "Baselib.h"
+ #include "Cpp/ReentrantLock.h"
+ 
++#include "zlua/lvm/LuaAppDomain.h"
++
+ Il2CppDefaults il2cpp_defaults;
+ bool g_il2cpp_is_fully_initialized = false;
+ static bool shutting_down = false;
+@@ -394,7 +396,7 @@ namespace vm
+ #if !IL2CPP_TINY && !IL2CPP_MONO_DEBUGGER
+         il2cpp::utils::DebugSymbolReader::LoadDebugSymbols();
+ #endif
+-
++        zlua::LuaAppDomain::Initialize();
+         return true;
+     }
+ 
+-- 
+2.40.0.windows.1
+

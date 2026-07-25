@@ -11,5 +11,10 @@ namespace ZLua
             : base(message)
         {
         }
+
+        public LuaMarshalAsConfigurationException(string message, Exception innerException)
+            : base(message, innerException)
+        {
+        }
     }
 }

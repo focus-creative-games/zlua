@@ -21,7 +21,6 @@
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
-using ZLua.BuildProcessors;
 using ZLua.Commands;
 
 namespace ZLua
@@ -37,15 +36,30 @@ namespace ZLua
             var installer = new LocalInstaller();
             if (installer.HasInstalledToLocal())
             {
-                if (EditorUtility.DisplayDialog("ZLua is already installed", "Do you want to reinstall it?", "Yes", "No"))
+                if (!EditorUtility.DisplayDialog("ZLua is already installed", "Do you want to reinstall it?", "Yes", "No"))
                 {
-                    installer.InstallLocal();
+                    return;
                 }
             }
-            else
+
+            try
             {
                 installer.InstallLocal();
             }
+            catch (System.Exception)
+            {
+                EditorUtility.DisplayDialog(
+                    "ZLua Install Failed",
+                    "Install failed. See the Console for details.",
+                    "OK");
+                return;
+            }
+
+            EditorUtility.DisplayDialog(
+                "ZLua Install Succeeded",
+                "Local il2cpp/zlua/lua installed.\n\n"
+                + "If the Lua series, native plugin, or scripting defines changed, restart the Unity Editor before continuing.",
+                "OK");
         }
 
         [MenuItem("ZLua/Generate/All", priority = 100)]
@@ -58,7 +72,7 @@ namespace ZLua
         public static void ForceRecompileAllScripts()
         {
             CompilationPipeline.RequestScriptCompilation(RequestScriptCompilationOptions.CleanBuildCache);
-            Debug.Log("[ZLua] Requested full script recompilation (CleanBuildCache). LuaInvoke IL post-processor runs during assembly build.");
+            Debug.Log("[ZLua] Requested full script recompilation (CleanBuildCache).");
         }
 
         [MenuItem("ZLua/Documents/About", priority = 200)]

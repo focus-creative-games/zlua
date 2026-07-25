@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
+using Unity.Collections.LowLevel.Unsafe;
 using ZLua.DelegateImpl;
 using ZLua.Emit;
 using ZLua.Marshaling;
@@ -17,10 +19,8 @@ namespace ZLua.Lvm
     {
         private const int MaxMdArrayRank = 32;
 
-        private static readonly List<LuaCSFunction> s_pins = new List<LuaCSFunction>();
-        private static bool s_pinned;
-
         private static readonly LuaCSFunction s_typeof = ZLuaTypeOf;
+        private static readonly LuaCSFunction s_getTypeFromName = ZLuaGetTypeFromName;
         private static readonly LuaCSFunction s_box = ZLuaBox;
         private static readonly LuaCSFunction s_unbox = ZLuaUnbox;
         private static readonly LuaCSFunction s_cast = ZLuaCast;
@@ -43,9 +43,9 @@ namespace ZLua.Lvm
         internal static void RegisterGlobals(LuaEnv env)
         {
             IntPtr L = env.L;
-            EnsurePinned();
 
             Register(L, "__zlua_typeof", s_typeof);
+            Register(L, "__zlua_get_type_from_name", s_getTypeFromName);
             Register(L, "__zlua_box", s_box);
             Register(L, "__zlua_unbox", s_unbox);
             Register(L, "__zlua_cast", s_cast);
@@ -73,35 +73,6 @@ namespace ZLua.Lvm
             LuaDll.lua_setglobal(L, name);
         }
 
-        private static void EnsurePinned()
-        {
-            if (s_pinned)
-            {
-                return;
-            }
-
-            s_pins.Add(s_typeof);
-            s_pins.Add(s_box);
-            s_pins.Add(s_unbox);
-            s_pins.Add(s_cast);
-            s_pins.Add(s_createSignature);
-            s_pins.Add(s_makeGenericType);
-            s_pins.Add(s_makeSzArrayType);
-            s_pins.Add(s_makeMdArrayType);
-            s_pins.Add(s_newSzArrayByElementType);
-            s_pins.Add(s_newSzArrayBySzArrayType);
-            s_pins.Add(s_newMdArrayByMdArrayType);
-            s_pins.Add(s_newMdArrayBySpec);
-            s_pins.Add(s_toDelegate);
-            s_pins.Add(s_toBytes);
-            s_pins.Add(s_toTable);
-            s_pins.Add(s_makeGenericMethod);
-            s_pins.Add(s_registerMethod);
-            s_pins.Add(s_getOpaqueValue);
-            s_pins.Add(s_setOpaqueValue);
-            s_pinned = true;
-        }
-
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int ZLuaTypeOf(IntPtr L)
         {
@@ -118,7 +89,34 @@ namespace ZLua.Lvm
                     LuaCallbackBoundary.Throw("zlua.typeof expects a csharp type table");
                 }
 
-                ObjectMarshal.Push(L, type);
+                // System.Type reflection object (same kind as C# typeof(T)).
+                ObjectMarshal.Push(L, type, typeof(Type));
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                return LuaCallbackBoundary.ToLuaError(L, ex);
+            }
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int ZLuaGetTypeFromName(IntPtr L)
+        {
+            try
+            {
+                if (LuaDll.lua_gettop(L) != 1 || LuaDll.lua_type(L, 1) != LuaDataType.String)
+                {
+                    LuaCallbackBoundary.Throw("zlua.get_type_from_name expects a type name string");
+                }
+
+                string typeName = LuaDllExtension.tostring(L, 1);
+                Type type = TypeRegistry.ResolveTypeFromName(typeName);
+                if (type == null)
+                {
+                    LuaCallbackBoundary.Throw($"zlua.get_type_from_name: type not found: {typeName}");
+                }
+
+                TypeRegistry.PushInternedTypeTable(L, type);
                 return 1;
             }
             catch (Exception ex)
@@ -266,15 +264,10 @@ namespace ZLua.Lvm
         {
             try
             {
-                if (!LuaDll.lua_istable(L, 1))
-                {
-                    LuaCallbackBoundary.Throw("zlua.make_generic_type expects generic type table as first arg");
-                }
-
-                Type genericDef = TypeRegistry.GetTypeFromTypeTable(L, 1);
+                Type genericDef = TypeRegistry.ResolveTypeArg(L, 1);
                 if (genericDef == null)
                 {
-                    LuaCallbackBoundary.Throw("zlua.make_generic_type expects generic type table as first arg");
+                    LuaCallbackBoundary.Throw("zlua.make_generic_type expects generic type as first arg");
                 }
 
                 if (!genericDef.IsGenericTypeDefinition)
@@ -546,26 +539,89 @@ namespace ZLua.Lvm
                     LuaCallbackBoundary.Throw("zlua argument mismatch: zlua.to_bytes expects (szarray)");
                 }
 
+                if (!LuaDll.lua_isuserdata(L, 1))
+                {
+                    LuaCallbackBoundary.Throw("zlua argument mismatch: zlua.to_bytes expects (szarray)");
+                }
+
                 object obj = ObjectRegistry.Pop(L, 1);
                 if (obj == null)
                 {
                     return 0;
                 }
 
-                byte[] bytes = obj as byte[];
-                if (bytes == null)
+                Array array = obj as Array;
+                Type arrayType = obj.GetType();
+                if (array == null || !arrayType.IsArray || array.Rank != 1 || !IsSzArrayType(arrayType))
                 {
                     LuaCallbackBoundary.Throw(
-                        $"zlua argument mismatch: expected byte array, got: {obj.GetType().FullName}");
+                        $"zlua argument mismatch: zlua.to_bytes expects szarray, got: {arrayType.FullName}");
                 }
 
-                PushByteString(L, bytes);
+                Type elementType = arrayType.GetElementType();
+                if (elementType == null || !UnsafeUtility.IsBlittable(elementType))
+                {
+                    LuaCallbackBoundary.Throw(
+                        $"zlua argument mismatch: element type is not blittable: {elementType?.FullName}");
+                }
+
+                int byteLength = GetToBytesByteLength(array, elementType);
+                if (byteLength == 0)
+                {
+                    LuaDll.lua_pushstring(L, string.Empty);
+                    return 1;
+                }
+
+                unsafe
+                {
+                    GCHandle handle = GCHandle.Alloc(array, GCHandleType.Pinned);
+                    try
+                    {
+                        IntPtr data = handle.AddrOfPinnedObject();
+                        LuaDll.lua_pushlstring(L, data, (UIntPtr)byteLength);
+                    }
+                    finally
+                    {
+                        handle.Free();
+                    }
+                }
+
                 return 1;
             }
             catch (Exception ex)
             {
                 return LuaCallbackBoundary.ToLuaError(L, ex);
             }
+        }
+
+        /// <summary>
+        /// Spec: primitives (incl. bool) and POD structs. Unity marks bool as non-blittable
+        /// for marshalling, but managed <c>bool[]</c> is still a contiguous 1-byte layout.
+        /// </summary>
+        private static bool IsToBytesElementType(Type elementType)
+        {
+            if (elementType.IsPrimitive || elementType.IsEnum)
+            {
+                return true;
+            }
+
+            return StructMarshal.IsBlittable(elementType);
+        }
+
+        private static int GetToBytesByteLength(Array array, Type elementType)
+        {
+            if (elementType.IsPrimitive || elementType.IsEnum)
+            {
+                return Buffer.ByteLength(array);
+            }
+
+            return checked(array.Length * UnsafeUtility.SizeOf(elementType));
+        }
+
+        private static bool IsSzArrayType(Type arrayType)
+        {
+            // Prefer IsSZArray when available; fall back to name form "T[]" vs "T[*]" / "T[,]".
+            return arrayType.Name.EndsWith("[]", StringComparison.Ordinal);
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]

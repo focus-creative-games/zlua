@@ -7,7 +7,7 @@ namespace ZLua
         Default,
         UserData,
         Bytes,
-        OpaqueLightUserData,
+        OpaqueValue,
         UnpackedValues,
         Table,
         ParamsTable,
@@ -28,7 +28,7 @@ namespace ZLua
         /// Required for <see cref="LuaMarshalType.Table"/> / <see cref="LuaMarshalType.UnpackedValues"/>.
         /// Elements are CLR field or property names (may mix). Trailing '?' marks optional Table keys (Lua→C#).
         /// </summary>
-        public string[] FieldOrPropertyNames { get; set; }
+        public string[] Members { get; set; }
 
         public LuaMarshalAsAttribute(LuaMarshalType luaMarshalType = LuaMarshalType.Default)
         {

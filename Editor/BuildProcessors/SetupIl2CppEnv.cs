@@ -31,7 +31,7 @@ namespace ZLua.BuildProcessors
 
     internal class SetupIl2CppEnv : IPreprocessBuildWithReport
     {
-        public int callbackOrder => 1;
+        public int callbackOrder => 2;
 
         public void OnPreprocessBuild(BuildReport report)
         {
@@ -44,7 +44,8 @@ namespace ZLua.BuildProcessors
             var installerController = new LocalInstaller();
             if (!installerController.HasInstalledToLocal())
             {
-                throw new Exception($"Please install ZLua first.");
+                throw new BuildFailedException(
+                    "[ZLua] Please install ZLua first via menu 'ZLua/Install...'.");
             }
             string runtimeDir = CommonDirs.LocalIl2CppPath;
             Environment.SetEnvironmentVariable("UNITY_IL2CPP_PATH", runtimeDir);

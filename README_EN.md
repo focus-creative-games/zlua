@@ -30,7 +30,7 @@ For performance details, see [Performance Comparison](https://doc.zlua.cn/docs/c
 
 ### Interop Model
 
-- **C# → Lua**: `[LuaInvoke("module", "fn")]` + `static extern`, analogous to P/Invoke
+- **C# → Lua**: `LuaAppDomain.GetFunction<T>("module", "fn")`, then invoke the returned delegate
 - **Marshal overrides**: `[LuaMarshalAs]`
 - **Lua → C#**: Lazy-loaded types under the `CSharp` root table; syntax close to C# (`Type.Static()` / `obj:Method()` / `obj.field`)
 - **Dual backends**: Editor **Mono** and Player **Il2Cpp** share the same Lua-visible semantics
@@ -85,17 +85,15 @@ public static class ZLuaBootstrap
 
 No `LuaCallCSharp` list, and no per-type C# Wrap generation.
 
-### 2. C# Calling Lua (`[LuaInvoke]`)
+### 2. C# Calling Lua (`GetFunction`)
 
 ```csharp
 public class GameEntry : MonoBehaviour
 {
-    [LuaInvoke("app", "add")]
-    static extern int AppAdd(int a, int b);
-
     void Start()
     {
-        Debug.Log(AppAdd(10, 20)); // 30
+        var add = LuaAppDomain.GetFunction<Func<int, int, int>>("app", "add");
+        Debug.Log(add(10, 20)); // 30
     }
 }
 ```

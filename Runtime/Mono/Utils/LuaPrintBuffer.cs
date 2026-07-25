@@ -41,7 +41,7 @@ namespace ZLua.Utils
         internal static int ManagedPcallDepth => _managedPcallDepth;
 
         /// <summary>
-        /// True when this CallScope sits inside another managed pcall (Lua→C#→LuaInvoke).
+        /// True when this CallScope sits inside another managed pcall (Lua→C#→C#→Lua).
         /// </summary>
         internal static bool IsNestedManagedPcall => _managedPcallDepth > 1;
 

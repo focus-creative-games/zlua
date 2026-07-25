@@ -18,14 +18,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System.Collections.Generic;
 using UnityEditor;
+using UnityEngine;
 using UnityEngine.UIElements;
+using ZLua.Utils;
 
 namespace ZLua
 {
     public class SettingsProvider : UnityEditor.SettingsProvider
     {
-
         private static SettingsProvider s_provider;
 
         [SettingsProvider]
@@ -35,11 +37,12 @@ namespace ZLua
             {
                 s_provider = new SettingsProvider();
             }
+
             return s_provider;
         }
 
-
         private SerializedObject _serializedObject;
+
         public SettingsProvider() : base("Project/ZLua", SettingsScope.Project)
         {
         }
@@ -72,10 +75,10 @@ namespace ZLua
             {
                 InitGUI();
             }
+
             _serializedObject.Update();
             EditorGUI.BeginChangeCheck();
 
-            // Draw all serialized fields on Settings so new members do not require Provider changes.
             using (var prop = _serializedObject.GetIterator())
             {
                 if (prop.NextVisible(true))
@@ -84,6 +87,12 @@ namespace ZLua
                     {
                         if (prop.name == "m_Script")
                         {
+                            continue;
+                        }
+
+                        if (prop.name == "luaVersionId")
+                        {
+                            DrawLuaVersionField(prop);
                             continue;
                         }
 
@@ -97,6 +106,27 @@ namespace ZLua
             {
                 _serializedObject.ApplyModifiedProperties();
                 Settings.Save();
+            }
+        }
+
+        private static void DrawLuaVersionField(SerializedProperty prop)
+        {
+            EditorGUILayout.PropertyField(prop, new GUIContent(
+                "Lua Version Id",
+                prop.tooltip));
+
+            EditorGUILayout.HelpBox(
+                "PUC-Rio versions are downloaded on Install from https://www.lua.org/ftp/lua-X.Y.Z.tar.gz "
+                + $"into {CommonDirs.LuaSrcCacheDir}.\n"
+                + "LuaJIT: clone into LuaSrcCache/luajit-{major}-{minor} (e.g. luajit-2-1).\n"
+                + $"Default when empty: {LuaSourceCache.DefaultPucRioVersionId}.\n"
+                + "Editor plugin DLL (lua53/lua54/…) must be replaced by you under Packages/.../Plugins.",
+                MessageType.Info);
+
+            IReadOnlyList<string> cached = LuaVersionUtil.ListCachedVersionIds();
+            if (cached.Count > 0)
+            {
+                EditorGUILayout.LabelField("Cached sources", string.Join(", ", cached));
             }
         }
     }

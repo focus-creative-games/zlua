@@ -53,7 +53,8 @@ namespace ZLua.Mt
             if (t == LuaDataType.String)
             {
                 string typeName = LuaDllExtension.tostring(L, index);
-                return ResolveCorlibType(typeName);
+                // Same semantics as zlua.get_type_from_name / Type.GetType(name).
+                return ResolveTypeFromName(typeName);
             }
 
             if (t == LuaDataType.Table)
@@ -91,6 +92,130 @@ namespace ZLua.Mt
             }
 
             return type;
+        }
+
+        /// <summary>
+        /// Resolves a CLR type name with <c>Type.GetType</c> semantics (AQN / generic / array),
+        /// without calling <see cref="Type.GetType(string)"/> (Unity Mono StackCrawlMark SIGSEGV).
+        /// </summary>
+        internal static Type ResolveTypeFromName(string typeName)
+        {
+            if (string.IsNullOrEmpty(typeName))
+            {
+                return null;
+            }
+
+            int comma = IndexOfTopLevelComma(typeName);
+            if (comma >= 0)
+            {
+                string namePart = typeName.Substring(0, comma).Trim();
+                string assemblyPart = typeName.Substring(comma + 1).Trim();
+                Assembly assembly = FindOrLoadAssembly(assemblyPart);
+                if (assembly == null)
+                {
+                    return null;
+                }
+
+                try
+                {
+                    return assembly.GetType(namePart, throwOnError: false);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            return FindTypeWithoutStackCrawl(typeName);
+        }
+
+        private static int IndexOfTopLevelComma(string typeName)
+        {
+            int depth = 0;
+            for (int i = 0; i < typeName.Length; i++)
+            {
+                char c = typeName[i];
+                if (c == '[')
+                {
+                    depth++;
+                }
+                else if (c == ']')
+                {
+                    depth--;
+                }
+                else if (c == ',' && depth == 0)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static Assembly FindOrLoadAssembly(string assemblyName)
+        {
+            if (string.IsNullOrEmpty(assemblyName))
+            {
+                return null;
+            }
+
+            string simpleName = assemblyName;
+            int comma = assemblyName.IndexOf(',');
+            if (comma > 0)
+            {
+                simpleName = assemblyName.Substring(0, comma).Trim();
+            }
+
+            Assembly[] assemblies;
+            try
+            {
+                assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            }
+            catch
+            {
+                assemblies = null;
+            }
+
+            if (assemblies != null)
+            {
+                for (int i = 0; i < assemblies.Length; i++)
+                {
+                    Assembly asm = assemblies[i];
+                    if (asm == null)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        AssemblyName an = asm.GetName();
+                        if (an != null && string.Equals(an.Name, simpleName, StringComparison.Ordinal))
+                        {
+                            return asm;
+                        }
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                }
+            }
+
+            try
+            {
+                return Assembly.Load(assemblyName);
+            }
+            catch
+            {
+                try
+                {
+                    return Assembly.Load(simpleName);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
         }
 
         private static Type FindTypeWithoutStackCrawl(string typeName)

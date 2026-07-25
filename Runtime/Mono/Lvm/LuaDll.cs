@@ -21,19 +21,26 @@ namespace ZLua
 
     public static class LuaDll
     {
-#if UNITY_IPHONE && !UNITY_EDITOR
-        public const string LUA_DLL = "__Internal";
-#else
-        public const string LUA_DLL = "lua54";
-#endif
+        public const string LUA_DLL = LuaDllName.LUA_DLL;
 
         public const CallingConvention CALLING_CONVENTION = CallingConvention.Cdecl;
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern IntPtr luaL_newstate();
 
+#if ZLUA_LUA_5_5
+        // Lua 5.5: luaL_openlibs is a C macro → luaL_openselectedlibs(L, ~0, 0); no DLL export.
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern void luaL_openselectedlibs(IntPtr luaState, int load, int preload);
+
+        public static void luaL_openlibs(IntPtr luaState)
+        {
+            luaL_openselectedlibs(luaState, ~0, 0);
+        }
+#else
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void luaL_openlibs(IntPtr luaState);
+#endif
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void lua_close(IntPtr luaState);

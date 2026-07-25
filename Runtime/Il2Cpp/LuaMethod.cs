@@ -8,6 +8,8 @@ namespace ZLua
         private bool _disposed;
         private readonly IntPtr _L;
         private readonly int _refIndex;
+        // Set from native when binding a Lua function to a closed delegate (MethodMarshalCtx*).
+        private IntPtr _methodMarshalCtx;
 
         internal LuaMethod(IntPtr L, int refIndex)
         {

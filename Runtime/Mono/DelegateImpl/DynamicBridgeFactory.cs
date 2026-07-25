@@ -125,15 +125,38 @@ namespace ZLua.DelegateImpl
                 _ => CompileFactory(invokeMethod, delegateType));
         }
 
+        private static readonly MethodInfo EnterStandaloneOpaque = typeof(StructOpaqueScope).GetMethod(
+            nameof(StructOpaqueScope.EnterStandaloneCSharpToLua),
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        private static readonly MethodInfo PendingErrorSet = typeof(NestedLuaCallPendingError).GetMethod(
+            nameof(NestedLuaCallPendingError.Set),
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        private static readonly PropertyInfo IsNestedManagedPcall = typeof(LuaPrintBuffer).GetProperty(
+            nameof(LuaPrintBuffer.IsNestedManagedPcall),
+            BindingFlags.NonPublic | BindingFlags.Static);
+
         private static Func<LuaMethod, Delegate> CompileFactory(MethodInfo invokeMethod, Type delegateType)
         {
             ParameterInfo[] parameters = invokeMethod.GetParameters();
             for (int i = 0; i < parameters.Length; i++)
             {
-                if (parameters[i].ParameterType.IsByRef)
+                if (parameters[i].IsDefined(typeof(ParamArrayAttribute), inherit: false))
                 {
                     throw new NotSupportedException(
-                        $"zlua: delegate invoke parameter '{parameters[i].Name}' with ref/out is not supported.");
+                        $"zlua: params is not supported on delegate bridge / GetFunction ({delegateType.FullName}).");
+                }
+            }
+
+            bool needsOpaqueScope = false;
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                LuaMarshalType mt = CSharpToLuaBridgeExpressionBuilder.ResolveParameterMarshalType(parameters[i]);
+                if (mt == LuaMarshalType.OpaqueValue || parameters[i].ParameterType.IsByRef)
+                {
+                    needsOpaqueScope = true;
+                    break;
                 }
             }
 
@@ -153,34 +176,55 @@ namespace ZLua.DelegateImpl
                 Expression.Property(targetParam, LuaStateProperty));
             Expression saveTop = Expression.Assign(oldTopVar, Expression.Call(LuaGetTop, luaStateVar));
 
-            var invokeStatements = new System.Collections.Generic.List<Expression>
+            var locals = new System.Collections.Generic.List<ParameterExpression>
             {
-                Expression.Call(targetParam, PushErrorHandlerToStack),
-                Expression.Assign(
-                    functionTypeVar,
-                    Expression.Call(
-                        LuaRawGetI,
-                        luaStateVar,
-                        Expression.Constant(LuaConsts.LuaRegistryIndex),
-                        Expression.Convert(
-                            Expression.Property(targetParam, RefIndexProperty),
-                            typeof(long)))),
-                Expression.IfThen(
-                    Expression.NotEqual(
-                        functionTypeVar,
-                        Expression.Constant(LuaDataType.Function)),
-                    Expression.Throw(
-                        Expression.New(
-                            typeof(InvalidOperationException).GetConstructor(new[] { typeof(string) }),
-                            Expression.Constant("Lua function reference is invalid.")))),
+                luaStateVar, oldTopVar, pcallResultVar, functionTypeVar
             };
 
+            var invokeStatements = new System.Collections.Generic.List<Expression>();
+            if (needsOpaqueScope)
+            {
+                invokeStatements.Add(Expression.Call(EnterStandaloneOpaque));
+            }
+
+            invokeStatements.Add(Expression.Call(targetParam, PushErrorHandlerToStack));
+            invokeStatements.Add(Expression.Assign(
+                functionTypeVar,
+                Expression.Call(
+                    LuaRawGetI,
+                    luaStateVar,
+                    Expression.Constant(LuaConsts.LuaRegistryIndex),
+                    Expression.Convert(
+                        Expression.Property(targetParam, RefIndexProperty),
+                        typeof(long)))));
+            invokeStatements.Add(Expression.IfThen(
+                Expression.NotEqual(
+                    functionTypeVar,
+                    Expression.Constant(LuaDataType.Function)),
+                Expression.Throw(
+                    Expression.New(
+                        typeof(InvalidOperationException).GetConstructor(new[] { typeof(string) }),
+                        Expression.Constant("Lua function reference is invalid.")))));
+
+            var writeBacks = new System.Collections.Generic.List<Expression>();
             for (int i = 0; i < parameters.Length; i++)
             {
-                invokeStatements.Add(CSharpToLuaBridgeExpressionBuilder.BuildPushArgument(
+                Expression push = CSharpToLuaBridgeExpressionBuilder.BuildPushArgument(
                     luaStateVar,
                     argExprs[i],
-                    parameters[i].ParameterType));
+                    parameters[i],
+                    out ParameterExpression opaqueHandleVar,
+                    out Expression writeBack);
+                if (opaqueHandleVar != null)
+                {
+                    locals.Add(opaqueHandleVar);
+                }
+
+                invokeStatements.Add(push);
+                if (writeBack != null)
+                {
+                    writeBacks.Add(writeBack);
+                }
             }
 
             int nArgs = parameters.Length;
@@ -194,12 +238,26 @@ namespace ZLua.DelegateImpl
                     Expression.Constant(nRet),
                     Expression.Add(oldTopVar, Expression.Constant(1)))));
 
-            invokeStatements.Add(Expression.IfThen(
-                Expression.NotEqual(pcallResultVar, Expression.Constant(0)),
+            // Nested pcall: stash pending error (Unity Mono SIGSEGV if throw during outer lua_pcall).
+            Expression errorMessage = Expression.Call(ToStringMethod, luaStateVar, Expression.Constant(-1));
+            Expression onPcallFail = Expression.IfThenElse(
+                Expression.Property(null, IsNestedManagedPcall),
+                Expression.Call(PendingErrorSet, errorMessage),
                 Expression.Throw(
                     Expression.New(
                         typeof(Exception).GetConstructor(new[] { typeof(string) }),
-                        Expression.Call(ToStringMethod, luaStateVar, Expression.Constant(-1))))));
+                        errorMessage)));
+
+            invokeStatements.Add(Expression.IfThen(
+                Expression.NotEqual(pcallResultVar, Expression.Constant(0)),
+                onPcallFail));
+
+            foreach (Expression writeBack in writeBacks)
+            {
+                invokeStatements.Add(Expression.IfThen(
+                    Expression.Equal(pcallResultVar, Expression.Constant(0)),
+                    writeBack));
+            }
 
             Expression returnExpression;
             if (returnType == typeof(void))
@@ -208,17 +266,25 @@ namespace ZLua.DelegateImpl
             }
             else
             {
-                returnExpression = CSharpToLuaBridgeExpressionBuilder.BuildPopReturn(
+                // On nested failure, return default without throwing.
+                ParameterExpression retVar = Expression.Variable(returnType, "_ret");
+                locals.Add(retVar);
+                Expression pop = CSharpToLuaBridgeExpressionBuilder.BuildPopReturn(
                     luaStateVar,
                     invokeMethod,
                     returnType);
+                returnExpression = Expression.Block(
+                    Expression.IfThen(
+                        Expression.Equal(pcallResultVar, Expression.Constant(0)),
+                        Expression.Assign(retVar, pop)),
+                    retVar);
             }
 
             Expression tryBody = Expression.Block(
                 invokeStatements.Concat(new[] { returnExpression }));
 
             Expression body = Expression.Block(
-                new[] { luaStateVar, oldTopVar, pcallResultVar, functionTypeVar },
+                locals,
                 Expression.TryFinally(
                     Expression.Block(
                         getLuaState,

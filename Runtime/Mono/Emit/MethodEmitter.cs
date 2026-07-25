@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
-using ZLua.Bridge;
 using ZLua.Marshaling;
 using ZLua.Mt;
 using ZLua.Utils;
@@ -434,7 +433,7 @@ namespace ZLua.Emit
                         }
 
                         int nrets = core(L);
-                        if (LuaInvokePendingError.TryTake(out string pending))
+                        if (NestedLuaCallPendingError.TryTake(out string pending))
                         {
                             return LuaDllExtension.error(L, pending);
                         }
@@ -463,7 +462,7 @@ namespace ZLua.Emit
                     try
                     {
                         int nrets = core(L);
-                        if (LuaInvokePendingError.TryTake(out string pending))
+                        if (NestedLuaCallPendingError.TryTake(out string pending))
                         {
                             return LuaDllExtension.error(L, pending);
                         }

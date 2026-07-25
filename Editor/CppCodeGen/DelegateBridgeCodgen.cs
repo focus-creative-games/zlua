@@ -66,7 +66,8 @@ namespace ZLua.CppCodeGen
                 ModuleDefMD mod = assemblyCache.LoadModule(assName);
                 foreach (TypeDef typeDef in mod.GetTypes())
                 {
-                    if (!typeDef.IsPublic || !MetaUtil.IsSubOfMulticastDelegate(typeDef.ToTypeSig()) || typeDef.HasGenericParameters)
+                    // Include non-public (nested) delegates so GetFunction<T> bridges are generated.
+                    if (!MetaUtil.IsSubOfMulticastDelegate(typeDef.ToTypeSig()) || typeDef.HasGenericParameters)
                     {
                         continue;
                     }
@@ -77,11 +78,6 @@ namespace ZLua.CppCodeGen
                     TypeSpec ts = mod.ResolveTypeSpec(rid);
                     TypeSig sig = ts.TypeSig;
                     if (!MetaUtil.IsSubOfMulticastDelegate(sig) || sig.ContainsGenericParameter)
-                    {
-                        continue;
-                    }
-                    TypeDef typeDef = sig.ToTypeDefOrRef().ResolveTypeDefThrow();
-                    if (!typeDef.IsPublic)
                     {
                         continue;
                     }
@@ -155,7 +151,6 @@ namespace ZLua.CppCodeGen
             writer.WriteLine("#include \"DelegateBridgeStub.h\"");
             writer.WriteLine();
             CodegenCommon.AddCommonIncludes(writer);
-            writer.WriteLine("#include \"../mt/MetaBinding.h\"");
             writer.WriteLine();
             writer.WriteLine("namespace zlua");
             writer.WriteLine("{");
@@ -194,26 +189,19 @@ namespace ZLua.CppCodeGen
             writer.WriteLine("{");
             writer.IncreaseIndent();
 
-            writer.WriteLine($"static {ConstStrings.typeConstMethodMarshalCtxPtr} ctx = nullptr;");
             writer.WriteLine($"lua_State* L = LuaEnv::GetState();");
-            writer.WriteLine($"if (ctx == nullptr)");
-            writer.WriteLine("{");
-            writer.IncreaseIndent();
-            writer.WriteLine($"ctx = MetaBinding::CreateMethodMarshalCtx(L, method, false);");
-            writer.DecreaseIndent();
-            writer.WriteLine("}");
-
+            writer.WriteLine("OpaqueParameterScope opaqueScope;");
             writer.WriteLine("LuaMethod* luaMethod = reinterpret_cast<LuaMethod*>(target);");
+            writer.WriteLine("const MethodMarshalCtx* ctx = luaMethod->methodMarshalCtx;");
             writer.WriteLine($"LuaStackGuard guard(L);");
             writer.WriteLine($"int errfunc = LuaEnv::PushErrorHandler();");
             writer.WriteLine($"LuaUtil::PushRef(L, luaMethod->funcRef);");
+            writer.WriteLine("(void)method;");
 
-            bool ignoreMarshalAsFromParam = true;
             foreach (var param in binding.invokeMethod.ParamInfos)
             {
-                LuaMarshalMetaInfo paramMetaInfo = MarshalMetaUtil.CreateMarshalMetaInfo(param.type, param.paramDef, ignoreMarshalAsFromParam);
-                string metaExpr = $"ctx->paramsMeta[{param.indexExcludedThis}]";
-                writer.WriteLine(CodegenCommon.GeneratePushStatement(binding.invokeMethod.MethodDef, metaExpr, param.name, param.type, paramMetaInfo.marshalAsInfo));
+                writer.WriteLine(
+                    $"ctx->paramsMeta[{param.indexExcludedThis}]->cs2luaWriter(L, &{param.name}, ctx->paramsMeta[{param.indexExcludedThis}]);");
             }
 
             writer.WriteLine($"LuaUtil::PCall(L, {binding.invokeMethod.ParamInfos.Count}, {(isVoidReturn ? 0 : 1)}, errfunc);");
@@ -221,9 +209,8 @@ namespace ZLua.CppCodeGen
             if (!isVoidReturn)
             {
                 string retvalName = "_retval";
-                writer.WriteLine($"{returnTypeName} {retvalName};");
-                LuaMarshalMetaInfo returnMetaInfo = MarshalMetaUtil.CreateMarshalMetaInfo(returnType, binding.invokeMethod.ReturnInfo.paramDef, ignoreMarshalAsFromParam);
-                writer.WriteLine(CodegenCommon.GeneratePopStatement(binding.invokeMethod.MethodDef, "-1", $"ctx->retMeta", retvalName, returnType, returnMetaInfo.marshalAsInfo));
+                writer.WriteLine($"{returnTypeName} {retvalName}{{}};");
+                writer.WriteLine($"ctx->retMeta->lua2csWriter(L, -1, &{retvalName}, ctx->retMeta);");
                 writer.WriteLine($"return {retvalName};");
             }
 

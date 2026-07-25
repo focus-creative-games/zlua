@@ -93,8 +93,6 @@ namespace ZLua.CppCodeGen
             //GenerateCode();
             var builtinScriptsCodegen = new BuiltinScriptsCodegen(_outputDir);
             builtinScriptsCodegen.Generate();
-            var luaInvokeCodegen = new LuaInvokeCodegen(_assemblyCache, _assemblyNames, _outputDir);
-            luaInvokeCodegen.Generate();
             var propertyCodegen = new PropertyBridgdeCodegen(_assemblyCache, _assemblyNames, _outputDir);
             propertyCodegen.Generate();
             var methodCodegen = new MethodBridgeCodegen(_assemblyCache, _assemblyNames, _outputDir);

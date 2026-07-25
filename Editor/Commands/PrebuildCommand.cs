@@ -20,6 +20,10 @@ namespace ZLua.Commands
             {
                 throw new BuildFailedException($"You have not initialized ZLua, please install it via menu 'ZLua/Installer'");
             }
+
+            // Spec §12: refresh conf from Settings / Editor version; never keep a stale file.
+            ZLua.Utils.ZLuaConfWriter.WriteOrRefreshLocalFromSettings();
+
             BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
 
             StrippedAotAssemblyGenrator.Generate(target);

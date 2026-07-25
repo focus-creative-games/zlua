@@ -30,7 +30,11 @@ namespace ZLua
         [Tooltip("Enable ZLua")]
         public bool enable = true;
 
-        public int maxMethodBridgeGenericIteration = 4;
+        [Tooltip("PUC-Rio: lua-X.Y.Z (downloaded from lua.org into Library/ZLua/LuaSrcCache). LuaJIT: luajit-M.N (clone into LuaSrcCache/luajit-M-N). Empty = lua-5.3.6. See spec 11-MULTI-VERSION.")]
+        public string luaVersionId = "lua-5.3.6";
+
+        [Tooltip("MarshalAs XML files or directories (relative to project root or absolute). See spec marshal/02-MARSHAL-AS §9.")]
+        public string[] marshalAsXmlPaths;
 
         private static Settings s_Instance;
 

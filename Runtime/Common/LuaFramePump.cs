@@ -16,6 +16,14 @@ namespace ZLua
                 return;
             }
 
+#if UNITY_EDITOR
+            // DontDestroyOnLoad is play-mode only; edit-mode / batch -executeMethod skip the GO pump.
+            if (!Application.isPlaying)
+            {
+                return;
+            }
+#endif
+
             var gameObject = new GameObject("[ZLua] FramePump");
             gameObject.hideFlags = HideFlags.HideAndDontSave;
             DontDestroyOnLoad(gameObject);

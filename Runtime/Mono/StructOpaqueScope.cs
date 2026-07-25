@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 namespace ZLua
 {
     /// <summary>
-    /// Sync-call struct opaque handles (MARSHAL_SPEC §4, OpaqueLightUserData).
+    /// Sync-call struct opaque handles (MARSHAL_SPEC §4, OpaqueValue).
     /// Handles from the current invoke remain valid until the next Lua→C# entry at depth 0.
     /// </summary>
     internal static class StructOpaqueScope
@@ -36,7 +36,7 @@ namespace ZLua
             }
         }
 
-        /// <summary>Standalone C#→Lua (LuaInvoke / top-level pcall), only when not nested in Lua→C#.</summary>
+        /// <summary>Standalone C#→Lua (GetFunction / top-level pcall), only when not nested in Lua→C#.</summary>
         internal static void EnterStandaloneCSharpToLua()
         {
             if (_luaToCSharpDepth == 0)
