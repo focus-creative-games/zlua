@@ -145,8 +145,19 @@ namespace ZLua
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void lua_createtable(IntPtr luaState, int nArray, int nRecord);
 
+        // Lua 5.4+: lua_newuserdatauv. Lua 5.3 / default series: lua_newuserdata (nUv ignored).
+#if ZLUA_LUA_5_4 || ZLUA_LUA_5_5
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern IntPtr lua_newuserdatauv(IntPtr luaState, UIntPtr size, int nUv);
+#else
+        [DllImport(LUA_DLL, EntryPoint = "lua_newuserdata", CallingConvention = CALLING_CONVENTION)]
+        private static extern IntPtr lua_newuserdata(IntPtr luaState, UIntPtr size);
+
+        public static IntPtr lua_newuserdatauv(IntPtr luaState, UIntPtr size, int nUv)
+        {
+            return lua_newuserdata(luaState, size);
+        }
+#endif
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern int luaL_ref(IntPtr luaState, int tableIndex);
