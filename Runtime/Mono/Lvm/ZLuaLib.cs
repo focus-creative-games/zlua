@@ -19,26 +19,28 @@ namespace ZLua.Lvm
     {
         private const int MaxMdArrayRank = 32;
 
-        private static readonly LuaCSFunction s_typeof = ZLuaTypeOf;
-        private static readonly LuaCSFunction s_getTypeFromName = ZLuaGetTypeFromName;
-        private static readonly LuaCSFunction s_box = ZLuaBox;
-        private static readonly LuaCSFunction s_unbox = ZLuaUnbox;
-        private static readonly LuaCSFunction s_cast = ZLuaCast;
-        private static readonly LuaCSFunction s_createSignature = ZLuaCreateSignature;
-        private static readonly LuaCSFunction s_makeGenericType = ZLuaMakeGenericType;
-        private static readonly LuaCSFunction s_makeSzArrayType = ZLuaMakeSzArrayType;
-        private static readonly LuaCSFunction s_makeMdArrayType = ZLuaMakeMdArrayType;
-        private static readonly LuaCSFunction s_newSzArrayByElementType = ZLuaNewSzArrayByElementType;
-        private static readonly LuaCSFunction s_newSzArrayBySzArrayType = ZLuaNewSzArrayBySzArrayType;
-        private static readonly LuaCSFunction s_newMdArrayByMdArrayType = ZLuaNewMdArrayByMdArrayType;
-        private static readonly LuaCSFunction s_newMdArrayBySpec = ZLuaNewMdArrayBySpec;
-        private static readonly LuaCSFunction s_toDelegate = ZLuaToDelegate;
-        private static readonly LuaCSFunction s_toBytes = ZLuaToBytes;
-        private static readonly LuaCSFunction s_toTable = ZLuaToTable;
-        private static readonly LuaCSFunction s_makeGenericMethod = ZLuaMakeGenericMethod;
-        private static readonly LuaCSFunction s_registerMethod = ZLuaRegisterMethod;
-        private static readonly LuaCSFunction s_getOpaqueValue = ZLuaGetOpaqueValue;
-        private static readonly LuaCSFunction s_setOpaqueValue = ZLuaSetOpaqueValue;
+        private static readonly List<LuaCSFunction> s_callbackPins = new List<LuaCSFunction>();
+
+        private static readonly LuaCSFunction s_typeof = Guard(ZLuaTypeOf);
+        private static readonly LuaCSFunction s_getTypeFromName = Guard(ZLuaGetTypeFromName);
+        private static readonly LuaCSFunction s_box = Guard(ZLuaBox);
+        private static readonly LuaCSFunction s_unbox = Guard(ZLuaUnbox);
+        private static readonly LuaCSFunction s_cast = Guard(ZLuaCast);
+        private static readonly LuaCSFunction s_createSignature = Guard(ZLuaCreateSignature);
+        private static readonly LuaCSFunction s_makeGenericType = Guard(ZLuaMakeGenericType);
+        private static readonly LuaCSFunction s_makeSzArrayType = Guard(ZLuaMakeSzArrayType);
+        private static readonly LuaCSFunction s_makeMdArrayType = Guard(ZLuaMakeMdArrayType);
+        private static readonly LuaCSFunction s_newSzArrayByElementType = Guard(ZLuaNewSzArrayByElementType);
+        private static readonly LuaCSFunction s_newSzArrayBySzArrayType = Guard(ZLuaNewSzArrayBySzArrayType);
+        private static readonly LuaCSFunction s_newMdArrayByMdArrayType = Guard(ZLuaNewMdArrayByMdArrayType);
+        private static readonly LuaCSFunction s_newMdArrayBySpec = Guard(ZLuaNewMdArrayBySpec);
+        private static readonly LuaCSFunction s_toDelegate = Guard(ZLuaToDelegate);
+        private static readonly LuaCSFunction s_toBytes = Guard(ZLuaToBytes);
+        private static readonly LuaCSFunction s_toTable = Guard(ZLuaToTable);
+        private static readonly LuaCSFunction s_makeGenericMethod = Guard(ZLuaMakeGenericMethod);
+        private static readonly LuaCSFunction s_registerMethod = Guard(ZLuaRegisterMethod);
+        private static readonly LuaCSFunction s_getOpaqueValue = Guard(ZLuaGetOpaqueValue);
+        private static readonly LuaCSFunction s_setOpaqueValue = Guard(ZLuaSetOpaqueValue);
 
         internal static void RegisterGlobals(LuaEnv env)
         {
@@ -71,6 +73,36 @@ namespace ZLua.Lvm
         {
             LuaDll.lua_pushcfunction(L, global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(fn));
             LuaDll.lua_setglobal(L, name);
+        }
+
+        /// <summary>
+        /// Mark Lua→C# entry so <see cref="LuaCallbackBoundary.Throw"/> can use <c>lua_error</c>
+        /// instead of managed throw (Tuanjie Mono SIGSEGV under outer <c>lua_pcall</c>).
+        /// Does not touch <see cref="StructOpaqueScope"/> (opaque handles must survive).
+        /// </summary>
+        private static LuaCSFunction Guard(LuaCSFunction inner)
+        {
+            LuaCSFunction wrapped = L =>
+            {
+                LuaCallbackBoundary.Enter();
+                try
+                {
+                    try
+                    {
+                        return inner(L);
+                    }
+                    catch (Exception ex)
+                    {
+                        return LuaCallbackBoundary.ToLuaError(L, ex);
+                    }
+                }
+                finally
+                {
+                    LuaCallbackBoundary.Leave();
+                }
+            };
+            s_callbackPins.Add(wrapped);
+            return wrapped;
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]

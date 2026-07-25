@@ -52,70 +52,86 @@ namespace ZLua.Mt
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int ResolveAssemblyIndex(IntPtr L)
         {
+            LuaCallbackBoundary.Enter();
             try
             {
-                string assemblyName = LuaDll.luaL_checkstring(L, 2);
-                if (TryGetTableByKey(L, 1, assemblyName))
+                try
                 {
+                    string assemblyName = LuaDll.luaL_checkstring(L, 2);
+                    if (TryGetTableByKey(L, 1, assemblyName))
+                    {
+                        return 1;
+                    }
+
+                    Assembly assembly = ResolveAssembly(assemblyName);
+                    if (assembly == null)
+                    {
+                        return 0;
+                    }
+
+                    LuaDll.lua_createtable(L, 0, 16);
+                    LuaDll.lua_createtable(L, 0, 1);
+                    LuaDll.lua_pushstring(L, assemblyName);
+                    LuaDll.lua_pushcclosure(L, global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_resolveAssemblyTypeIndex), 1);
+                    LuaDll.lua_setfield(L, -2, LuaConsts.MetaIndex);
+                    LuaDll.lua_setmetatable(L, -2);
+
+                    LuaDll.lua_pushvalue(L, -1);
+                    LuaDll.lua_setfield(L, 1, assemblyName);
                     return 1;
                 }
-
-                Assembly assembly = ResolveAssembly(assemblyName);
-                if (assembly == null)
+                catch (Exception ex)
                 {
-                    return 0;
+                    return LuaCallbackBoundary.ToLuaError(L, ex);
                 }
-
-                LuaDll.lua_createtable(L, 0, 16);
-                LuaDll.lua_createtable(L, 0, 1);
-                LuaDll.lua_pushstring(L, assemblyName);
-                LuaDll.lua_pushcclosure(L, global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_resolveAssemblyTypeIndex), 1);
-                LuaDll.lua_setfield(L, -2, LuaConsts.MetaIndex);
-                LuaDll.lua_setmetatable(L, -2);
-
-                LuaDll.lua_pushvalue(L, -1);
-                LuaDll.lua_setfield(L, 1, assemblyName);
-                return 1;
             }
-            catch (Exception ex)
+            finally
             {
-                return LuaCallbackBoundary.ToLuaError(L, ex);
+                LuaCallbackBoundary.Leave();
             }
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int ResolveAssemblyTypeIndex(IntPtr L)
         {
+            LuaCallbackBoundary.Enter();
             try
             {
-                string assemblyName = LuaDllExtension.tostring(L, LuaDll.lua_upvalueindex(1));
-                string typeName = LuaDll.luaL_checkstring(L, 2);
-
-                if (TryGetTableByKey(L, 1, typeName))
+                try
                 {
+                    string assemblyName = LuaDllExtension.tostring(L, LuaDll.lua_upvalueindex(1));
+                    string typeName = LuaDll.luaL_checkstring(L, 2);
+
+                    if (TryGetTableByKey(L, 1, typeName))
+                    {
+                        return 1;
+                    }
+
+                    Assembly assembly = ResolveAssembly(assemblyName);
+                    if (assembly == null)
+                    {
+                        return 0;
+                    }
+
+                    Type type = FindTypeInAssembly(assembly, typeName);
+                    if (type == null)
+                    {
+                        return 0;
+                    }
+
+                    TypeRegistry.PushInternedTypeTable(L, type);
+                    LuaDll.lua_pushvalue(L, -1);
+                    LuaDll.lua_setfield(L, 1, typeName);
                     return 1;
                 }
-
-                Assembly assembly = ResolveAssembly(assemblyName);
-                if (assembly == null)
+                catch (Exception ex)
                 {
-                    return 0;
+                    return LuaCallbackBoundary.ToLuaError(L, ex);
                 }
-
-                Type type = FindTypeInAssembly(assembly, typeName);
-                if (type == null)
-                {
-                    return 0;
-                }
-
-                TypeRegistry.PushInternedTypeTable(L, type);
-                LuaDll.lua_pushvalue(L, -1);
-                LuaDll.lua_setfield(L, 1, typeName);
-                return 1;
             }
-            catch (Exception ex)
+            finally
             {
-                return LuaCallbackBoundary.ToLuaError(L, ex);
+                LuaCallbackBoundary.Leave();
             }
         }
 

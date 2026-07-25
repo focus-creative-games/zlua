@@ -40,7 +40,7 @@ diff --git a/src/llimits.h b/src/llimits.h
 index 8f71a6f..03d1275 100644
 --- a/src/llimits.h
 +++ b/src/llimits.h
-@@ -222,6 +222,41 @@ typedef unsigned long Instruction;
+@@ -222,6 +222,43 @@ typedef unsigned long Instruction;
  
  
  
@@ -50,6 +50,8 @@ index 8f71a6f..03d1275 100644
 +** Lua 5.3.0 originally defined these only in luaconf.h under LUA_CORE;
 +** Unity Il2Cpp may include luaconf.h before LUA_CORE is set (include-guard),
 +** so provide 5.3.6-style fallbacks here (same as PUC-Rio 5.3.6 llimits.h).
++** Do not #include <math.h> here - it poisons C++ Il2Cpp TUs. Files that
++** expand l_mathop(fmod/pow/floor) must include math.h themselves (lobject.c).
 +*/
 +#if !defined(luai_numidiv)
 +#define luai_numidiv(L,a,b)     ((void)L, l_floor(luai_numdiv(L,a,b)))
@@ -82,6 +84,18 @@ index 8f71a6f..03d1275 100644
  /*
  ** macro to control inclusion of some hard tests on stack reallocation
  */
+diff --git a/src/lobject.c b/src/lobject.c
+--- a/src/lobject.c
++++ b/src/lobject.c
+@@ -10,7 +10,8 @@
+ #include "lprefix.h"
+ 
+ 
++#include <math.h>
+ #include <stdarg.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
 diff --git a/src/lobject.h b/src/lobject.h
 index d7d0ebf..ae891b7 100644
 --- a/src/lobject.h
@@ -126,7 +140,7 @@ diff --git a/src/luaconf.h b/src/luaconf.h
 index fd28d21..2d08ca4 100644
 --- a/src/luaconf.h
 +++ b/src/luaconf.h
-@@ -727,6 +727,16 @@
+@@ -727,6 +727,19 @@
  ** without modifying the main part of the file.
  */
  
@@ -134,9 +148,12 @@ index fd28d21..2d08ca4 100644
 +@@ ZLUA_FAST_METATABLE controls ZLua member-index optimization.
 +** 0: legacy C __index/__newindex.
 +** 1: sealed mt + member/setter tables + VM gettable/settable fast path.
++** Default 0 on 5.3.0: gettable FastMT path currently breaks ByVal index /
++** assembly type lookup on Il2Cpp (attempt to index userdata / make_generic).
++** 5.3.3+ finishget FastMT remains enabled.
 +*/
 +#if !defined(ZLUA_FAST_METATABLE)
-+#define ZLUA_FAST_METATABLE 1
++#define ZLUA_FAST_METATABLE 0
 +#endif
 +
 +

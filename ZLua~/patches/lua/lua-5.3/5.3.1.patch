@@ -45,7 +45,7 @@ diff --git a/src/llimits.h b/patched/src/llimits.h
 index 277c724..e78d97c 100644
 --- a/src/llimits.h
 +++ b/src/llimits.h
-@@ -293,6 +293,41 @@ typedef unsigned long Instruction;
+@@ -293,6 +293,43 @@ typedef unsigned long Instruction;
  
  
  
@@ -55,6 +55,8 @@ index 277c724..e78d97c 100644
 +** Lua 5.3.0 originally defined these only in luaconf.h under LUA_CORE;
 +** Unity Il2Cpp may include luaconf.h before LUA_CORE is set (include-guard),
 +** so provide 5.3.6-style fallbacks here (same as PUC-Rio 5.3.6 llimits.h).
++** Do not #include <math.h> here - it poisons C++ Il2Cpp TUs. Files that
++** expand l_mathop(fmod/pow/floor) must include math.h themselves (lobject.c).
 +*/
 +#if !defined(luai_numidiv)
 +#define luai_numidiv(L,a,b)     ((void)L, l_floor(luai_numdiv(L,a,b)))
@@ -87,6 +89,18 @@ index 277c724..e78d97c 100644
  /*
  ** macro to control inclusion of some hard tests on stack reallocation
  */
+diff --git a/src/lobject.c b/patched/src/lobject.c
+--- a/src/lobject.c
++++ b/src/lobject.c
+@@ -10,7 +10,8 @@
+ #include "lprefix.h"
+ 
+ 
++#include <math.h>
+ #include <stdarg.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
 diff --git a/src/lobject.h b/patched/src/lobject.h
 index 9230b7a..34934fc 100644
 --- a/src/lobject.h
@@ -131,7 +145,7 @@ diff --git a/src/luaconf.h b/patched/src/luaconf.h
 index 7cfa4fa..57cc2ec 100644
 --- a/src/luaconf.h
 +++ b/src/luaconf.h
-@@ -742,6 +742,16 @@
+@@ -742,6 +742,17 @@
  ** without modifying the main part of the file.
  */
  
@@ -140,8 +154,9 @@ index 7cfa4fa..57cc2ec 100644
 +** 0: legacy C __index/__newindex.
 +** 1: sealed mt + member/setter tables + VM gettable/settable fast path.
 +*/
++/* Default 0: same Il2Cpp gettable FastMT issue as 5.3.0 (see 5.3.0.patch). */
 +#if !defined(ZLUA_FAST_METATABLE)
-+#define ZLUA_FAST_METATABLE 1
++#define ZLUA_FAST_METATABLE 0
 +#endif
 +
 +

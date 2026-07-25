@@ -42,19 +42,14 @@ namespace ZLua.Emit
                 return;
             }
 
-            // Soft-skip ctors we cannot Emit (e.g. String(ReadOnlySpan<char>)).
-            // Throwing here aborts the whole type bind and, under nested lua_pcall, SIGSEGVs.
             var emitable = new List<ConstructorInfo>(ctors.Count);
             for (int i = 0; i < ctors.Count; i++)
             {
-                try
+                // Soft-skip ctors we cannot Emit (e.g. String(ReadOnlySpan<char>)).
+                // Do not throw under reverse P/Invoke (Tuanjie Mono SIGSEGV).
+                if (CanEmit(ctors[i]))
                 {
-                    EnsureCanEmit(ctors[i]);
                     emitable.Add(ctors[i]);
-                }
-                catch (EmitException)
-                {
-                    // Soft-skip: e.g. String(char*) / ReadOnlySpan — keep other overloads.
                 }
             }
 
@@ -146,7 +141,7 @@ namespace ZLua.Emit
             LuaDll.lua_pop(L, 1);
         }
 
-        private static void EnsureCanEmit(ConstructorInfo ctor)
+        private static bool CanEmit(ConstructorInfo ctor)
         {
             ParameterInfo[] parameters = ctor.GetParameters();
             for (int i = 0; i < parameters.Length; i++)
@@ -155,26 +150,23 @@ namespace ZLua.Emit
                 // Expression trees cannot Convert to pointer types (methods use DynamicMethod).
                 if (PointerMarshal.IsPointerLikeType(paramType))
                 {
-                    throw EmitException.ForMember(
-                        ctor.DeclaringType,
-                        ".ctor",
-                        $"unsupported parameter '{parameters[i].Name}' of type {paramType}");
+                    return false;
                 }
 
                 if (!BridgeMarshaling.IsSupportedParameter(parameters[i]))
                 {
-                    throw EmitException.ForMember(
-                        ctor.DeclaringType,
-                        ".ctor",
-                        $"unsupported parameter '{parameters[i].Name}' of type {paramType}");
+                    return false;
                 }
             }
+
+            return true;
         }
 
         private static LuaCSFunction CompileDefaultStructCtor(Type type)
         {
             return L =>
             {
+                LuaCallbackBoundary.Enter();
                 StructOpaqueScope.EnterLuaToCSharp();
                 try
                 {
@@ -193,6 +185,7 @@ namespace ZLua.Emit
                 finally
                 {
                     StructOpaqueScope.LeaveLuaToCSharp();
+                    LuaCallbackBoundary.Leave();
                 }
             };
         }
@@ -292,6 +285,7 @@ namespace ZLua.Emit
 
             return L =>
             {
+                LuaCallbackBoundary.Enter();
                 StructOpaqueScope.EnterLuaToCSharp();
                 try
                 {
@@ -320,6 +314,7 @@ namespace ZLua.Emit
                 finally
                 {
                     StructOpaqueScope.LeaveLuaToCSharp();
+                    LuaCallbackBoundary.Leave();
                 }
             };
         }
@@ -357,6 +352,7 @@ namespace ZLua.Emit
         {
             return L =>
             {
+                LuaCallbackBoundary.Enter();
                 StructOpaqueScope.EnterLuaToCSharp();
                 try
                 {
@@ -372,6 +368,7 @@ namespace ZLua.Emit
                 finally
                 {
                     StructOpaqueScope.LeaveLuaToCSharp();
+                    LuaCallbackBoundary.Leave();
                 }
             };
         }

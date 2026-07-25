@@ -9,8 +9,14 @@ namespace ZLua
         [DllImport(LuaDll.LUA_DLL, EntryPoint = "luaL_loadstring", CallingConvention = LuaDll.CALLING_CONVENTION)]
         public static extern int loadstring(IntPtr luaState, string chunk);
 
+#if ZLUA_LUA_5_1
+        // luaL_loadbufferx is Lua 5.2+.
+        [DllImport(LuaDll.LUA_DLL, EntryPoint = "luaL_loadbuffer", CallingConvention = LuaDll.CALLING_CONVENTION)]
+        private static extern int luaL_loadbuffer(IntPtr luaState, byte[] buff, UIntPtr sz, string name);
+#else
         [DllImport(LuaDll.LUA_DLL, EntryPoint = "luaL_loadbufferx", CallingConvention = LuaDll.CALLING_CONVENTION)]
         private static extern int luaL_loadbufferx(IntPtr luaState, byte[] buff, UIntPtr sz, string name, IntPtr mode);
+#endif
 
         public static int loadbuffer(IntPtr luaState, byte[] buffer, string chunkName)
         {
@@ -19,7 +25,11 @@ namespace ZLua
                 return LUA_ERRSYNTAX;
             }
 
+#if ZLUA_LUA_5_1
+            return luaL_loadbuffer(luaState, buffer, (UIntPtr)buffer.Length, chunkName);
+#else
             return luaL_loadbufferx(luaState, buffer, (UIntPtr)buffer.Length, chunkName, IntPtr.Zero);
+#endif
         }
 
         private const int LUA_ERRSYNTAX = 3;

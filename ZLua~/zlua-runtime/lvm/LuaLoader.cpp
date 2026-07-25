@@ -98,24 +98,21 @@ void LuaLoader::InstallHooks()
     lua_setglobal(L, "__zlua_load_module");
 
     const char* installSearcherChunk = R"(
-if rawget(_G, '__zlua_module_searcher_installed') then
-    return
-end
-_G.__zlua_module_searcher_installed = true
-
 local function zlua_module_searcher(modname)
     local src = __zlua_load_module(modname)
     if src == nil then
         return nil
     end
-    local chunk, err = load(src, '@' .. modname:gsub('%.', '/') .. '.lua')
+    local name = '@' .. modname:gsub('%.', '/') .. '.lua'
+    local chunk, err = (loadstring or load)(src, name)
     if not chunk then
         error(err, 2)
     end
     return chunk
 end
 
-table.insert(package.searchers, 2, zlua_module_searcher)
+local searchers = package.searchers or package.loaders
+table.insert(searchers, 2, zlua_module_searcher)
 )";
     LuaEnv::DoStringIgnoreResult(installSearcherChunk);
 }

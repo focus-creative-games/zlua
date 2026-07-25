@@ -17,12 +17,14 @@ namespace ZLua.Emit
             ParameterInfo[] indexParams = property.GetIndexParameters();
             if (indexParams != null && indexParams.Length > 0)
             {
-                throw EmitException.ForMember(property.DeclaringType, property.Name, "indexed properties not emitted yet");
+                // Soft-skip: cannot throw under reverse P/Invoke (Tuanjie Mono SIGSEGV).
+                return;
             }
 
             if (!BridgeMarshaling.IsSupportedType(property.PropertyType))
             {
-                throw EmitException.ForMember(property.DeclaringType, property.Name, "unsupported property type");
+                // Soft-skip: cannot throw under reverse P/Invoke (Tuanjie Mono SIGSEGV).
+                return;
             }
 
             MethodInfo getter = property.GetGetMethod(nonPublic: false);
@@ -144,6 +146,7 @@ namespace ZLua.Emit
         {
             return L =>
             {
+                LuaCallbackBoundary.Enter();
                 StructOpaqueScope.EnterLuaToCSharp();
                 try
                 {
@@ -159,6 +162,7 @@ namespace ZLua.Emit
                 finally
                 {
                     StructOpaqueScope.LeaveLuaToCSharp();
+                    LuaCallbackBoundary.Leave();
                 }
             };
         }

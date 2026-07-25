@@ -15,6 +15,8 @@ namespace ZLua
         public const string LUA_DLL = "lua54";
 #elif ZLUA_LUA_5_3
         public const string LUA_DLL = "lua53";
+#elif ZLUA_LUA_5_2
+        public const string LUA_DLL = "lua52";
 #elif ZLUA_LUA_5_1
         public const string LUA_DLL = "lua51";
 #else

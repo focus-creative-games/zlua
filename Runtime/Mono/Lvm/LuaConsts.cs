@@ -7,8 +7,12 @@ namespace ZLua
     {
         public const int LuaMultiRet = -1;
         public const int LuaiMaxStack = 1_000_000;
-        // Lua 5.3/5.4: (-LUAI_MAXSTACK - 1000). Lua 5.5: (-(INT_MAX/2 + 1000)).
-#if ZLUA_LUA_5_5
+        // Lua 5.1: fixed pseudo-indices. 5.3/5.4: (-LUAI_MAXSTACK - 1000). 5.5: (-(INT_MAX/2 + 1000)).
+#if ZLUA_LUA_5_1
+        public const int LuaRegistryIndex = -10000;
+        public const int LuaEnvironIndex = -10001;
+        public const int LuaGlobalsIndex = -10002;
+#elif ZLUA_LUA_5_5
         public const int LuaRegistryIndex = unchecked((int)(-(int.MaxValue / 2 + 1000)));
 #else
         public const int LuaRegistryIndex = -LuaiMaxStack - 1000;

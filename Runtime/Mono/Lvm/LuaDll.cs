@@ -48,8 +48,21 @@ namespace ZLua
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern int lua_gettop(IntPtr luaState);
 
+#if ZLUA_LUA_5_1
+        // lua_absindex is Lua 5.2+.
+        public static int lua_absindex(IntPtr luaState, int index)
+        {
+            if (index > 0 || index <= LuaConsts.LuaRegistryIndex)
+            {
+                return index;
+            }
+
+            return lua_gettop(luaState) + 1 + index;
+        }
+#else
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern int lua_absindex(IntPtr luaState, int index);
+#endif
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void lua_settop(IntPtr luaState, int index);
@@ -59,6 +72,17 @@ namespace ZLua
             lua_settop(luaState, -count - 1);
         }
 
+#if ZLUA_LUA_5_1 || ZLUA_LUA_5_2
+        // Lua 5.1/5.2 export lua_remove / insert / replace (lua_rotate is 5.3+).
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern void lua_remove(IntPtr luaState, int idx);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern void lua_insert(IntPtr luaState, int idx);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern void lua_replace(IntPtr luaState, int idx);
+#else
         // lua_remove / lua_insert / lua_replace 在 Lua 5.4 是宏，真实导出是 lua_rotate / lua_copy。
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         private static extern void lua_rotate(IntPtr luaState, int idx, int n);
@@ -82,6 +106,7 @@ namespace ZLua
             lua_copy(luaState, -1, idx);
             lua_pop(luaState, 1);
         }
+#endif
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void lua_pushnil(IntPtr luaState);
@@ -112,6 +137,64 @@ namespace ZLua
             lua_pushcclosure(luaState, fn, 0);
         }
 
+#if ZLUA_LUA_5_1 || ZLUA_LUA_5_2
+        // 5.1/5.2: get* APIs return void (5.3+ return type). P/Invoke as int reads garbage → false "not available".
+        [DllImport(LUA_DLL, EntryPoint = "lua_getfield", CallingConvention = CALLING_CONVENTION)]
+        private static extern void lua_getfield_void(IntPtr luaState, int index, string key);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern void lua_setfield(IntPtr luaState, int index, string key);
+
+        public static LuaDataType lua_getfield(IntPtr luaState, int index, string key)
+        {
+            lua_getfield_void(luaState, index, key);
+            return lua_type(luaState, -1);
+        }
+
+#if ZLUA_LUA_5_1
+        // 5.1: get/setglobal are macros over LUA_GLOBALSINDEX.
+        public static LuaDataType lua_getglobal(IntPtr luaState, string name)
+        {
+            return lua_getfield(luaState, LuaConsts.LuaGlobalsIndex, name);
+        }
+
+        public static void lua_setglobal(IntPtr luaState, string name)
+        {
+            lua_setfield(luaState, LuaConsts.LuaGlobalsIndex, name);
+        }
+#else
+        // 5.2: real void functions (globals live in registry).
+        [DllImport(LUA_DLL, EntryPoint = "lua_getglobal", CallingConvention = CALLING_CONVENTION)]
+        private static extern void lua_getglobal_void(IntPtr luaState, string name);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern void lua_setglobal(IntPtr luaState, string name);
+
+        public static LuaDataType lua_getglobal(IntPtr luaState, string name)
+        {
+            lua_getglobal_void(luaState, name);
+            return lua_type(luaState, -1);
+        }
+#endif
+
+        [DllImport(LUA_DLL, EntryPoint = "lua_rawgeti", CallingConvention = CALLING_CONVENTION)]
+        private static extern void lua_rawgeti_void(IntPtr luaState, int index, int n);
+
+        public static LuaDataType lua_rawgeti(IntPtr luaState, int index, long n)
+        {
+            lua_rawgeti_void(luaState, index, (int)n);
+            return lua_type(luaState, -1);
+        }
+
+        [DllImport(LUA_DLL, EntryPoint = "lua_rawget", CallingConvention = CALLING_CONVENTION)]
+        private static extern void lua_rawget_void(IntPtr luaState, int index);
+
+        public static LuaDataType lua_rawget(IntPtr luaState, int index)
+        {
+            lua_rawget_void(luaState, index);
+            return lua_type(luaState, -1);
+        }
+#else
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern LuaDataType lua_getglobal(IntPtr luaState, string name);
 
@@ -125,22 +208,33 @@ namespace ZLua
         public static extern void lua_setfield(IntPtr luaState, int index, string key);
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
-        public static extern int lua_setmetatable(IntPtr luaState, int objIndex);
-
-        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
-        public static extern int lua_getmetatable(IntPtr luaState, int objIndex);
-
-        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern LuaDataType lua_rawgeti(IntPtr luaState, int index, long n);
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern LuaDataType lua_rawget(IntPtr luaState, int index);
+#endif
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void lua_rawset(IntPtr luaState, int index);
 
+#if ZLUA_LUA_5_1 || ZLUA_LUA_5_2
+        [DllImport(LUA_DLL, EntryPoint = "lua_rawseti", CallingConvention = CALLING_CONVENTION)]
+        private static extern void lua_rawseti_int(IntPtr luaState, int index, int n);
+
+        public static void lua_rawseti(IntPtr luaState, int index, long n)
+        {
+            lua_rawseti_int(luaState, index, (int)n);
+        }
+#else
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void lua_rawseti(IntPtr luaState, int index, long n);
+#endif
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern int lua_setmetatable(IntPtr luaState, int objIndex);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern int lua_getmetatable(IntPtr luaState, int objIndex);
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void lua_createtable(IntPtr luaState, int nArray, int nRecord);
@@ -165,6 +259,11 @@ namespace ZLua
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void luaL_unref(IntPtr luaState, int tableIndex, int reference);
 
+#if ZLUA_LUA_5_1
+        // lua_pcallk is Lua 5.2+.
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern int lua_pcall(IntPtr luaState, int nArgs, int nResults, int errFunc);
+#else
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern int lua_pcallk(IntPtr luaState, int nArgs, int nResults, int errFunc, IntPtr ctx, IntPtr k);
 
@@ -172,6 +271,7 @@ namespace ZLua
         {
             return lua_pcallk(luaState, nArgs, nResults, errFunc, IntPtr.Zero, IntPtr.Zero);
         }
+#endif
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern int lua_error(IntPtr luaState);
@@ -179,6 +279,14 @@ namespace ZLua
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void luaL_where(IntPtr luaState, int level);
 
+#if ZLUA_LUA_5_1
+        // 5.1 exports lua_tointeger / lua_tonumber (no *_x).
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern long lua_tointeger(IntPtr luaState, int index);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern double lua_tonumber(IntPtr luaState, int index);
+#else
         // lua_tointeger / lua_tonumber 在 Lua 5.4 是宏，真实导出是 *_x 版本。
         [DllImport(LUA_DLL, EntryPoint = "lua_tointegerx", CallingConvention = CALLING_CONVENTION)]
         private static extern long lua_tointegerx(IntPtr luaState, int index, IntPtr isNum);
@@ -188,9 +296,6 @@ namespace ZLua
             return lua_tointegerx(luaState, index, IntPtr.Zero);
         }
 
-        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
-        public static extern LuaDataType lua_type(IntPtr luaState, int index);
-
         [DllImport(LUA_DLL, EntryPoint = "lua_tonumberx", CallingConvention = CALLING_CONVENTION)]
         private static extern double lua_tonumberx(IntPtr luaState, int index, IntPtr isNum);
 
@@ -198,9 +303,27 @@ namespace ZLua
         {
             return lua_tonumberx(luaState, index, IntPtr.Zero);
         }
+#endif
 
+#if ZLUA_LUA_5_1 || ZLUA_LUA_5_2
+        // lua_isinteger is Lua 5.3+.
+        public static int lua_isinteger(IntPtr luaState, int index)
+        {
+            if (lua_type(luaState, index) != LuaDataType.Number)
+            {
+                return 0;
+            }
+
+            double n = lua_tonumber(luaState, index);
+            return n == Math.Floor(n) ? 1 : 0;
+        }
+#else
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern int lua_isinteger(IntPtr luaState, int index);
+#endif
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern LuaDataType lua_type(IntPtr luaState, int index);
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern int lua_toboolean(IntPtr luaState, int index);
@@ -248,6 +371,11 @@ namespace ZLua
 
         public static bool lua_isnoneornil(IntPtr luaState, int index) => lua_type(luaState, index) <= LuaDataType.Nil;
 
+#if ZLUA_LUA_5_1
+        // 5.1: #define lua_upvalueindex(i) (LUA_GLOBALSINDEX-(i))
+        public static int lua_upvalueindex(int i) => LuaConsts.LuaGlobalsIndex - i;
+#else
         public static int lua_upvalueindex(int i) => LuaConsts.LuaRegistryIndex - i;
+#endif
     }
 }

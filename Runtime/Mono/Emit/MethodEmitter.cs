@@ -48,14 +48,10 @@ namespace ZLua.Emit
                     continue;
                 }
 
-                try
+                // Do not throw EmitException under reverse P/Invoke (Tuanjie Mono SIGSEGV).
+                if (CanEmitClosed(methods[i]))
                 {
-                    EnsureCanEmitClosed(methods[i]);
                     emitable.Add(methods[i]);
-                }
-                catch (EmitException)
-                {
-                    // Soft-skip unemittable overload; keep other overloads if any.
                 }
             }
 
@@ -147,24 +143,23 @@ namespace ZLua.Emit
             return method.ContainsGenericParameters || method.IsGenericMethodDefinition;
         }
 
-        private static void EnsureCanEmitClosed(MethodInfo method)
+        private static bool CanEmitClosed(MethodInfo method)
         {
             ParameterInfo[] parameters = method.GetParameters();
             for (int i = 0; i < parameters.Length; i++)
             {
                 if (!BridgeMarshaling.IsSupportedParameter(parameters[i]))
                 {
-                    throw EmitException.ForMember(
-                        method.DeclaringType,
-                        method.Name,
-                        $"unsupported parameter '{parameters[i].Name}' of type {parameters[i].ParameterType}");
+                    return false;
                 }
             }
 
             if (method.ReturnType != typeof(void) && !BridgeMarshaling.IsSupportedType(method.ReturnType))
             {
-                throw EmitException.ForMember(method.DeclaringType, method.Name, "unsupported return type");
+                return false;
             }
+
+            return true;
         }
 
         private static LuaCSFunction CompileOpenGenericStub()
@@ -446,6 +441,7 @@ namespace ZLua.Emit
             int argStart = isStatic ? 1 : 2;
             return L =>
             {
+                LuaCallbackBoundary.Enter();
                 StructOpaqueScope.EnterLuaToCSharp();
                 try
                 {
@@ -479,6 +475,7 @@ namespace ZLua.Emit
                 finally
                 {
                     StructOpaqueScope.LeaveLuaToCSharp();
+                    LuaCallbackBoundary.Leave();
                 }
             };
         }
@@ -487,6 +484,7 @@ namespace ZLua.Emit
         {
             return L =>
             {
+                LuaCallbackBoundary.Enter();
                 StructOpaqueScope.EnterLuaToCSharp();
                 try
                 {
@@ -508,6 +506,7 @@ namespace ZLua.Emit
                 finally
                 {
                     StructOpaqueScope.LeaveLuaToCSharp();
+                    LuaCallbackBoundary.Leave();
                 }
             };
         }

@@ -28,6 +28,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.PackageManager;
@@ -239,7 +240,7 @@ namespace ZLua
             string defines = ApplyScriptingDefines(luaInfo);
             // Spec §12: authoritative ZLuaConf.inc after zlua-runtime overlay + Lua install.
             ZLuaConfWriter.WriteLocal(luaInfo, Application.unityVersion);
-            ValidateLocalTree();
+            ValidateLocalTree(luaInfo);
 
             InstallFingerprint.Write(new InstallFingerprintData
             {
@@ -277,16 +278,6 @@ namespace ZLua
             string stagedVersion = Path.Combine(stagingRoot, luaInfo.Id);
             DirectoryUtil.CopyDir(luaInfo.SourceDir, stagedVersion, true);
 
-            if (!LuaVersionUtil.TryResolveLuaPatchFile(
-                    luaInfo.Id, luaInfo.Series, out string luaPatchFile, out string luaPatchKey))
-            {
-                throw new InvalidOperationException(
-                    $"[ZLua] No Lua patch for {luaInfo.Id} (series {luaInfo.Series}). "
-                    + "Expected a floor patch X.Y.Z.patch (greatest version <= requested) under "
-                    + Path.Combine(CommonDirs.LuaPatchesPathInPackage, luaInfo.Series));
-            }
-
-            Debug.Log($"[ZLua] Applying Lua patch {luaPatchKey}: {luaPatchFile}");
             // Patch paths are src/... — apply with cwd = staged version root (contains src/).
             if (!Directory.Exists(Path.Combine(stagedVersion, "src")))
             {
@@ -294,31 +285,246 @@ namespace ZLua
                     $"[ZLua] Lua version '{luaInfo.Id}' must use upstream layout with a src/ directory.");
             }
 
-            try
+            string luaPatchKey;
+            if (!LuaVersionUtil.UsesLuaVmPatches(luaInfo))
             {
-                PatchApplier.Apply(luaPatchFile, stagedVersion, stripComponents: 1);
+                // Lua 5.1 / 5.2 / LuaJIT: no FastMT VM patch; install clean upstream sources.
+                Debug.Log(
+                    $"[ZLua] Skipping Lua VM patch for {luaInfo.Id} "
+                    + "(FastMT / series patches apply only to PUC-Rio 5.3+).");
+                luaPatchKey = "none";
             }
-            catch (Exception ex)
+            else
             {
-                throw new InvalidOperationException(
-                    $"[ZLua] Failed to apply Lua patch for {luaInfo.Id}: {luaPatchFile}. "
-                    + "Regenerate against that exact source tree, or add a version-specific patch "
-                    + $"(e.g. patches/lua/{luaInfo.Series}/5.4.8.patch).\n"
-                    + ex.Message,
-                    ex);
+                if (!LuaVersionUtil.TryResolveLuaPatchFile(
+                        luaInfo.Id, luaInfo.Series, out string luaPatchFile, out luaPatchKey))
+                {
+                    throw new InvalidOperationException(
+                        $"[ZLua] No Lua patch for {luaInfo.Id} (series {luaInfo.Series}). "
+                        + "Expected a floor patch X.Y.Z.patch (greatest version <= requested) under "
+                        + Path.Combine(CommonDirs.LuaPatchesPathInPackage, luaInfo.Series));
+                }
+
+                Debug.Log($"[ZLua] Applying Lua patch {luaPatchKey}: {luaPatchFile}");
+                try
+                {
+                    PatchApplier.Apply(luaPatchFile, stagedVersion, stripComponents: 1);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException(
+                        $"[ZLua] Failed to apply Lua patch for {luaInfo.Id}: {luaPatchFile}. "
+                        + "Regenerate against that exact source tree, or add a version-specific patch "
+                        + $"(e.g. patches/lua/{luaInfo.Series}/5.4.8.patch).\n"
+                        + ex.Message,
+                        ex);
+                }
             }
 
             string stagedSrc = Path.Combine(stagedVersion, "src");
             DirectoryUtil.CopyDir(stagedSrc, CommonDirs.LocalLuaSrcPath, true);
 
-            string luacPath = Path.Combine(CommonDirs.LocalLuaSrcPath, "luac.c");
-            if (File.Exists(luacPath))
+            // Standalone interpreter / compiler must not enter Il2Cpp (duplicate main, unused tools).
+            // All Lua series: delete when present (5.1 clean install previously left lua.c).
+            RemoveLuaStandaloneSources(CommonDirs.LocalLuaSrcPath);
+
+            // Lua 5.1/5.2: luai_num* macros are gated on LUA_CORE; Il2Cpp lumps break that.
+            // Lua 5.1 only: lua_tmpnam gated on loslib_c (5.2+ defines it inside loslib.c).
+            if (!luaInfo.IsLuaJit)
             {
-                File.Delete(luacPath);
+                int family = EngineVersionUtil.EncodeLuaApiFamily(luaInfo);
+                if (family < 503)
+                {
+                    EnsureLuaiNumMacrosForIl2CppLump(CommonDirs.LocalLuaSrcPath);
+                }
+
+                if (family < 502)
+                {
+                    EnsureLuaTmpnamMacrosForIl2CppLump(CommonDirs.LocalLuaSrcPath);
+                }
+            }
+
+            if (!LuaVersionUtil.SupportsFastMetatable(luaInfo))
+            {
+                EnsureFastMetatableDisabled(CommonDirs.LocalLuaSrcPath);
             }
 
             DirectoryUtil.RemoveDir(stagingRoot, true);
             return luaPatchKey;
+        }
+
+        /// <summary>
+        /// Drop PUC-Rio CLI sources from <c>libil2cpp/lua</c> so Player builds only link the library.
+        /// </summary>
+        private static void RemoveLuaStandaloneSources(string luaSrcDir)
+        {
+            // lua.c: interpreter main. luac.c: compiler main. print.c: luac helper (Lua 5.1 only).
+            string[] standaloneFiles = { "lua.c", "luac.c", "print.c" };
+            foreach (string name in standaloneFiles)
+            {
+                string path = Path.Combine(luaSrcDir, name);
+                if (!File.Exists(path))
+                {
+                    continue;
+                }
+
+                File.Delete(path);
+                Debug.Log($"[ZLua] Removed Lua standalone source: {path}");
+            }
+        }
+
+        /// <summary>
+        /// Lua 5.1/5.2 gate <c>luai_num*</c> on per-TU macros (<c>LUA_CORE</c>,
+        /// <c>lobject_c</c>/<c>lvm_c</c>). Il2Cpp may lump many <c>.c</c> into one TU; the first
+        /// include of <c>luaconf.h</c> without those macros locks the include guard, so later
+        /// core files see no macros and link as extern <c>luai_numadd</c> / <c>luai_nummod</c> etc.
+        /// Force those macros on (do not define the TU tags from ZLua headers).
+        /// </summary>
+        private static void EnsureLuaiNumMacrosForIl2CppLump(string luaSrcDir)
+        {
+            string luaconf = Path.Combine(luaSrcDir, "luaconf.h");
+            if (!File.Exists(luaconf))
+            {
+                throw new InvalidOperationException(
+                    $"[ZLua] luaconf.h not found under {luaSrcDir}; cannot fix luai_num* for Il2Cpp lump.");
+            }
+
+            string text = File.ReadAllText(luaconf, Encoding.UTF8);
+            string next = text;
+            bool changed = false;
+
+            // 5.1: #if LUA_CORE / #include math.h / #define luai_numadd(a,b)
+            // 5.2: #if LUA_CORE / #define luai_numadd(L,a,b)
+            {
+                const string pattern =
+                    @"#if\s+defined\s*\(\s*LUA_CORE\s*\)(\r?\n(?:[ \t]*#include[^\r\n]*\r?\n)?)([ \t]*#define\s+luai_numadd\b)";
+                const string replacement =
+                    "#if 1 /* ZLua: Il2Cpp lump-safe — always define luai_num* (do not rely on LUA_CORE) */$1$2";
+                string replaced = Regex.Replace(next, pattern, replacement, RegexOptions.CultureInvariant);
+                if (!string.Equals(replaced, next, StringComparison.Ordinal))
+                {
+                    next = replaced;
+                    changed = true;
+                }
+                else if (next.Contains("luai_numadd")
+                         && !next.Contains("ZLua: Il2Cpp lump-safe — always define luai_num*")
+                         && Regex.IsMatch(next, @"#if\s+defined\s*\(\s*LUA_CORE\s*\)"))
+                {
+                    throw new InvalidOperationException(
+                        $"[ZLua] Failed to ungate luai_numadd in {luaconf}. "
+                        + "Expected '#if defined(LUA_CORE)' immediately before '#define luai_numadd'.");
+                }
+            }
+
+            // 5.2: #if lobject_c || lvm_c / #include math.h / #define luai_nummod / luai_numpow
+            {
+                const string pattern =
+                    @"#if\s+defined\s*\(\s*lobject_c\s*\)\s*\|\|\s*defined\s*\(\s*lvm_c\s*\)";
+                const string replacement =
+                    "#if 1 /* ZLua: Il2Cpp lump-safe — always define luai_nummod/pow (do not rely on lobject_c/lvm_c) */";
+                if (next.Contains("luai_nummod") && next.Contains("lobject_c"))
+                {
+                    string replaced = Regex.Replace(next, pattern, replacement, RegexOptions.CultureInvariant);
+                    if (!string.Equals(replaced, next, StringComparison.Ordinal))
+                    {
+                        next = replaced;
+                        changed = true;
+                    }
+                    else if (!next.Contains("ZLua: Il2Cpp lump-safe — always define luai_nummod/pow"))
+                    {
+                        throw new InvalidOperationException(
+                            $"[ZLua] Failed to ungate luai_nummod/pow in {luaconf}. "
+                            + "Expected '#if defined(lobject_c) || defined(lvm_c)'.");
+                    }
+                }
+            }
+
+            if (!changed)
+            {
+                return;
+            }
+
+            File.WriteAllText(luaconf, next, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Debug.Log($"[ZLua] Ungated luai_num* macros for Il2Cpp lump in {luaconf}");
+        }
+
+        /// <summary>
+        /// Lua 5.1 gates <c>lua_tmpnam</c> / <c>LUA_TMPNAMBUFSIZE</c> on <c>loslib_c</c> in
+        /// <c>luaconf.h</c>. Same Il2Cpp lump/include-guard issue as <c>LUA_CORE</c>/<c>luai_num*</c>.
+        /// Always define those macros (5.2+ already keeps them in <c>loslib.c</c>).
+        /// Do not <c>#define loslib_c</c> from ZLua headers.
+        /// </summary>
+        private static void EnsureLuaTmpnamMacrosForIl2CppLump(string luaSrcDir)
+        {
+            string luaconf = Path.Combine(luaSrcDir, "luaconf.h");
+            if (!File.Exists(luaconf))
+            {
+                throw new InvalidOperationException(
+                    $"[ZLua] luaconf.h not found under {luaSrcDir}; cannot fix lua_tmpnam for Il2Cpp lump.");
+            }
+
+            string text = File.ReadAllText(luaconf, Encoding.UTF8);
+            if (text.Contains("ZLua: Il2Cpp lump-safe — always define lua_tmpnam"))
+            {
+                return;
+            }
+
+            const string pattern =
+                @"#if\s+defined\s*\(\s*loslib_c\s*\)\s*\|\|\s*defined\s*\(\s*luaall_c\s*\)";
+            const string replacement =
+                "#if 1 /* ZLua: Il2Cpp lump-safe — always define lua_tmpnam (do not rely on loslib_c) */";
+
+            string next = Regex.Replace(text, pattern, replacement, RegexOptions.CultureInvariant);
+            if (string.Equals(next, text, StringComparison.Ordinal))
+            {
+                if (text.Contains("LUA_TMPNAMBUFSIZE") && text.Contains("loslib_c"))
+                {
+                    throw new InvalidOperationException(
+                        $"[ZLua] Failed to ungate lua_tmpnam in {luaconf}. "
+                        + "Expected '#if defined(loslib_c) || defined(luaall_c)'.");
+                }
+
+                return;
+            }
+
+            File.WriteAllText(luaconf, next, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Debug.Log($"[ZLua] Ungated lua_tmpnam macros for Il2Cpp lump in {luaconf}");
+        }
+
+        /// <summary>
+        /// Spec §5.4 / §12.5: FastMT unsupported combinations must keep
+        /// <c>ZLUA_FAST_METATABLE 0</c> in upstream <c>luaconf.h</c>.
+        /// </summary>
+        private static void EnsureFastMetatableDisabled(string luaSrcDir)
+        {
+            string luaconf = Path.Combine(luaSrcDir, "luaconf.h");
+            if (!File.Exists(luaconf))
+            {
+                throw new InvalidOperationException(
+                    $"[ZLua] luaconf.h not found under {luaSrcDir}; cannot set ZLUA_FAST_METATABLE=0.");
+            }
+
+            string text = File.ReadAllText(luaconf, Encoding.UTF8);
+            const string marker = "ZLUA_FAST_METATABLE";
+            if (Regex.IsMatch(text, @"#\s*define\s+ZLUA_FAST_METATABLE\s+\d+"))
+            {
+                text = Regex.Replace(
+                    text,
+                    @"#\s*define\s+ZLUA_FAST_METATABLE\s+\d+",
+                    "#define ZLUA_FAST_METATABLE 0");
+            }
+            else if (!text.Contains(marker))
+            {
+                text = text.TrimEnd()
+                       + "\n\n"
+                       + "/* ZLua: FastMT unsupported on this Lua series/micro — keep off (spec §5.4). */\n"
+                       + "#if !defined(ZLUA_FAST_METATABLE)\n"
+                       + "#define ZLUA_FAST_METATABLE 0\n"
+                       + "#endif\n";
+            }
+
+            File.WriteAllText(luaconf, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Debug.Log($"[ZLua] Ensured ZLUA_FAST_METATABLE=0 in {luaconf}");
         }
 
         private static void WarnIfEditorPluginMissing(LuaVersionInfo luaInfo)
@@ -395,7 +601,7 @@ namespace ZLua
             return false;
         }
 
-        private static void ValidateLocalTree()
+        private static void ValidateLocalTree(LuaVersionInfo luaInfo)
         {
             if (!File.Exists(Path.Combine(CommonDirs.LocalLibil2cppPath, "vm", "Runtime.cpp")))
             {
@@ -428,7 +634,8 @@ namespace ZLua
                     "[ZLua] libil2cpp patch validation failed: LuaAppDomain::Initialize not found in Runtime.cpp.");
             }
 
-            if (!File.Exists(Path.Combine(CommonDirs.LocalLuaSrcPath, "zlua_fastmt.c"))
+            if (LuaVersionUtil.UsesLuaVmPatches(luaInfo)
+                && !File.Exists(Path.Combine(CommonDirs.LocalLuaSrcPath, "zlua_fastmt.c"))
                 && !File.Exists(Path.Combine(CommonDirs.LocalLuaSrcPath, "zlua_fastmt.h")))
             {
                 Debug.LogWarning(

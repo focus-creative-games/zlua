@@ -48,72 +48,30 @@ namespace ZLua.Emit
                 switch (info.Kind)
                 {
                     case MetaKind.Field:
-                        try
-                        {
-                            FieldEmitter.Write(
-                                L,
-                                tables.FieldGetterTableRef,
-                                tables.FieldSetterTableRef,
-                                info.Field,
-                                isStatic,
-                                isByVal);
-                        }
-                        catch (EmitException)
-                        {
-                            if (IsDeclaredOn(info.Field?.DeclaringType, binding.Type))
-                            {
-                                throw;
-                            }
-                        }
-
+                        FieldEmitter.Write(
+                            L,
+                            tables.FieldGetterTableRef,
+                            tables.FieldSetterTableRef,
+                            info.Field,
+                            isStatic,
+                            isByVal);
                         break;
 
                     case MetaKind.Property:
-                        try
-                        {
-                            PropertyEmitter.Write(
-                                L,
-                                tables.FieldGetterTableRef,
-                                tables.FieldSetterTableRef,
-                                info.Property,
-                                isStatic,
-                                isByVal);
-                        }
-                        catch (EmitException)
-                        {
-                            if (IsDeclaredOn(info.Property?.DeclaringType, binding.Type))
-                            {
-                                throw;
-                            }
-                        }
-
+                        PropertyEmitter.Write(
+                            L,
+                            tables.FieldGetterTableRef,
+                            tables.FieldSetterTableRef,
+                            info.Property,
+                            isStatic,
+                            isByVal);
                         break;
 
                     case MetaKind.Method:
-                        try
-                        {
-                            MethodEmitter.Write(L, tables.MethodTableRef, info, binding.Type, isStatic, isByVal);
-                        }
-                        catch (EmitException)
-                        {
-                            Type declared = info.Method?.DeclaringType
-                                            ?? (info.MethodOverloads != null && info.MethodOverloads.Count > 0
-                                                ? info.MethodOverloads[0].DeclaringType
-                                                : null);
-                            if (IsDeclaredOn(declared, binding.Type))
-                            {
-                                throw;
-                            }
-                        }
-
+                        MethodEmitter.Write(L, tables.MethodTableRef, info, binding.Type, isStatic, isByVal);
                         break;
                 }
             }
-        }
-
-        private static bool IsDeclaredOn(Type memberDeclaringType, Type bindingType)
-        {
-            return memberDeclaringType != null && memberDeclaringType == bindingType;
         }
     }
 }

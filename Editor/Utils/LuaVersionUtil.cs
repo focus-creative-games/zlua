@@ -130,6 +130,74 @@ namespace ZLua.Utils
         }
 
         /// <summary>
+        /// PUC-Rio FastMT / VM patches exist only for Lua 5.3+.
+        /// Lua 5.1, 5.2, and LuaJIT: Install copies clean upstream sources (no patch);
+        /// <c>ZLUA_FAST_METATABLE</c> stays 0.
+        /// </summary>
+        public static bool UsesLuaVmPatches(LuaVersionInfo info)
+        {
+            if (info == null || info.IsLuaJit)
+            {
+                return false;
+            }
+
+            Match m = s_pucRio.Match(info.Id ?? string.Empty);
+            if (!m.Success)
+            {
+                return false;
+            }
+
+            int major = int.Parse(m.Groups[1].Value);
+            int minor = int.Parse(m.Groups[2].Value);
+            if (major != 5)
+            {
+                return major > 5;
+            }
+
+            return minor >= 3;
+        }
+
+        /// <summary>
+        /// FastMT (finishget path) is supported only for PUC-Rio <c>≥ 5.3.2</c> (and 5.4+ / 5.5+).
+        /// <c>5.3.0</c> / <c>5.3.1</c>, 5.1, 5.2, and LuaJIT must keep <c>ZLUA_FAST_METATABLE 0</c>
+        /// (spec 11-MULTI-VERSION §5.4).
+        /// </summary>
+        public static bool SupportsFastMetatable(LuaVersionInfo info)
+        {
+            if (!UsesLuaVmPatches(info))
+            {
+                return false;
+            }
+
+            Match m = s_pucRio.Match(info.Id ?? string.Empty);
+            if (!m.Success)
+            {
+                return false;
+            }
+
+            int major = int.Parse(m.Groups[1].Value);
+            int minor = int.Parse(m.Groups[2].Value);
+            int patch = int.Parse(m.Groups[3].Value);
+            if (major != 5)
+            {
+                return major > 5;
+            }
+
+            if (minor > 3)
+            {
+                return true;
+            }
+
+            if (minor < 3)
+            {
+                return false;
+            }
+
+            // 5.3.x: finishget exists from 5.3.2.
+            return patch >= 2;
+        }
+
+        /// <summary>
         /// Series dir <c>patches/lua/lua-5.4/</c>: pick <c>{X.Y.Z}.patch</c> with the greatest
         /// version that is still <c>&lt;=</c> the requested micro-version (floor). Exact match is
         /// the fast path of the same rule. Shared ranges keep only the minimum version file.
@@ -138,6 +206,11 @@ namespace ZLua.Utils
         {
             patchFile = null;
             patchKey = null;
+            if (!TryParse(versionId, out LuaVersionInfo parsed) || !UsesLuaVmPatches(parsed))
+            {
+                return false;
+            }
+
             string seriesDir = Path.Combine(CommonDirs.LuaPatchesPathInPackage, series);
             if (!Directory.Exists(seriesDir))
             {

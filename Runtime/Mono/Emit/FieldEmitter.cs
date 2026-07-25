@@ -16,7 +16,8 @@ namespace ZLua.Emit
 
             if (!BridgeMarshaling.IsSupportedType(field.FieldType))
             {
-                throw EmitException.ForMember(field.DeclaringType, field.Name, "unsupported field type");
+                // Soft-skip: cannot throw under reverse P/Invoke (Tuanjie Mono SIGSEGV).
+                return;
             }
 
             ClosurePin.WriteToTable(L, getterTableRef, field.Name, CompileGetter(field, isStatic, isByVal));
@@ -127,6 +128,7 @@ namespace ZLua.Emit
         {
             return L =>
             {
+                LuaCallbackBoundary.Enter();
                 StructOpaqueScope.EnterLuaToCSharp();
                 try
                 {
@@ -142,6 +144,7 @@ namespace ZLua.Emit
                 finally
                 {
                     StructOpaqueScope.LeaveLuaToCSharp();
+                    LuaCallbackBoundary.Leave();
                 }
             };
         }
