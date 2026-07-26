@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using ZLua.Utils;
 
 namespace ZLua.Marshaling
@@ -12,16 +11,10 @@ namespace ZLua.Marshaling
     {
         private static readonly Dictionary<IntPtr, object> s_boxedByUserData = new Dictionary<IntPtr, object>();
         private static readonly LuaCSFunction s_onRelease = OnReleaseByValUserData;
-        private static bool s_releasePinned;
 
         internal static void Initialize(IntPtr L)
         {
             _ = L;
-            if (!s_releasePinned)
-            {
-                GCHandle.Alloc(s_onRelease);
-                s_releasePinned = true;
-            }
         }
 
         internal static void Shutdown(IntPtr L)

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using ZLua.Emit;
 using ZLua.Marshaling;
 using ZLua.Utils;
@@ -8,15 +7,12 @@ namespace ZLua.Mt
 {
     internal static class TypeRegistryArray
     {
-        private static readonly List<LuaCSFunction> s_pins = new List<LuaCSFunction>();
         private static readonly LuaCSFunction s_arrayLen = ArrayInstanceLen;
         private static readonly LuaCSFunction s_arrayGet = ArrayInstanceGet;
         private static readonly LuaCSFunction s_arraySet = ArrayInstanceSet;
-        private static bool s_pinned;
 
         internal static void CreateTypeTable(IntPtr L, Type type)
         {
-            EnsurePinned();
             TypeBinding binding = MetaBinding.EnsureBinding(type);
             // CLR exposes DeclaredOnly Get/Set/Address on T[]; Address returns T& and fails Emit
             // (declaredOn==binding.Type → hard error). Native get/set replace them. Also clear
@@ -35,7 +31,7 @@ namespace ZLua.Mt
             LuaDll.lua_getfield(L, typeTableIndex, LuaConsts.ByObjInstanceMt);
             if (LuaDll.lua_istable(L, -1))
             {
-                LuaDll.lua_pushcfunction(L, global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_arrayLen));
+                LuaCallbackGate.PushCFunction(L, global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_arrayLen));
                 LuaDll.lua_setfield(L, -2, LuaConsts.MetaLen);
             }
 
@@ -181,19 +177,6 @@ namespace ZLua.Mt
             }
 
             return indices;
-        }
-
-        private static void EnsurePinned()
-        {
-            if (s_pinned)
-            {
-                return;
-            }
-
-            s_pins.Add(s_arrayLen);
-            s_pins.Add(s_arrayGet);
-            s_pins.Add(s_arraySet);
-            s_pinned = true;
         }
     }
 }

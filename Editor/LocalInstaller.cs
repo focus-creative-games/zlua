@@ -44,6 +44,7 @@ namespace ZLua
         private static readonly string[] s_zluaDefinePrefixes =
         {
             "ZLUA_LUA_",
+            "ZLUA_LUAJIT_",
             "ZLUA_USE_LUAJIT",
         };
 
@@ -288,7 +289,8 @@ namespace ZLua
             string luaPatchKey;
             if (!LuaVersionUtil.UsesLuaVmPatches(luaInfo))
             {
-                // Lua 5.1 / 5.2 / LuaJIT: no FastMT VM patch; install clean upstream sources.
+                // Lua 5.1 / 5.2: no FastMT VM patch; install clean upstream sources.
+                // LuaJIT: headers-only into libil2cpp/lua (see InstallLuaJitHeadersOnly).
                 Debug.Log(
                     $"[ZLua] Skipping Lua VM patch for {luaInfo.Id} "
                     + "(FastMT / series patches apply only to PUC-Rio 5.3+).");
@@ -322,16 +324,22 @@ namespace ZLua
             }
 
             string stagedSrc = Path.Combine(stagedVersion, "src");
-            DirectoryUtil.CopyDir(stagedSrc, CommonDirs.LocalLuaSrcPath, true);
+            DirectoryUtil.RecreateDir(CommonDirs.LocalLuaSrcPath);
 
-            // Standalone interpreter / compiler must not enter Il2Cpp (duplicate main, unused tools).
-            // All Lua series: delete when present (5.1 clean install previously left lua.c).
-            RemoveLuaStandaloneSources(CommonDirs.LocalLuaSrcPath);
-
-            // Lua 5.1/5.2: luai_num* macros are gated on LUA_CORE; Il2Cpp lumps break that.
-            // Lua 5.1 only: lua_tmpnam gated on loslib_c (5.2+ defines it inside loslib.c).
-            if (!luaInfo.IsLuaJit)
+            if (luaInfo.IsLuaJit)
             {
+                // Spec build/02-LUAJIT: Il2Cpp gets public headers only; .a from Plugins.
+                InstallLuaJitHeadersOnly(stagedSrc, CommonDirs.LocalLuaSrcPath);
+            }
+            else
+            {
+                DirectoryUtil.CopyDir(stagedSrc, CommonDirs.LocalLuaSrcPath, true);
+
+                // Standalone interpreter / compiler must not enter Il2Cpp (duplicate main, unused tools).
+                RemoveLuaStandaloneSources(CommonDirs.LocalLuaSrcPath);
+
+                // Lua 5.1/5.2: luai_num* macros are gated on LUA_CORE; Il2Cpp lumps break that.
+                // Lua 5.1 only: lua_tmpnam gated on loslib_c (5.2+ defines it inside loslib.c).
                 int family = EngineVersionUtil.EncodeLuaApiFamily(luaInfo);
                 if (family < 503)
                 {
@@ -351,6 +359,45 @@ namespace ZLua
 
             DirectoryUtil.RemoveDir(stagingRoot, true);
             return luaPatchKey;
+        }
+
+        /// <summary>
+        /// LuaJIT Il2Cpp: copy public API headers only (no <c>lj_*.c</c> / <c>host/</c>).
+        /// Player links developer-supplied static libs via Plugins (spec build/02-LUAJIT).
+        /// </summary>
+        private static void InstallLuaJitHeadersOnly(string stagedSrc, string destLuaDir)
+        {
+            string[] requiredHeaders =
+            {
+                "lua.h",
+                "lauxlib.h",
+                "lualib.h",
+                "luaconf.h",
+                "luajit.h",
+            };
+
+            foreach (string name in requiredHeaders)
+            {
+                string src = Path.Combine(stagedSrc, name);
+                if (!File.Exists(src))
+                {
+                    throw new InvalidOperationException(
+                        $"[ZLua] LuaJIT header missing in upstream src/: {name} (under {stagedSrc}).");
+                }
+
+                File.Copy(src, Path.Combine(destLuaDir, name), overwrite: true);
+            }
+
+            // Optional C++ wrapper if present in the tree.
+            string luaHpp = Path.Combine(stagedSrc, "lua.hpp");
+            if (File.Exists(luaHpp))
+            {
+                File.Copy(luaHpp, Path.Combine(destLuaDir, "lua.hpp"), overwrite: true);
+            }
+
+            Debug.Log(
+                $"[ZLua] LuaJIT: installed public headers only under {destLuaDir} "
+                + "(provide libluajit.a in Plugins for Android/iOS Il2Cpp; see spec build/02-LUAJIT).");
         }
 
         /// <summary>
@@ -545,14 +592,16 @@ namespace ZLua
             {
                 Debug.LogWarning(
                     $"[ZLua] Editor plugin '{fileName}' not found under {pluginsRoot}. "
-                    + "Replace/add the matching series binary yourself (e.g. lua53.dll / lua54.dll). "
+                    + "Replace/add the matching series binary yourself (e.g. lua53.dll / lua54.dll or luajit21.dll). "
                     + "Il2Cpp Player uses downloaded sources; Editor Mono needs the plugin DLL.");
             }
         }
 
         private string ApplyScriptingDefines(LuaVersionInfo luaInfo)
         {
-            string wanted = luaInfo.IsLuaJit ? "ZLUA_USE_LUAJIT" : luaInfo.ApiFamilyDefine;
+            string[] wantedDefines = luaInfo.IsLuaJit
+                ? new[] { "ZLUA_USE_LUAJIT", GetLuaJitVersionDefine(luaInfo) }
+                : new[] { luaInfo.ApiFamilyDefine };
             var targets = new HashSet<NamedBuildTarget>
             {
                 NamedBuildTarget.FromBuildTargetGroup(EditorUserBuildSettings.selectedBuildTargetGroup),
@@ -570,7 +619,14 @@ namespace ZLua
                     var list = current.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
                         .Where(d => !IsZluaLuaDefine(d))
                         .ToList();
-                    list.Add(wanted);
+                    foreach (string wanted in wantedDefines)
+                    {
+                        if (!list.Contains(wanted))
+                        {
+                            list.Add(wanted);
+                        }
+                    }
+
                     string next = string.Join(";", list);
                     if (!string.Equals(current, next, StringComparison.Ordinal))
                     {
@@ -584,7 +640,18 @@ namespace ZLua
                 }
             }
 
-            return wanted;
+            return string.Join(";", wantedDefines);
+        }
+
+        private static string GetLuaJitVersionDefine(LuaVersionInfo luaInfo)
+        {
+            Match match = Regex.Match(luaInfo.Id ?? string.Empty, @"^luajit-(\d+)\.(\d+)$", RegexOptions.CultureInvariant);
+            if (!match.Success)
+            {
+                throw new InvalidOperationException($"[ZLua] Invalid LuaJIT version id: {luaInfo.Id}");
+            }
+
+            return $"ZLUA_LUAJIT_{match.Groups[1].Value}_{match.Groups[2].Value}";
         }
 
         private static bool IsZluaLuaDefine(string define)
@@ -616,6 +683,21 @@ namespace ZLua
             if (!File.Exists(Path.Combine(CommonDirs.LocalLuaSrcPath, "lua.h")))
             {
                 throw new InvalidOperationException("[ZLua] Local lua sources missing after install.");
+            }
+
+            if (luaInfo.IsLuaJit
+                && !File.Exists(Path.Combine(CommonDirs.LocalLuaSrcPath, "luajit.h")))
+            {
+                throw new InvalidOperationException(
+                    "[ZLua] Local LuaJIT headers incomplete after install (luajit.h missing).");
+            }
+
+            if (luaInfo.IsLuaJit
+                && Directory.EnumerateFiles(CommonDirs.LocalLuaSrcPath, "*.c", SearchOption.TopDirectoryOnly).Any())
+            {
+                throw new InvalidOperationException(
+                    "[ZLua] LuaJIT install must not place .c sources under libil2cpp/lua "
+                    + "(headers only; see spec build/02-LUAJIT).");
             }
 
             if (!File.Exists(ZLuaConfWriter.LocalConfPath))

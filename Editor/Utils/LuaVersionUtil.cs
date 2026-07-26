@@ -40,6 +40,8 @@ namespace ZLua.Utils
                 .Select(Path.GetFileName)
                 .Where(name => !string.Equals(name, "downloads", StringComparison.OrdinalIgnoreCase))
                 .Where(name => LuaSourceCache.IsSourceReady(Path.Combine(root, name)))
+                .Select(name => TryParse(name, out LuaVersionInfo parsed) ? parsed.Id : name)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
@@ -58,29 +60,23 @@ namespace ZLua.Utils
             string id = versionId.Trim();
 
             Match jit = s_luaJit.Match(id);
-            if (jit.Success || Regex.IsMatch(id, @"^luajit-\d+-\d+$", RegexOptions.CultureInvariant))
+            if (jit.Success)
             {
                 if (!LuaSourceCache.TryGetCacheFolderName(id, out string jitFolder))
                 {
                     return false;
                 }
 
-                string jitId = id.StartsWith("luajit-", StringComparison.Ordinal) && id.Contains(".")
-                    ? id
-                    : $"luajit-{jitFolder.Substring("luajit-".Length).Replace('-', '.')}";
-                // Normalize display id: luajit-2.1 from folder luajit-2-1
-                if (Regex.IsMatch(id, @"^luajit-\d+-\d+$", RegexOptions.CultureInvariant))
-                {
-                    string[] parts = id.Substring("luajit-".Length).Split('-');
-                    jitId = $"luajit-{parts[0]}.{parts[1]}";
-                }
+                string major = jit.Groups[1].Value;
+                string minor = jit.Groups[2].Value;
+                string jitId = $"luajit-{major}.{minor}";
 
                 info = new LuaVersionInfo
                 {
                     Id = jitId,
-                    Series = "luajit",
+                    Series = jitId,
                     ApiFamilyDefine = "ZLUA_USE_LUAJIT",
-                    DllLogicalName = "luajit",
+                    DllLogicalName = $"luajit{major}{minor}",
                     IsLuaJit = true,
                     SourceDir = Path.Combine(CommonDirs.LuaSrcCacheDir, jitFolder),
                 };
@@ -88,25 +84,25 @@ namespace ZLua.Utils
             }
 
             Match m = s_pucRio.Match(id);
-            if (!m.Success)
+            if (m.Success)
             {
-                return false;
-            }
 
-            int major = int.Parse(m.Groups[1].Value);
-            int minor = int.Parse(m.Groups[2].Value);
-            // Editor plugin: lua5{minor}.dll (e.g. lua53 / lua54) — major is implied for 5.x.
-            string dll = $"lua{major}{minor}";
-            info = new LuaVersionInfo
-            {
-                Id = id,
-                Series = $"lua-{major}.{minor}",
-                ApiFamilyDefine = $"ZLUA_LUA_{major}_{minor}",
-                DllLogicalName = dll,
-                IsLuaJit = false,
-                SourceDir = LuaSourceCache.GetCacheDirForVersionId(id),
-            };
-            return true;
+                int major = int.Parse(m.Groups[1].Value);
+                int minor = int.Parse(m.Groups[2].Value);
+                // Editor plugin: lua5{minor}.dll (e.g. lua53 / lua54) — major is implied for 5.x.
+                string dll = $"lua{major}{minor}";
+                info = new LuaVersionInfo
+                {
+                    Id = id,
+                    Series = $"lua-{major}.{minor}",
+                    ApiFamilyDefine = $"ZLUA_LUA_{major}_{minor}",
+                    DllLogicalName = dll,
+                    IsLuaJit = false,
+                    SourceDir = LuaSourceCache.GetCacheDirForVersionId(id),
+                };
+                return true;
+            }
+            return false;
         }
 
         public static string ResolveConfiguredOrDefault(string configuredId, out bool wroteDefault)
@@ -131,8 +127,8 @@ namespace ZLua.Utils
 
         /// <summary>
         /// PUC-Rio FastMT / VM patches exist only for Lua 5.3+.
-        /// Lua 5.1, 5.2, and LuaJIT: Install copies clean upstream sources (no patch);
-        /// <c>ZLUA_FAST_METATABLE</c> stays 0.
+        /// Lua 5.1 / 5.2: Install copies clean upstream sources (no patch).
+        /// LuaJIT: Install copies public headers only (no patch); see LocalInstaller.
         /// </summary>
         public static bool UsesLuaVmPatches(LuaVersionInfo info)
         {

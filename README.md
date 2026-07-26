@@ -19,7 +19,7 @@ ZLua是一个针对Il2Cpp极致优化的现代、简洁、易用的Unity Lua脚�
 | **更高效** | Il2Cpp 实测：约 **98%** 对齐用例快于 xLua；Lua→C# 平均约 **2.62×**；常见字段 / 属性 / 调用约 **4×** |
 | **更少 GC** | 引用类型与 struct（含含引用字段的 struct）默认 **0 GC**；另有 OpaqueValue 等策略 |
 | **极小桥接** | 同签名合并的高效 **C++** stub；体积可小一个数量级；支持 **0 桥接函数** |
-| **版本更广** | Lua **5.1 / 5.2 / 5.3 / 5.4 / 5.5**；Unity **2021.3 / 2022.3 / 6000.0 / 6000.3**；**团结引擎**全系列 |
+| **版本更广** | Lua **5.1–5.5** 与 **LuaJIT 2.x**；Unity **2021.3 / 2022.3 / 6000.0 / 6000.3**；**团结引擎**全系列 |
 | **维护更积极** | 全职专业团队；Bug 响应与特性迭代更快 |
 
 性能细节见 [性能对比](https://doc.zlua.cn/docs/compare/PERFORMANCE)。
@@ -50,11 +50,13 @@ ZLua是一个针对Il2Cpp极致优化的现代、简洁、易用的Unity Lua脚�
 
 | 类别 | 已支持 |
 |------|--------|
-| **Lua** | **5.1.x**、**5.2.x**、**5.3.x**、**5.4.x**、**5.5.x** |
+| **Lua（PUC-Rio）** | **5.1.x**、**5.2.x**、**5.3.x**、**5.4.x**、**5.5.x** |
+| **LuaJIT** | **2.x**（Editor Mono；Il2Cpp **仅 iOS / Android** 发布） |
 | **Unity** | **2021.3.x**、**2022.3.x**、**6000.0.x**、**6000.3.x** |
 | **团结引擎** | 全部 **x.y.z** |
 | **运行时** | Editor **Mono** + Player **Il2Cpp** |
-| **平台** | Il2Cpp 支持的平台（含 WebGL、微信小游戏、鸿蒙 / 车机等） |
+| **平台（PUC-Rio）** | Il2Cpp 支持的平台（含 WebGL、微信小游戏、鸿蒙 / 车机等） |
+| **平台（LuaJIT）** | Editor；Player 仅 **iOS / Android**（需自备静态库，详见文档） |
 
 ---
 
@@ -134,19 +136,6 @@ d:SetX(20)                        -- 实例方法
 print(d.x)
 ```
 
-**Player 发布：** 执行菜单 **`ZLua/Generate/All`**，并将 Lua 同步到 `StreamingAssets`（Demo 工程已含同步脚本）。
-
----
-
-## 当前状态
-
-| 运行时 | 状态 |
-|--------|------|
-| **Il2Cpp（Player）** | 已完成 |
-| **Mono（Editor）** | 已完成（与 Il2Cpp 语义一致） |
-
-主验证环境：Unity **2022.3.62f3** + Lua **5.4**。已支持矩阵见上文「平台与版本」。功能与语义以 [规范文档](https://doc.zlua.cn/docs/spec/00-OVERVIEW) 为准。
-
 ---
 
 ## 许可证
@@ -158,4 +147,4 @@ MIT。欢迎自由使用、修改和分发。
 - GitHub Issue：[focus-creative-games/zlua](https://github.com/focus-creative-games/zlua)
 - 邮件：`zlua@code-philosophy.com`
 - QQ 群 **ZLua 交流群**：824793773
-- Discord：https://discord.gg/htmr44jW6A
+- Discord：<https://discord.gg/htmr44jW6A>

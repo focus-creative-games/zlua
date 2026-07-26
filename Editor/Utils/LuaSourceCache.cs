@@ -12,7 +12,7 @@ namespace ZLua.Utils
     /// <summary>
     /// Resolves PUC-Rio Lua / LuaJIT trees under <see cref="CommonDirs.LuaSrcCacheDir"/>.
     /// PUC-Rio: download https://www.lua.org/ftp/lua-X.Y.Z.tar.gz when missing.
-    /// LuaJIT: developer must clone into the cache folder (no auto-download).
+    /// LuaJIT: clone the requested branch into a staging dir, then move into the cache folder.
     /// </summary>
     public static class LuaSourceCache
     {
@@ -37,7 +37,7 @@ namespace ZLua.Utils
         }
 
         /// <summary>
-        /// PUC-Rio: <c>lua-5.5.0</c>. LuaJIT: <c>luajit-{major}-{minor}</c> (e.g. <c>luajit-2-1</c>).
+        /// PUC-Rio: <c>lua-5.5.0</c>. LuaJIT: <c>luajit-{major}.{minor}</c> (e.g. <c>luajit-2.1</c>).
         /// </summary>
         public static bool TryGetCacheFolderName(string versionId, out string folderName)
         {
@@ -58,14 +58,7 @@ namespace ZLua.Utils
             Match jit = s_luaJit.Match(id);
             if (jit.Success)
             {
-                folderName = $"luajit-{jit.Groups[1].Value}-{jit.Groups[2].Value}";
-                return true;
-            }
-
-            // Allow already-canonical jit cache folder as id: luajit-2-1
-            if (Regex.IsMatch(id, @"^luajit-\d+-\d+$", RegexOptions.CultureInvariant))
-            {
-                folderName = id;
+                folderName = $"luajit-{jit.Groups[1].Value}.{jit.Groups[2].Value}";
                 return true;
             }
 
@@ -94,10 +87,8 @@ namespace ZLua.Utils
 
             if (info.IsLuaJit)
             {
-                throw new InvalidOperationException(
-                    $"[ZLua] LuaJIT sources not found at:\n  {cacheDir}\n"
-                    + "Clone LuaJIT into that directory yourself (ZLua does not download LuaJIT). "
-                    + $"Expected layout: {cacheDir}/src/...");
+                EnsureAvailableLuaJit(info, cacheDir);
+                return cacheDir;
             }
 
             DownloadAndExtractPucRio(info.Id, cacheDir);
@@ -108,6 +99,90 @@ namespace ZLua.Utils
             }
 
             return cacheDir;
+        }
+
+        private static void EnsureAvailableLuaJit(LuaVersionInfo info, string cacheDir)
+        {
+            if (IsSourceReady(cacheDir))
+            {
+                Debug.Log($"[ZLua] Using cached LuaJIT sources: {cacheDir}");
+                return;
+            }
+
+            string branch = GetLuaJitBranchName(info.Id);
+            string stageRoot = Path.Combine(CommonDirs.InstallRootDir, "tmp-luajit-stage");
+            DirectoryUtil.RecreateDir(stageRoot);
+            string stageDir = Path.Combine(stageRoot, $"{info.Id}-{Guid.NewGuid():N}");
+
+            try
+            {
+                Directory.CreateDirectory(CommonDirs.LuaSrcCacheDir);
+                CloneGitRepository(
+                    "https://github.com/LuaJIT/LuaJIT.git",
+                    branch,
+                    stageDir);
+
+                if (!IsSourceReady(stageDir))
+                {
+                    throw new InvalidOperationException(
+                        $"[ZLua] Cloned LuaJIT sources look incomplete: {stageDir}");
+                }
+
+                if (Directory.Exists(cacheDir))
+                {
+                    DirectoryUtil.RemoveDir(cacheDir, true);
+                }
+
+                Directory.Move(stageDir, cacheDir);
+                Debug.Log($"[ZLua] LuaJIT sources ready: {cacheDir}");
+            }
+            finally
+            {
+                if (Directory.Exists(stageRoot))
+                {
+                    DirectoryUtil.RemoveDir(stageRoot, true);
+                }
+            }
+        }
+
+        private static string GetLuaJitBranchName(string versionId)
+        {
+            Match match = s_luaJit.Match(versionId ?? string.Empty);
+            if (!match.Success)
+            {
+                throw new InvalidOperationException($"[ZLua] Invalid LuaJIT version id: {versionId}");
+            }
+
+            return $"v{match.Groups[1].Value}.{match.Groups[2].Value}";
+        }
+
+        private static void CloneGitRepository(string repoUrl, string branch, string targetDir)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(targetDir));
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = $"clone --depth 1 --single-branch --branch {branch} {repoUrl} \"{targetDir}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+
+            using (var proc = Process.Start(psi))
+            {
+                string stdout = proc.StandardOutput.ReadToEnd();
+                string stderr = proc.StandardError.ReadToEnd();
+                proc.WaitForExit();
+                if (proc.ExitCode != 0)
+                {
+                    throw new InvalidOperationException(
+                        $"[ZLua] git clone failed (exit {proc.ExitCode}) for {repoUrl} branch {branch}.\n"
+                        + stdout
+                        + stderr);
+                }
+            }
         }
 
         private static void DownloadAndExtractPucRio(string versionId, string cacheDir)

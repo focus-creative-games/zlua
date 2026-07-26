@@ -1,6 +1,11 @@
+#if ZLUA_USE_LUAJIT || ZLUA_LUA_5_1
+#define ZLUA_MONO_LUA51_API
+#endif
+
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using ZLua.Utils;
 
 namespace ZLua
 {
@@ -9,8 +14,8 @@ namespace ZLua
         [DllImport(LuaDll.LUA_DLL, EntryPoint = "luaL_loadstring", CallingConvention = LuaDll.CALLING_CONVENTION)]
         public static extern int loadstring(IntPtr luaState, string chunk);
 
-#if ZLUA_LUA_5_1
-        // luaL_loadbufferx is Lua 5.2+.
+#if ZLUA_MONO_LUA51_API
+        // luaL_loadbufferx is Lua 5.2+ (LuaJIT keeps luaL_loadbuffer).
         [DllImport(LuaDll.LUA_DLL, EntryPoint = "luaL_loadbuffer", CallingConvention = LuaDll.CALLING_CONVENTION)]
         private static extern int luaL_loadbuffer(IntPtr luaState, byte[] buff, UIntPtr sz, string name);
 #else
@@ -25,7 +30,7 @@ namespace ZLua
                 return LUA_ERRSYNTAX;
             }
 
-#if ZLUA_LUA_5_1
+#if ZLUA_MONO_LUA51_API
             return luaL_loadbuffer(luaState, buffer, (UIntPtr)buffer.Length, chunkName);
 #else
             return luaL_loadbufferx(luaState, buffer, (UIntPtr)buffer.Length, chunkName, IntPtr.Zero);
@@ -59,13 +64,14 @@ namespace ZLua
         public static int error(IntPtr luaState, string msg)
         {
             LuaDll.lua_pushstring(luaState, msg);
-            return LuaDll.lua_error(luaState);
+            // Editor Mono: native gate calls lua_error after managed returns (all Lua series).
+            return LuaCallbackGate.ErrorSentinel;
         }
 
         public static void RegisterCallback(IntPtr luaState, string globalName, LuaCSFunction func)
         {
             IntPtr function = global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(func);
-            LuaDll.lua_pushcfunction(luaState, function);
+            LuaCallbackGate.PushCFunction(luaState, function);
             LuaDll.lua_setglobal(luaState, globalName);
         }
     }

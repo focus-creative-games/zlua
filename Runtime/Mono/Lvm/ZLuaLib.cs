@@ -19,8 +19,6 @@ namespace ZLua.Lvm
     {
         private const int MaxMdArrayRank = 32;
 
-        private static readonly List<LuaCSFunction> s_callbackPins = new List<LuaCSFunction>();
-
         private static readonly LuaCSFunction s_typeof = Guard(ZLuaTypeOf);
         private static readonly LuaCSFunction s_getTypeFromName = Guard(ZLuaGetTypeFromName);
         private static readonly LuaCSFunction s_box = Guard(ZLuaBox);
@@ -71,7 +69,9 @@ namespace ZLua.Lvm
 
         private static void Register(IntPtr L, string name, LuaCSFunction fn)
         {
-            LuaDll.lua_pushcfunction(L, global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(fn));
+            LuaCallbackGate.PushCFunction(
+                L,
+                global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(fn));
             LuaDll.lua_setglobal(L, name);
         }
 
@@ -101,7 +101,6 @@ namespace ZLua.Lvm
                     LuaCallbackBoundary.Leave();
                 }
             };
-            s_callbackPins.Add(wrapped);
             return wrapped;
         }
 

@@ -1,3 +1,10 @@
+#if ZLUA_USE_LUAJIT || ZLUA_LUA_5_1
+#define ZLUA_MONO_LUA51_API
+#endif
+#if ZLUA_USE_LUAJIT || ZLUA_LUA_5_1 || ZLUA_LUA_5_2
+#define ZLUA_MONO_LUA_PRE53
+#endif
+
 using System;
 using System.Runtime.InteropServices;
 
@@ -48,8 +55,8 @@ namespace ZLua
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern int lua_gettop(IntPtr luaState);
 
-#if ZLUA_LUA_5_1
-        // lua_absindex is Lua 5.2+.
+#if ZLUA_MONO_LUA51_API
+        // lua_absindex is Lua 5.2+ (stock LuaJIT has no absindex).
         public static int lua_absindex(IntPtr luaState, int index)
         {
             if (index > 0 || index <= LuaConsts.LuaRegistryIndex)
@@ -72,8 +79,8 @@ namespace ZLua
             lua_settop(luaState, -count - 1);
         }
 
-#if ZLUA_LUA_5_1 || ZLUA_LUA_5_2
-        // Lua 5.1/5.2 export lua_remove / insert / replace (lua_rotate is 5.3+).
+#if ZLUA_MONO_LUA_PRE53
+        // 5.1 / LuaJIT / 5.2 export remove/insert/replace (lua_rotate is 5.3+).
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void lua_remove(IntPtr luaState, int idx);
 
@@ -137,8 +144,8 @@ namespace ZLua
             lua_pushcclosure(luaState, fn, 0);
         }
 
-#if ZLUA_LUA_5_1 || ZLUA_LUA_5_2
-        // 5.1/5.2: get* APIs return void (5.3+ return type). P/Invoke as int reads garbage → false "not available".
+#if ZLUA_MONO_LUA_PRE53
+        // Pre-5.3 / LuaJIT: get* return void (5.3+ return type).
         [DllImport(LUA_DLL, EntryPoint = "lua_getfield", CallingConvention = CALLING_CONVENTION)]
         private static extern void lua_getfield_void(IntPtr luaState, int index, string key);
 
@@ -151,8 +158,8 @@ namespace ZLua
             return lua_type(luaState, -1);
         }
 
-#if ZLUA_LUA_5_1
-        // 5.1: get/setglobal are macros over LUA_GLOBALSINDEX.
+#if ZLUA_MONO_LUA51_API
+        // 5.1 / LuaJIT: get/setglobal are macros over LUA_GLOBALSINDEX.
         public static LuaDataType lua_getglobal(IntPtr luaState, string name)
         {
             return lua_getfield(luaState, LuaConsts.LuaGlobalsIndex, name);
@@ -217,7 +224,7 @@ namespace ZLua
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void lua_rawset(IntPtr luaState, int index);
 
-#if ZLUA_LUA_5_1 || ZLUA_LUA_5_2
+#if ZLUA_MONO_LUA_PRE53
         [DllImport(LUA_DLL, EntryPoint = "lua_rawseti", CallingConvention = CALLING_CONVENTION)]
         private static extern void lua_rawseti_int(IntPtr luaState, int index, int n);
 
@@ -239,7 +246,7 @@ namespace ZLua
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void lua_createtable(IntPtr luaState, int nArray, int nRecord);
 
-        // Lua 5.4+: lua_newuserdatauv. Lua 5.3 / default series: lua_newuserdata (nUv ignored).
+        // Lua 5.4+: lua_newuserdatauv. 5.3 / 5.1 / LuaJIT: lua_newuserdata (nUv ignored).
 #if ZLUA_LUA_5_4 || ZLUA_LUA_5_5
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern IntPtr lua_newuserdatauv(IntPtr luaState, UIntPtr size, int nUv);
@@ -259,8 +266,8 @@ namespace ZLua
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void luaL_unref(IntPtr luaState, int tableIndex, int reference);
 
-#if ZLUA_LUA_5_1
-        // lua_pcallk is Lua 5.2+.
+#if ZLUA_MONO_LUA51_API
+        // lua_pcallk is Lua 5.2+ (LuaJIT keeps lua_pcall).
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern int lua_pcall(IntPtr luaState, int nArgs, int nResults, int errFunc);
 #else
@@ -279,8 +286,8 @@ namespace ZLua
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void luaL_where(IntPtr luaState, int level);
 
-#if ZLUA_LUA_5_1
-        // 5.1 exports lua_tointeger / lua_tonumber (no *_x).
+#if ZLUA_MONO_LUA51_API
+        // 5.1 / LuaJIT export lua_tointeger / lua_tonumber (no *_x).
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern long lua_tointeger(IntPtr luaState, int index);
 
@@ -305,7 +312,7 @@ namespace ZLua
         }
 #endif
 
-#if ZLUA_LUA_5_1 || ZLUA_LUA_5_2
+#if ZLUA_MONO_LUA_PRE53
         // lua_isinteger is Lua 5.3+.
         public static int lua_isinteger(IntPtr luaState, int index)
         {
@@ -371,8 +378,8 @@ namespace ZLua
 
         public static bool lua_isnoneornil(IntPtr luaState, int index) => lua_type(luaState, index) <= LuaDataType.Nil;
 
-#if ZLUA_LUA_5_1
-        // 5.1: #define lua_upvalueindex(i) (LUA_GLOBALSINDEX-(i))
+#if ZLUA_MONO_LUA51_API
+        // 5.1 / LuaJIT: #define lua_upvalueindex(i) (LUA_GLOBALSINDEX-(i))
         public static int lua_upvalueindex(int i) => LuaConsts.LuaGlobalsIndex - i;
 #else
         public static int lua_upvalueindex(int i) => LuaConsts.LuaRegistryIndex - i;

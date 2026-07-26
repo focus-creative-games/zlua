@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using ZLua.Utils;
 
 namespace ZLua.Marshaling
@@ -16,7 +15,6 @@ namespace ZLua.Marshaling
         private static readonly Dictionary<ObjectViewKey, int> s_objectViewRefs = new Dictionary<ObjectViewKey, int>();
         private static readonly ObjectSlotRegistry s_objectSlots = new ObjectSlotRegistry();
         private static readonly LuaCSFunction s_onRelease = OnReleaseObjectUserData;
-        private static bool s_releasePinned;
 
         private readonly struct ObjectViewKey : IEquatable<ObjectViewKey>
         {
@@ -126,13 +124,6 @@ namespace ZLua.Marshaling
             if (s_objectCacheRef != LuaConsts.LuaNoRef)
             {
                 return;
-            }
-
-            if (!s_releasePinned)
-            {
-                // Keep delegate alive for native Lua __gc.
-                GCHandle.Alloc(s_onRelease);
-                s_releasePinned = true;
             }
 
             LuaDll.lua_createtable(L, 0, 0);

@@ -7,8 +7,12 @@ namespace ZLua
     {
 #if UNITY_IPHONE && !UNITY_EDITOR
         public const string LUA_DLL = "__Internal";
+#elif ZLUA_LUAJIT_2_1
+        public const string LUA_DLL = "luajit21";
+#elif ZLUA_LUAJIT_2_0
+        public const string LUA_DLL = "luajit20";
 #elif ZLUA_USE_LUAJIT
-        public const string LUA_DLL = "luajit";
+        public const string LUA_DLL = "luajit21";
 #elif ZLUA_LUA_5_5
         public const string LUA_DLL = "lua55";
 #elif ZLUA_LUA_5_4

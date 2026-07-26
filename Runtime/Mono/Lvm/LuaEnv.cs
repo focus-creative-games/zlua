@@ -9,7 +9,6 @@ namespace ZLua.Lvm
 {
     public sealed class LuaEnv : IDisposable
     {
-        private static readonly List<LuaCSFunction> s_callbackPins = new List<LuaCSFunction>();
         private static readonly LuaCSFunction s_print = Print;
         private static readonly LuaCSFunction s_loadModule = LoadModule;
         private static LuaEnv s_activeEnv;
@@ -49,6 +48,9 @@ namespace ZLua.Lvm
             {
                 throw new InvalidOperationException("Failed to create lua_State.");
             }
+
+            // Load Lua DLL first, then bind JIT mono gate (no-op on PUC-Rio).
+            LuaCallbackGate.EnsureInitialized();
 
             LuaDll.luaL_openlibs(_state);
             RegisterPrint();
@@ -333,7 +335,6 @@ namespace ZLua.Lvm
                 return;
             }
 
-            s_callbackPins.Add(s_print);
             LuaDllExtension.RegisterCallback(_state, "print", s_print);
             _printRegistered = true;
         }
@@ -345,7 +346,6 @@ namespace ZLua.Lvm
                 return;
             }
 
-            s_callbackPins.Add(s_loadModule);
             LuaDllExtension.RegisterCallback(L, "__zlua_load_module", s_loadModule);
 
             // 5.1: package.loaders + loadstring; 5.2+: package.searchers + load(string).

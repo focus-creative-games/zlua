@@ -7,10 +7,8 @@ namespace ZLua.Mt
 {
     internal static class AssemblyRegistry
     {
-        private static readonly List<LuaCSFunction> s_callbackPins = new List<LuaCSFunction>();
         private static readonly LuaCSFunction s_resolveAssemblyIndex = ResolveAssemblyIndex;
         private static readonly LuaCSFunction s_resolveAssemblyTypeIndex = ResolveAssemblyTypeIndex;
-        private static bool s_callbacksPinned;
 
         private static readonly Dictionary<string, Assembly> s_assemblyByLuaName =
             new Dictionary<string, Assembly>(StringComparer.Ordinal);
@@ -31,8 +29,6 @@ namespace ZLua.Mt
 
         internal static void InitializeCSharpRoot(IntPtr L)
         {
-            EnsureCallbacksPinned();
-
             LuaDataType csharpType = LuaDll.lua_getglobal(L, "CSharp");
             if (csharpType == LuaDataType.Table)
             {
@@ -43,7 +39,9 @@ namespace ZLua.Mt
             LuaDll.lua_pop(L, 1);
             LuaDll.lua_createtable(L, 0, 8);
             LuaDll.lua_createtable(L, 0, 1);
-            LuaDll.lua_pushcfunction(L, global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_resolveAssemblyIndex));
+            LuaCallbackGate.PushCFunction(
+                L,
+                global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_resolveAssemblyIndex));
             LuaDll.lua_setfield(L, -2, LuaConsts.MetaIndex);
             LuaDll.lua_setmetatable(L, -2);
             LuaDll.lua_setglobal(L, "CSharp");
@@ -72,7 +70,10 @@ namespace ZLua.Mt
                     LuaDll.lua_createtable(L, 0, 16);
                     LuaDll.lua_createtable(L, 0, 1);
                     LuaDll.lua_pushstring(L, assemblyName);
-                    LuaDll.lua_pushcclosure(L, global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_resolveAssemblyTypeIndex), 1);
+                    LuaCallbackGate.PushCClosure(
+                        L,
+                        global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_resolveAssemblyTypeIndex),
+                        1);
                     LuaDll.lua_setfield(L, -2, LuaConsts.MetaIndex);
                     LuaDll.lua_setmetatable(L, -2);
 
@@ -99,7 +100,7 @@ namespace ZLua.Mt
             {
                 try
                 {
-                    string assemblyName = LuaDllExtension.tostring(L, LuaDll.lua_upvalueindex(1));
+                    string assemblyName = LuaDllExtension.tostring(L, LuaDll.lua_upvalueindex(LuaCallbackGate.ManagedUpvalueIndex(1)));
                     string typeName = LuaDll.luaL_checkstring(L, 2);
 
                     if (TryGetTableByKey(L, 1, typeName))
@@ -201,18 +202,6 @@ namespace ZLua.Mt
             }
 
             return true;
-        }
-
-        private static void EnsureCallbacksPinned()
-        {
-            if (s_callbacksPinned)
-            {
-                return;
-            }
-
-            s_callbackPins.Add(s_resolveAssemblyIndex);
-            s_callbackPins.Add(s_resolveAssemblyTypeIndex);
-            s_callbacksPinned = true;
         }
     }
 }

@@ -5,7 +5,9 @@ using ZLua.Lvm;
 namespace ZLua.Utils
 {
     /// <summary>
-    /// Lua C 回调边界：仅在此处将托管异常转为 <c>lua_error</c>。
+    /// Lua C 回调边界：将托管异常转为 Lua error。
+    /// Editor Mono：不直接 <c>lua_error</c>（经 <see cref="LuaCallbackGate"/> sentinel），
+    /// 避免 reverse-P/Invoke 帧上展开 / 堆栈抓取导致 SIGSEGV。
     /// </summary>
     internal static class LuaCallbackBoundary
     {
@@ -28,7 +30,7 @@ namespace ZLua.Utils
         }
 
         /// <summary>
-        /// Clear before <c>lua_error</c> longjmp (Mono may skip finally).
+        /// Clear before error unwind (Mono may skip finally on longjmp/SEH).
         /// </summary>
         internal static void ResetDepth()
         {
@@ -58,23 +60,11 @@ namespace ZLua.Utils
         }
 
         /// <summary>
-        /// Signal a Lua-facing error. Under Lua→C# reverse P/Invoke, must not
-        /// <c>throw</c> (Tuanjie Mono SIGSEGVs in exception first-pass while an outer
-        /// <c>lua_pcall</c> is active); use <c>lua_error</c> instead.
+        /// Signal a Lua-facing error. Under Editor Mono + gate, throw so the Lua→C#
+        /// entry <c>catch</c> converts via sentinel (never <c>lua_error</c> on this frame).
         /// </summary>
         internal static void Throw(string message)
         {
-            if (IsInsideCallback)
-            {
-                LuaEnv env = LuaEnv.Active;
-                if (env != null)
-                {
-                    IntPtr L = env.L;
-                    ResetDepth();
-                    LuaDllExtension.error(L, message);
-                }
-            }
-
             throw new LuaScriptException(message);
         }
     }

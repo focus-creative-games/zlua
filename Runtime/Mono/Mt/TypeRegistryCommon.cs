@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using ZLua.Emit;
 using ZLua.Marshaling;
@@ -12,12 +11,10 @@ namespace ZLua.Mt
     /// </summary>
     internal static class TypeRegistryCommon
     {
-        private static readonly List<LuaCSFunction> s_pins = new List<LuaCSFunction>();
         private static readonly LuaCSFunction s_typeTableToString = TypeTableToString;
         private static readonly LuaCSFunction s_ctorNotReady = ConstructorNotReady;
         private static readonly LuaCSFunction s_structDefault = InvokeStructDefault;
         private static readonly LuaCSFunction s_delegateInstanceCall = DelegateInstanceCall;
-        private static bool s_pinned;
 
         internal static MemberTableSet CreateEmptyMemberTableSet(IntPtr L)
         {
@@ -126,7 +123,6 @@ namespace ZLua.Mt
 
         internal static void AttachByValInstanceMetatable(IntPtr L, Type type, int typeTableIndex, TypeBinding binding)
         {
-            EnsurePinned();
             TypeMemberLuaIndexer.EnsureLoaded(L);
 
             LuaDll.lua_createtable(L, 0, 8);
@@ -139,7 +135,7 @@ namespace ZLua.Mt
 
             if (!StructMarshal.IsBlittable(type))
             {
-                LuaDll.lua_pushcfunction(L, StructRegistry.GetOnReleaseFunctionPointer());
+                LuaCallbackGate.PushCFunction(L, StructRegistry.GetOnReleaseFunctionPointer());
                 LuaDll.lua_setfield(L, mtIndex, LuaConsts.MetaGc);
             }
 
@@ -162,7 +158,6 @@ namespace ZLua.Mt
             bool enableConstructorCall,
             bool enableStructDefault)
         {
-            EnsurePinned();
             TypeMemberLuaIndexer.EnsureLoaded(L);
 
             LuaDll.lua_createtable(L, 0, 8);
@@ -171,18 +166,26 @@ namespace ZLua.Mt
             if (enableConstructorCall)
             {
                 TypeHandleStore.PushLightUserData(L, type);
-                LuaDll.lua_pushcclosure(L, global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_ctorNotReady), 1);
+                LuaCallbackGate.PushCClosure(
+                    L,
+                    global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_ctorNotReady),
+                    1);
                 LuaDll.lua_setfield(L, smtIndex, LuaConsts.MetaCall);
             }
 
             if (enableStructDefault)
             {
                 TypeHandleStore.PushLightUserData(L, type);
-                LuaDll.lua_pushcclosure(L, global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_structDefault), 1);
+                LuaCallbackGate.PushCClosure(
+                    L,
+                    global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_structDefault),
+                    1);
                 LuaDll.lua_setfield(L, smtIndex, LuaConsts.Default);
             }
 
-            LuaDll.lua_pushcfunction(L, global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_typeTableToString));
+            LuaCallbackGate.PushCFunction(
+                L,
+                global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_typeTableToString));
             LuaDll.lua_setfield(L, smtIndex, LuaConsts.MetaToString);
 
             binding.StaticTables = CreateEmptyMemberTableSet(L);
@@ -203,7 +206,6 @@ namespace ZLua.Mt
             TypeBinding binding,
             IntPtr gcFn)
         {
-            EnsurePinned();
             TypeMemberLuaIndexer.EnsureLoaded(L);
 
             LuaDll.lua_createtable(L, 0, 8);
@@ -216,7 +218,7 @@ namespace ZLua.Mt
 
             if (gcFn != IntPtr.Zero)
             {
-                LuaDll.lua_pushcfunction(L, gcFn);
+                LuaCallbackGate.PushCFunction(L, gcFn);
                 LuaDll.lua_setfield(L, mtIndex, LuaConsts.MetaGc);
             }
 
@@ -230,7 +232,7 @@ namespace ZLua.Mt
 
             if (typeof(Delegate).IsAssignableFrom(type))
             {
-                LuaDll.lua_pushcfunction(
+                LuaCallbackGate.PushCFunction(
                     L,
                     global::System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(s_delegateInstanceCall));
                 LuaDll.lua_setfield(L, mtIndex, LuaConsts.MetaCall);
@@ -277,7 +279,7 @@ namespace ZLua.Mt
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int ConstructorNotReady(IntPtr L)
         {
-            Type type = TypeHandleStore.ReadLightUserData(L, LuaDll.lua_upvalueindex(1));
+            Type type = TypeHandleStore.ReadLightUserData(L, LuaDll.lua_upvalueindex(LuaCallbackGate.ManagedUpvalueIndex(1)));
             string name = type != null ? TypeRegistry.GetLuaFullName(type) : "?";
             return LuaDllExtension.error(L, $"zlua: constructor for {name} not bound yet (Phase 3 Emit)");
         }
@@ -287,7 +289,7 @@ namespace ZLua.Mt
         {
             try
             {
-                Type type = TypeHandleStore.ReadLightUserData(L, LuaDll.lua_upvalueindex(1));
+                Type type = TypeHandleStore.ReadLightUserData(L, LuaDll.lua_upvalueindex(LuaCallbackGate.ManagedUpvalueIndex(1)));
                 if (type == null)
                 {
                     LuaCallbackBoundary.Throw("zlua: _default missing type");
@@ -321,20 +323,6 @@ namespace ZLua.Mt
                 case ulong ul: LuaDll.lua_pushinteger(L, (long)ul); break;
                 default: LuaDll.lua_pushinteger(L, Convert.ToInt64(underlying)); break;
             }
-        }
-
-        private static void EnsurePinned()
-        {
-            if (s_pinned)
-            {
-                return;
-            }
-
-            s_pins.Add(s_typeTableToString);
-            s_pins.Add(s_ctorNotReady);
-            s_pins.Add(s_structDefault);
-            s_pins.Add(s_delegateInstanceCall);
-            s_pinned = true;
         }
     }
 }

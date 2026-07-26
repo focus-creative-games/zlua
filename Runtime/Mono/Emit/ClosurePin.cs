@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using ZLua.Utils;
 
 namespace ZLua.Emit
 {
@@ -40,7 +41,7 @@ namespace ZLua.Emit
         {
             Pin(fn);
             IntPtr ptr = Marshal.GetFunctionPointerForDelegate(fn);
-            LuaDll.lua_pushcfunction(L, ptr);
+            LuaCallbackGate.PushCFunction(L, ptr);
         }
 
         internal static void PushWithTag(IntPtr L, LuaCSFunction fn, MethodClosureTag tag)
@@ -49,7 +50,7 @@ namespace ZLua.Emit
             GCHandle handle = PinTag(tag);
             IntPtr fnPtr = Marshal.GetFunctionPointerForDelegate(fn);
             LuaDll.lua_pushlightuserdata(L, GCHandle.ToIntPtr(handle));
-            LuaDll.lua_pushcclosure(L, fnPtr, 1);
+            LuaCallbackGate.PushCClosure(L, fnPtr, 1);
         }
 
         internal static void WriteToTable(IntPtr L, int tableRef, string name, LuaCSFunction fn)
@@ -76,7 +77,8 @@ namespace ZLua.Emit
                 return false;
             }
 
-            IntPtr upvalueName = LuaDll.lua_getupvalue(L, index, 1);
+            // Gated closures: uv1 = managed fn ptr, uv2 = tag.
+            IntPtr upvalueName = LuaDll.lua_getupvalue(L, index, LuaCallbackGate.FirstLogicalUpvalueSlot);
             if (upvalueName == IntPtr.Zero)
             {
                 return false;

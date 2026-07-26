@@ -42,7 +42,7 @@ namespace ZLua
 
         /// <summary>
         /// Cached upstream Lua / LuaJIT trees (not shipped in the UPM package).
-        /// PUC-Rio tarballs are downloaded here; LuaJIT is cloned by the developer.
+        /// PUC-Rio tarballs are downloaded here; LuaJIT is cloned into a staging dir and moved in.
         /// </summary>
         public static string LuaSrcCacheDir => Path.GetFullPath(Path.Combine(InstallRootDir, "LuaSrcCache"));
 
