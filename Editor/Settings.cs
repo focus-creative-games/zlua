@@ -32,13 +32,13 @@ namespace ZLua
         [Tooltip("Enable ZLua")]
         public bool enable = true;
 
-        [Tooltip("PUC-Rio: lua-X.Y.Z (downloaded from lua.org into Library/ZLua/LuaSrcCache). LuaJIT: luajit-M.N (clone into LuaSrcCache/luajit-M.N). Empty = lua-5.3.6. See spec 11-MULTI-VERSION.")]
-        public string luaVersionId = "lua-5.3.6";
+        [Tooltip("PUC-Rio: lua-X.Y.Z (downloaded from lua.org into Library/ZLua/LuaSrcCache). LuaJIT: luajit-M.N (clone into LuaSrcCache/luajit-M.N). Empty = lua-5.5.0. See spec 11-MULTI-VERSION.")]
+        public string luaVersionId = "lua-5.5.0";
 
         [Tooltip("MarshalAs XML files or directories (relative to project root or absolute). See spec marshal/02-MARSHAL-AS §9.")]
         public string[] marshalAsXmlPaths;
 
-        [Tooltip("Editor Mono only: inject EmmyLua emmy_core after Initialize. Package ships lua55/ only; other Lua versions: build from https://github.com/EmmyLua/EmmyLuaDebugger and place under emmylua/lua{major}{minor} or luajit{major}{minor}. Spec build/04-EMMYLUA-DEBUGGER.")]
+        [Tooltip("Editor Mono only: inject EmmyLua emmy_core after Initialize. Windows ships lua51–lua55 and luajit under Plugins/emmylua/; other OS currently lua55 only (self-build otherwise). Spec build/04-EMMYLUA-DEBUGGER.")]
         public bool enableDebugger = false;
 
         [Tooltip("EmmyLua tcpListen port (IDE Attach). Default 9966.")]

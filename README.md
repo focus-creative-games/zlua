@@ -10,15 +10,15 @@ ZLua是一个针对Il2Cpp极致优化的现代、简洁、易用的Unity Lua脚�
 
 ## 为什么选择 ZLua
 
-相对 xLua / toLua / SLua，ZLua 的核心主张是：
+相对 xLua / toLua / SLua，ZLua 的核心优点是：
 
 | | |
 |--|--|
 | **更易用** | 设计更现代；极度简单；**零配置**（无需 per-type C# Wrap 白名单） |
 | **更完备** | 标准和完备的 C#↔Lua 交互，几乎覆盖全部常用 C# 特性 |
-| **更高效** | Il2Cpp 实测：约 **98%** 对齐用例快于 xLua；Lua→C# 平均约 **2.62×**；常见字段 / 属性 / 调用约 **4×** |
+| **更高效** | Il2Cpp 实测：约 **98%** 测试用例快于 xLua；Lua→C# 平均约 **2.62×**；常见字段 / 属性 / 调用约 **4×** |
 | **更少 GC** | 引用类型与 struct（含含引用字段的 struct）默认 **0 GC**；另有 OpaqueValue 等策略 |
-| **极小桥接** | 同签名合并的高效 **C++** stub；体积可小一个数量级；支持 **0 桥接函数** |
+| **极小桥接** | 同签名合并的高效 **C++** stub；生成的桥接函数大小相比相比xlua的wrapper文件大小小一个数量级；支持 **0 桥接函数**，即使不生成任何桥接函数在大多数情况下性能仍然高于其他方案生成wrapper |
 | **版本更广** | Lua **5.1–5.5** 与 **LuaJIT 2.x**；Unity **2021.3 / 2022.3 / 6000.0 / 6000.3**；**团结引擎**全系列 |
 | **维护更积极** | 全职专业团队；Bug 响应与特性迭代更快 |
 
@@ -28,23 +28,13 @@ ZLua是一个针对Il2Cpp极致优化的现代、简洁、易用的Unity Lua脚�
 
 ## 特性
 
-### 互操作模型
-
-- **C# → Lua**：`LuaAppDomain.GetFunction<T>("module", "fn")`，绑定后直接调用
-- **Marshal 覆盖**：`[LuaMarshalAs]`
-- **Lua → C#**：`CSharp` 根表懒加载类型；语法贴近 C#（`Type.Static()` / `obj:Method()` / `obj.field`）
-- **双后端**：Editor **Mono** 与 Player **Il2Cpp** Lua 可见语义一致
-
-### 完备的 C# 能力
-
-包括但不限于：class / struct / interface / enum / nullable、静态与实例成员、泛型类与泛型方法、delegate、数组、方法重载、`ref` / `out` / `in`、Event（`add_` / `remove_`）等。
-
-### Il2Cpp 性能与体积
-
-- 内嵌 Lua，C++ 直桥：`methodPointer` / 字段 offset，**无**海量 C# Wrap
-- 托管对象 userdata 直含对象指针；GCRoots 在 native 侧维护
-- **同签名桥接函数合并**；字段 / 无参属性可不生成独立桥接
-- 发版前执行 **`ZLua/Generate/All`**（生成 **C++ stub**，不是 xLua 式 C# Wrap）
+- 极度易用，**零配置**，开箱即用。默认C#与lua之间既可任意相互调用，没有烦人的wrapper配置及各种复杂的配置
+- 统一和完备的C#与lua交互，lua中能像C#那样原生访问几乎所有C#特性
+- 显著高效，针对Il2Cpp和lua 高度优化，约 **98%** 测试用例快于 xLua；Lua→C# 平均约 **2.62×**；常见字段 / 属性 / 调用约 **4×**
+- 更少的GC，更统一和强大的参数传递策略，支持0GC传递任意对象，包括其他lua方案中不支持的含引用字段的struct类型。
+- 极小的桥接函数，通过合并相同签名的桥接函数，并且直接生成c++代码，即使全量生成的桥接函数，总大小相比于其他方案wrapper文件翻译的c++代码至少小了一个数量级。而且支持**0**桥接函数，即使不生成任何桥接函数，交互效率在大多数情况下也高于其他方案生成wrapper的情形
+- 内置支持 emmylua 调试
+- 开发期Mono + 发布时Il2Cpp双runtime，良好平衡开发效率和运行效率
 
 ### 平台与版本
 
@@ -62,7 +52,7 @@ ZLua是一个针对Il2Cpp极致优化的现代、简洁、易用的Unity Lua脚�
 
 ## 快速示例
 
-完整可运行工程见 [zlua-demo](https://github.com/focus-creative-games/zlua-demo)。下面三步体现 ZLua 的优点：**零 Wrap 配置**、**声明式调 Lua**、**Lua 侧像写 C#**。
+完整可运行工程见 [zlua-demo](https://github.com/focus-creative-games/zlua-demo)。
 
 ### 1. 初始化（只需 Loader）
 

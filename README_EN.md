@@ -10,15 +10,15 @@ ZLua is a modern, concise, and easy-to-use Unity Lua scripting solution with ext
 
 ## Why ZLua
 
-Compared with xLua / toLua / SLua, ZLua's core claims are:
+Compared with xLua / toLua / SLua, ZLua's core strengths are:
 
 | | |
 |--|--|
 | **Easier to use** | More modern design; extremely simple; **zero configuration** (no per-type C# Wrap whitelist) |
 | **More complete** | Standard and complete C#↔Lua interop, covering nearly all commonly used C# features |
-| **More efficient** | Il2Cpp measured: about **98%** of aligned cases faster than xLua; Lua→C# average about **2.62×**; common field / property / call cases about **4×** |
+| **More efficient** | Il2Cpp measured: about **98%** of test cases faster than xLua; Lua→C# average about **2.62×**; common field / property / call cases about **4×** |
 | **Less GC** | Reference types and structs (including structs with reference fields) are **0 GC** by default; plus OpaqueValue and other strategies |
-| **Tiny bridging** | Efficient **C++** stubs with same-signature merging; footprint can be an order of magnitude smaller; supports **0 bridge functions** |
+| **Tiny bridging** | Efficient **C++** stubs with same-signature merging; generated bridge size is about an order of magnitude smaller than xLua-style wrappers translated to C++; supports **0 bridge functions**, and even without generating any bridges, interop is still faster than other solutions' wrapper paths in most cases |
 | **Wider version support** | Lua **5.1–5.5** and **LuaJIT 2.x**; Unity **2021.3 / 2022.3 / 6000.0 / 6000.3**; **Tuanjie Engine** (all releases) |
 | **More active maintenance** | Full-time professional team; faster bug response and feature iteration |
 
@@ -28,23 +28,13 @@ For performance details, see [Performance Comparison](https://doc.zlua.cn/docs/c
 
 ## Features
 
-### Interop Model
-
-- **C# → Lua**: `LuaAppDomain.GetFunction<T>("module", "fn")`, then invoke the returned delegate
-- **Marshal overrides**: `[LuaMarshalAs]`
-- **Lua → C#**: Lazy-loaded types under the `CSharp` root table; syntax close to C# (`Type.Static()` / `obj:Method()` / `obj.field`)
-- **Dual backends**: Editor **Mono** and Player **Il2Cpp** share the same Lua-visible semantics
-
-### Complete C# Capability
-
-Including but not limited to: class / struct / interface / enum / nullable, static and instance members, generic classes and generic methods, delegates, arrays, method overloads, `ref` / `out` / `in`, Events (`add_` / `remove_`), and more.
-
-### Il2Cpp Performance and Size
-
-- Embedded Lua with a direct C++ bridge: `methodPointer` / field offset, **no** massive C# Wrap files
-- Managed object userdata holds the object pointer directly; GCRoots are maintained on the native side
-- **Same-signature bridge functions are merged**; fields / parameterless properties may skip dedicated bridges
-- Before shipping, run **`ZLua/Generate/All`** (generates **C++ stubs**, not xLua-style C# Wrap)
+- Extremely easy to use: **zero configuration**, works out of the box. C# and Lua can call each other freely by default—no tedious wrapper lists or complex export setup
+- Unified, complete C#↔Lua interop: access nearly all C# features from Lua with a native, C#-like feel
+- Highly optimized for Il2Cpp and Lua: about **98%** of test cases faster than xLua; Lua→C# average about **2.62×**; common field / property / call cases about **4×**
+- Less GC and stronger, more consistent marshaling: **0 GC** for arbitrary objects, including structs with reference fields that other Lua solutions often cannot pass that way
+- Tiny bridge functions: merge same-signature bridges and emit C++ directly; even a full generate is about an order of magnitude smaller than other solutions' wrappers translated to C++. Supports **0** bridge functions—and even then, interop is still faster than other solutions' wrapper paths in most cases
+- Built-in **EmmyLua** debugging support
+- Dual runtime: **Mono** in development and **Il2Cpp** at ship time—balancing editor productivity and player performance
 
 ### Platforms and Versions
 
@@ -62,7 +52,7 @@ Including but not limited to: class / struct / interface / enum / nullable, stat
 
 ## Quick Examples
 
-For a complete runnable project, see [zlua-demo](https://github.com/focus-creative-games/zlua-demo). The three steps below highlight ZLua's strengths: **zero Wrap configuration**, **declarative Lua calls**, and **Lua that feels like C#**.
+For a complete runnable project, see [zlua-demo](https://github.com/focus-creative-games/zlua-demo).
 
 ### 1. Initialization (Loader Only)
 

@@ -118,7 +118,7 @@ namespace ZLua.Lvm
                     + EmmyLuaDebugger.SeriesFolderName
                     + "'. Expected: "
                     + missingPath
-                    + ". Ship only lua55/; for other Lua versions build emmy_core from "
+                    + ". Windows ships series folders under Plugins/emmylua/; for missing platforms see "
                     + "https://github.com/EmmyLua/EmmyLuaDebugger and place under Plugins/emmylua/"
                     + EmmyLuaDebugger.SeriesFolderName
                     + "/<platform>/ (see spec build/04-EMMYLUA-DEBUGGER).");

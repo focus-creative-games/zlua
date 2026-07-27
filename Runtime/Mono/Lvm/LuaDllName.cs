@@ -24,8 +24,8 @@ namespace ZLua
 #elif ZLUA_LUA_5_1
         public const string LUA_DLL = "lua51";
 #else
-        // Default matches Settings default lua-5.3.6 → series lua53.
-        public const string LUA_DLL = "lua53";
+        // Default matches Settings default lua-5.5.0 → series lua55.
+        public const string LUA_DLL = "lua55";
 #endif
     }
 }

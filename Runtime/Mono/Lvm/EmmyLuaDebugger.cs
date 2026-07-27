@@ -9,7 +9,7 @@ namespace ZLua.Lvm
     /// <summary>
     /// Editor EmmyLua inject (spec build/04-EMMYLUA-DEBUGGER). Layout:
     /// Plugins/emmylua/{series}/win32-x64|darwin-arm64|darwin-x64|linux-x64/emmy_core.*
-    /// Series folder matches Editor DLL logical name (lua55, luajit21, …).
+    /// Series folder: lua55 / … / luajit (JIT does not split 2.0 vs 2.1 for emmy_core).
     /// </summary>
     internal static class EmmyLuaDebugger
     {
@@ -20,12 +20,8 @@ namespace ZLua.Lvm
         {
             get
             {
-#if ZLUA_LUAJIT_2_1
-                return "luajit21";
-#elif ZLUA_LUAJIT_2_0
-                return "luajit20";
-#elif ZLUA_USE_LUAJIT
-                return "luajit21";
+#if ZLUA_LUAJIT_2_1 || ZLUA_LUAJIT_2_0 || ZLUA_USE_LUAJIT
+                return "luajit";
 #elif ZLUA_LUA_5_5
                 return "lua55";
 #elif ZLUA_LUA_5_4

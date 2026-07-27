@@ -16,25 +16,30 @@ Naming: `lua` + major + minor → `lua53` for 5.3.x (no patch digit).
 Upstream: [EmmyLua/EmmyLuaDebugger](https://github.com/EmmyLua/EmmyLuaDebugger)  
 (`EMMY_LUA_VERSION` default **55**; build options / usage → that README.)
 
-**Series folder naming** (must match Editor DLL logical name):
+**Series folder naming:**
 
 | Engine | Folder |
 |--------|--------|
 | Official Lua | `lua{major}{minor}` → e.g. `lua55`, `lua54`, `lua53` |
-| LuaJIT | `luajit{major}{minor}` → e.g. `luajit21`, `luajit20` |
+| LuaJIT | **`luajit`** (2.0 / 2.1 share one folder; Emmy `-DEMMY_LUA_VERSION=jit`) |
+
+One build per **PUC major series** (not per patch); all LuaJIT 2.x share **`luajit/`**. Example layout:
 
 ```text
 emmylua/
-  lua55/          # shipped only (Emmy default = 55)
+  lua51/win32-x64/emmy_core.dll   # Windows shipped
+  lua52/win32-x64/…
+  lua53/win32-x64/…
+  lua54/win32-x64/…
+  lua55/                          # Windows + macOS + Linux shipped
     win32-x64/emmy_core.dll
     darwin-arm64/emmy_core.dylib
     darwin-x64/emmy_core.dylib
     linux-x64/emmy_core.so
-  lua53/…         # not 5.5: build yourself per EmmyLuaDebugger docs, then place here
-  luajit21/…
+  luajit/win32-x64/…              # Windows shipped (Emmy jit)
 ```
 
-If your Lua is **not 5.5**, read the EmmyLuaDebugger docs, build with matching `-DEMMY_LUA_VERSION=…` / `jit`, and put `emmy_core` under the correct series + platform folder.  
+**Shipped today:** all series above for **Windows x64**; non-Windows currently **`lua55` only**. Other OS/series: build yourself per EmmyLuaDebugger docs.  
 Settings: `enableDebugger` / `debuggerPort` / `debuggerWaitIDE` (spec `build/04-EMMYLUA-DEBUGGER`).  
 Missing series dir → **LogError and skip** (does not throw).  
 **PluginImporter:** keep all `emmy_core` **disabled** on every platform (Lua loads via `package.cpath` only).

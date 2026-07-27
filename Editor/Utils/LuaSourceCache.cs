@@ -16,7 +16,7 @@ namespace ZLua.Utils
     /// </summary>
     public static class LuaSourceCache
     {
-        public const string DefaultPucRioVersionId = "lua-5.3.6";
+        public const string DefaultPucRioVersionId = "lua-5.5.0";
 
         private static readonly Regex s_pucRio = new Regex(
             @"^lua-(\d+)\.(\d+)\.(\d+)$",
