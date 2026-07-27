@@ -55,31 +55,108 @@ namespace ZLua
             _luaEnv.LoadBuiltinGlobals();
             LuaMarshalAsValidation.ReportInvalidConfiguration = LuaPrintBuffer.EnqueueEditorError;
 #if UNITY_EDITOR
-            // Settings-backed XML; Editor bootstrap also loads on domain reload.
+            LoadMarshalAsXmlFromSettings();
+#endif
+            AssemblyRegistry.EnsureCSharpRoot();
+            ZLuaLib.RegisterGlobals(_luaEnv);
+            _luaEnv.EnsureBuiltinZLuaLib();
+            DelegateBridges.Warmup();
+#if UNITY_EDITOR
+            TryStartEmmyDebuggerFromSettings();
+#endif
+        }
+
+#if UNITY_EDITOR
+        private const System.Reflection.BindingFlags StaticPublic =
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static;
+
+        /// <summary>
+        /// <see cref="ZLua.Settings"/> lives in ZLua.Editor; Mono resolves it by reflection to avoid an Editor asmref cycle.
+        /// </summary>
+        private static bool TryGetEditorSettings(out object settings, out Type settingsType)
+        {
+            settings = null;
+            settingsType = Type.GetType("ZLua.Settings, ZLua.Editor");
+            if (settingsType == null)
+            {
+                return false;
+            }
+
+            var instanceProp = settingsType.GetProperty("Instance", StaticPublic);
+            settings = instanceProp?.GetValue(null);
+            return settings != null;
+        }
+
+        private static bool TryGetSettingsField<T>(object settings, Type settingsType, string fieldName, out T value)
+        {
+            value = default;
+            var field = settingsType.GetField(fieldName);
+            if (field == null)
+            {
+                return false;
+            }
+
+            object raw = field.GetValue(settings);
+            if (raw is T typed)
+            {
+                value = typed;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void LoadMarshalAsXmlFromSettings()
+        {
             try
             {
-                Type settingsType = Type.GetType("ZLua.Settings, ZLua.Editor");
-                if (settingsType != null)
+                if (!TryGetEditorSettings(out object settings, out Type settingsType))
                 {
-                    var instanceProp = settingsType.GetProperty("Instance", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                    object settings = instanceProp?.GetValue(null);
-                    var pathsField = settingsType.GetField("marshalAsXmlPaths");
-                    string[] paths = pathsField?.GetValue(settings) as string[];
-                    string projectRoot = Path.GetDirectoryName(Application.dataPath);
-                    LuaMarshalAsXmlRegistry.Load(paths, projectRoot);
+                    return;
                 }
+
+                TryGetSettingsField(settings, settingsType, "marshalAsXmlPaths", out string[] paths);
+                string projectRoot = Path.GetDirectoryName(Application.dataPath);
+                LuaMarshalAsXmlRegistry.Load(paths, projectRoot);
             }
             catch (Exception ex)
             {
                 Debug.LogError("[ZLua] MarshalAs XML load failed at Initialize:\n" + ex.Message);
                 throw;
             }
-#endif
-            AssemblyRegistry.EnsureCSharpRoot();
-            ZLuaLib.RegisterGlobals(_luaEnv);
-            _luaEnv.EnsureBuiltinZLuaLib();
-            DelegateBridges.Warmup();
         }
+
+        private static void TryStartEmmyDebuggerFromSettings()
+        {
+            try
+            {
+                if (!TryGetEditorSettings(out object settings, out Type settingsType))
+                {
+                    return;
+                }
+
+                if (!TryGetSettingsField(settings, settingsType, "enableDebugger", out bool enable) || !enable)
+                {
+                    return;
+                }
+
+                int port = 9966;
+                if (TryGetSettingsField(settings, settingsType, "debuggerPort", out int configuredPort)
+                    && configuredPort > 0
+                    && configuredPort <= 65535)
+                {
+                    port = configuredPort;
+                }
+
+                TryGetSettingsField(settings, settingsType, "debuggerWaitIDE", out bool waitIde);
+                _luaEnv.StartDebugger(port, waitIde);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("[ZLua] EmmyLua debugger settings read failed:\n" + ex.Message);
+            }
+        }
+#endif
 
         public static void Shutdown()
         {

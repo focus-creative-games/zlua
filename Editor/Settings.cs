@@ -38,6 +38,14 @@ namespace ZLua
         [Tooltip("MarshalAs XML files or directories (relative to project root or absolute). See spec marshal/02-MARSHAL-AS §9.")]
         public string[] marshalAsXmlPaths;
 
+        [Tooltip("Editor Mono only: inject EmmyLua emmy_core after Initialize. Package ships lua55/ only; other Lua versions: build from https://github.com/EmmyLua/EmmyLuaDebugger and place under emmylua/lua{major}{minor} or luajit{major}{minor}. Spec build/04-EMMYLUA-DEBUGGER.")]
+        public bool enableDebugger = false;
+
+        [Tooltip("EmmyLua tcpListen port (IDE Attach). Default 9966.")]
+        public int debuggerPort = 9966;
+
+        [Tooltip("If true, dbg.waitIDE() blocks the Unity main thread until the IDE attaches. Leave false unless you need to break before first business Lua.")]
+        public bool debuggerWaitIDE = false;
 
         public static Settings Instance => instance;
 

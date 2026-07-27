@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using UnityEngine;
 using ZLua.Marshaling;
 using ZLua.Mt;
 using ZLua.Utils;
@@ -22,6 +23,7 @@ namespace ZLua.Lvm
         private int _errorHandlerRef = LuaConsts.LuaNoRef;
         private bool _printRegistered;
         private bool _moduleLoaderHooksInstalled;
+        private bool _emmyDebuggerStarted;
 
         public IntPtr L
         {
@@ -95,6 +97,49 @@ namespace ZLua.Lvm
             if (!HasZLuaTypesTable())
             {
                 throw new InvalidOperationException("zlua.types was not initialized after loading zlualib.lua");
+            }
+        }
+
+        /// <summary>
+        /// Inject EmmyLua <c>emmy_core</c> (Editor only). Missing series/platform dir → log and return (no throw).
+        /// See spec build/04-EMMYLUA-DEBUGGER.
+        /// </summary>
+        public void StartDebugger(int port = 9966, bool waitIde = false)
+        {
+            if (_emmyDebuggerStarted)
+            {
+                return;
+            }
+
+            if (!EmmyLuaDebugger.TryResolveNativeDir(out string nativeDir, out string cpathExt, out string missingPath))
+            {
+                Debug.LogError(
+                    "[ZLua] EmmyLua debugger skipped: native plugin directory not found for series '"
+                    + EmmyLuaDebugger.SeriesFolderName
+                    + "'. Expected: "
+                    + missingPath
+                    + ". Ship only lua55/; for other Lua versions build emmy_core from "
+                    + "https://github.com/EmmyLua/EmmyLuaDebugger and place under Plugins/emmylua/"
+                    + EmmyLuaDebugger.SeriesFolderName
+                    + "/<platform>/ (see spec build/04-EMMYLUA-DEBUGGER).");
+                return;
+            }
+
+            try
+            {
+                string chunk = EmmyLuaDebugger.BuildInitChunk(nativeDir, cpathExt, port, waitIde);
+                DoStringIgnoreResult(chunk);
+                _emmyDebuggerStarted = true;
+                Debug.Log(
+                    "[ZLua] EmmyLua debugger listening on 127.0.0.1:"
+                    + port
+                    + (waitIde ? " (waitIDE)" : string.Empty)
+                    + " — series "
+                    + EmmyLuaDebugger.SeriesFolderName);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("[ZLua] EmmyLua debugger failed to start:\n" + ex.Message);
             }
         }
 
