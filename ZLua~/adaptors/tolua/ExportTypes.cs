@@ -1,8 +1,9 @@
 // ZLua migration helper for toLua projects.
-// Copy this file into your toLua project's Editor folder, then use menu ZLua/ExportTypes.
+// Copy into your toLua project's Editor folder, then menu ZLua/ExportTypes.
 // Spec: docs/spec/12-MIGRATION-ADAPTORS.md
 //
-// Collects types from CustomSettings.customTypeList (same whitelist as Gen Lua Wrap).
+// export_name follows runtime registration: nameSpace.libName (e.g. UnityEngine.GameObject),
+// not Type.Name alone. SetNameSpace(null) → libName at root; SetLibName overrides libName.
 
 using System;
 using System.Collections.Generic;
@@ -16,8 +17,24 @@ using BindType = ToLuaMenu.BindType;
 
 public static class ZLuaToLuaExportTypes
 {
-    /// <summary>Change if you want a different require-friendly path under Assets.</summary>
     public const string OutputRelativePath = "ZLua/tolua_export_types.lua";
+
+    private struct Entry : IComparable<Entry>
+    {
+        public string FullName;
+        public string ExportName;
+
+        public int CompareTo(Entry other)
+        {
+            int c = string.CompareOrdinal(FullName, other.FullName);
+            if (c != 0)
+            {
+                return c;
+            }
+
+            return string.CompareOrdinal(ExportName, other.ExportName);
+        }
+    }
 
     [MenuItem("ZLua/ExportTypes")]
     public static void ExportTypes()
@@ -30,22 +47,24 @@ public static class ZLuaToLuaExportTypes
         }
 
         int skipped = 0;
-        var byAssembly = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+        var byAssembly = new SortedDictionary<string, SortedSet<Entry>>(StringComparer.Ordinal);
         foreach (BindType bind in list)
         {
-            Type type = bind != null ? bind.type : null;
-            if (!TryAddType(type, byAssembly, out string reason))
+            if (!TryAddBind(bind, byAssembly, out string reason))
             {
                 skipped++;
                 if (!string.IsNullOrEmpty(reason))
                 {
-                    Debug.LogWarning("ZLua ExportTypes (toLua): skip " + Describe(type) + " — " + reason);
+                    string describe = bind != null && bind.type != null
+                        ? (bind.type.FullName ?? bind.type.Name)
+                        : "<null>";
+                    Debug.LogWarning("ZLua ExportTypes (toLua): skip " + describe + " — " + reason);
                 }
             }
         }
 
         string absPath = Path.Combine(Application.dataPath, OutputRelativePath.Replace('/', Path.DirectorySeparatorChar));
-        WriteLuaModule(absPath, "toLua", byAssembly);
+        WriteLuaModule(absPath, byAssembly);
         AssetDatabase.Refresh();
 
         int count = byAssembly.Sum(kv => kv.Value.Count);
@@ -58,15 +77,16 @@ public static class ZLuaToLuaExportTypes
         }
     }
 
-    static bool TryAddType(Type type, SortedDictionary<string, SortedSet<string>> byAssembly, out string reason)
+    static bool TryAddBind(BindType bind, SortedDictionary<string, SortedSet<Entry>> byAssembly, out string reason)
     {
         reason = null;
-        if (type == null)
+        if (bind == null || bind.type == null)
         {
-            reason = "null type";
+            reason = "null BindType";
             return false;
         }
 
+        Type type = bind.type;
         if (type.IsGenericTypeDefinition)
         {
             reason = "open generic (not mounted by adaptor MVP)";
@@ -99,28 +119,44 @@ public static class ZLuaToLuaExportTypes
             return false;
         }
 
-        SortedSet<string> set;
+        string exportName = BuildExportName(bind);
+        if (string.IsNullOrEmpty(exportName))
+        {
+            reason = "empty export_name";
+            return false;
+        }
+
+        SortedSet<Entry> set;
         if (!byAssembly.TryGetValue(asmName, out set))
         {
-            set = new SortedSet<string>(StringComparer.Ordinal);
+            set = new SortedSet<Entry>();
             byAssembly[asmName] = set;
         }
 
-        set.Add(fullName);
+        set.Add(new Entry { FullName = fullName, ExportName = exportName });
         return true;
     }
 
-    static string Describe(Type type)
+    /// <summary>
+    /// Mirrors toLua LuaBinder registration: BeginModule(nameSpace) + libName.
+    /// </summary>
+    static string BuildExportName(BindType bind)
     {
-        if (type == null)
+        string lib = bind.libName;
+        if (string.IsNullOrEmpty(lib))
         {
-            return "<null>";
+            lib = bind.type.Name;
         }
 
-        return type.FullName ?? type.Name;
+        if (string.IsNullOrEmpty(bind.nameSpace))
+        {
+            return lib;
+        }
+
+        return bind.nameSpace + "." + lib;
     }
 
-    static void WriteLuaModule(string absPath, string scheme, SortedDictionary<string, SortedSet<string>> byAssembly)
+    static void WriteLuaModule(string absPath, SortedDictionary<string, SortedSet<Entry>> byAssembly)
     {
         string dir = Path.GetDirectoryName(absPath);
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -129,13 +165,14 @@ public static class ZLuaToLuaExportTypes
         }
 
         var sb = new StringBuilder(8 * 1024);
-        sb.AppendLine("-- Auto-generated by ZLua/ExportTypes (" + scheme + ").");
+        sb.AppendLine("-- Auto-generated by ZLua/ExportTypes (toLua).");
         sb.AppendLine("-- " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         sb.AppendLine("-- Do not edit by hand; regenerate after changing CustomSettings.customTypeList.");
         sb.AppendLine("return {");
+        sb.AppendLine("  types = {");
 
         bool firstAsm = true;
-        foreach (KeyValuePair<string, SortedSet<string>> kv in byAssembly)
+        foreach (KeyValuePair<string, SortedSet<Entry>> kv in byAssembly)
         {
             if (!firstAsm)
             {
@@ -143,12 +180,12 @@ public static class ZLuaToLuaExportTypes
             }
 
             firstAsm = false;
-            sb.Append("  [");
+            sb.Append("    [");
             sb.Append(LuaQuote(kv.Key));
             sb.AppendLine("] = {");
 
             bool firstType = true;
-            foreach (string fullName in kv.Value)
+            foreach (Entry e in kv.Value)
             {
                 if (!firstType)
                 {
@@ -156,8 +193,14 @@ public static class ZLuaToLuaExportTypes
                 }
 
                 firstType = false;
-                sb.Append("    ");
-                sb.Append(LuaQuote(fullName));
+                sb.Append("      { full_name = ");
+                sb.Append(LuaQuote(e.FullName));
+                if (!string.Equals(e.ExportName, e.FullName, StringComparison.Ordinal))
+                {
+                    sb.Append(", export_name = ");
+                    sb.Append(LuaQuote(e.ExportName));
+                }
+                sb.Append(" }");
             }
 
             if (kv.Value.Count > 0)
@@ -165,7 +208,7 @@ public static class ZLuaToLuaExportTypes
                 sb.AppendLine();
             }
 
-            sb.Append("  }");
+            sb.Append("    }");
         }
 
         if (byAssembly.Count > 0)
@@ -173,6 +216,7 @@ public static class ZLuaToLuaExportTypes
             sb.AppendLine();
         }
 
+        sb.AppendLine("  },");
         sb.AppendLine("}");
 
         File.WriteAllText(absPath, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));

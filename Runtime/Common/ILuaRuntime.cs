@@ -3,8 +3,9 @@ using System;
 namespace ZLua
 {
     /// <summary>
-    /// Backend contract for <see cref="LuaAppDomain"/>. Implemented by Mono / Il2Cpp assemblies
-    /// and registered via <see cref="LuaAppDomain.SetRuntime"/> (no Common→backend reference).
+    /// Backend contract for <see cref="LuaAppDomain"/>. Implemented by nested
+    /// <c>Runtime</c> types in Mono / Il2Cpp assemblies; Common creates them by reflection
+    /// (no Common→backend compile-time reference).
     /// </summary>
     public interface ILuaRuntime
     {

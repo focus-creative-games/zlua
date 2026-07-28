@@ -1,22 +1,15 @@
 using System;
+using System.Reflection;
 
 namespace ZLua
 {
     /// <summary>
     /// Host-facing facade. Concrete work is performed by an <see cref="ILuaRuntime"/>
-    /// registered from <c>ZLua.Mono</c> (Editor) or <c>ZLua.Il2Cpp</c> (Player).
+    /// created on demand from <c>ZLua.Mono</c> (Editor) or <c>ZLua.Il2Cpp</c> (Player).
     /// </summary>
     public static class LuaAppDomain
     {
         private static ILuaRuntime s_runtime;
-
-        /// <summary>
-        /// Called by backend assemblies at <c>SubsystemRegistration</c>.
-        /// </summary>
-        public static void SetRuntime(ILuaRuntime runtime)
-        {
-            s_runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
-        }
 
         public static void Initialize(Func<string, object> moduleLoader)
         {
@@ -54,11 +47,31 @@ namespace ZLua
 
         private static void EnsureRuntime()
         {
-            if (s_runtime == null)
+            if (s_runtime != null)
+            {
+                return;
+            }
+
+#if UNITY_EDITOR
+            const string hostTypeName = "ZLua.LuaMonoAppDomain, ZLua.Mono";
+#else
+            const string hostTypeName = "ZLua.LuaIl2CppAppDomain, ZLua.Il2Cpp";
+#endif
+            Type hostType = Type.GetType(hostTypeName);
+            if (hostType == null)
             {
                 throw new InvalidOperationException(
-                    "ZLua runtime is not registered. Ensure ZLua.Mono (Editor) or ZLua.Il2Cpp (Player) is loaded.");
+                    $"ZLua backend type not found: '{hostTypeName}'. Ensure the matching package assembly is loaded.");
             }
+
+            Type runtimeType = hostType.GetNestedType("Runtime", BindingFlags.NonPublic);
+            if (runtimeType == null || !typeof(ILuaRuntime).IsAssignableFrom(runtimeType))
+            {
+                throw new InvalidOperationException(
+                    $"ZLua backend '{hostTypeName}' is missing a non-public nested Runtime : ILuaRuntime.");
+            }
+
+            s_runtime = (ILuaRuntime)Activator.CreateInstance(runtimeType, nonPublic: true);
         }
     }
 }

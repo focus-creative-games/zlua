@@ -1,12 +1,11 @@
 using System;
 using System.Runtime.CompilerServices;
-using UnityEngine;
 
 namespace ZLua
 {
     /// <summary>
-    /// Player Il2Cpp backend entry. Registers into <see cref="LuaAppDomain"/> at subsystem startup
-    /// (skipped in Editor so Mono remains the active runtime).
+    /// Player Il2Cpp backend entry. Invoked by <see cref="LuaAppDomain"/> via reflective
+    /// construction of nested <see cref="Runtime"/> (Editor uses Mono instead).
     /// </summary>
     public static class LuaIl2CppAppDomain
     {
@@ -18,14 +17,6 @@ namespace ZLua
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern Delegate GetFunctionInternal(Type delegateType, string luaModule, string luaMethodName);
-
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void RegisterRuntime()
-        {
-#if !UNITY_EDITOR
-            LuaAppDomain.SetRuntime(new Runtime());
-#endif
-        }
 
         public static void Initialize(Func<string, object> moduleLoader)
         {

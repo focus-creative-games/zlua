@@ -9,7 +9,8 @@ using ZLua.Utils;
 namespace ZLua
 {
     /// <summary>
-    /// Editor Mono backend entry. Registers into <see cref="LuaAppDomain"/> at subsystem startup.
+    /// Editor Mono backend entry. Invoked by <see cref="LuaAppDomain"/> via reflective
+    /// construction of nested <see cref="Runtime"/>.
     /// </summary>
     public static class LuaMonoAppDomain
     {
@@ -26,19 +27,6 @@ namespace ZLua
 
                 return _luaEnv;
             }
-        }
-
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void RegisterRuntimeEarly() => EnsureRuntimeRegistered();
-
-        // Batchmode -executeMethod may compile packages after SubsystemRegistration already ran.
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterAssembliesLoaded)]
-        private static void RegisterRuntimeAfterAssemblies() => EnsureRuntimeRegistered();
-
-        /// <summary>Idempotent Editor backend registration (safe to call from batch smoke).</summary>
-        public static void EnsureRuntimeRegistered()
-        {
-            LuaAppDomain.SetRuntime(new Runtime());
         }
 
         public static void Initialize(Func<string, object> moduleLoader)

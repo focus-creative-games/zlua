@@ -1,9 +1,6 @@
 // ZLua migration helper for SLua projects.
-// Copy this file into your SLua project's Editor folder, then use menu ZLua/ExportTypes.
+// Copy into your SLua project's Editor folder, then menu ZLua/ExportTypes.
 // Spec: docs/spec/12-MIGRATION-ADAPTORS.md
-//
-// Collects types the same way as SLua menu "SLua/Custom/Make" (CustomLuaClass,
-// custom namespaces, OnAddCustomClass / ICustomExportPost).
 
 using System;
 using System.Collections.Generic;
@@ -17,29 +14,47 @@ using UnityEngine;
 
 public static class ZLuaSLuaExportTypes
 {
-    /// <summary>Change if you want a different require-friendly path under Assets.</summary>
     public const string OutputRelativePath = "ZLua/slua_export_types.lua";
+
+    private struct Entry : IComparable<Entry>
+    {
+        public string FullName;
+        public string ExportName;
+
+        public int CompareTo(Entry other)
+        {
+            int c = string.CompareOrdinal(FullName, other.FullName);
+            if (c != 0)
+            {
+                return c;
+            }
+
+            return string.CompareOrdinal(ExportName, other.ExportName);
+        }
+    }
 
     [MenuItem("ZLua/ExportTypes")]
     public static void ExportTypes()
     {
-        List<Type> types = CollectCustomTypes();
+        var byAssembly = new SortedDictionary<string, SortedSet<Entry>>(StringComparer.Ordinal);
         int skipped = 0;
-        var byAssembly = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
-        foreach (Type type in types)
+
+        void Add(Type t, string exportNameOverride)
         {
-            if (!TryAddType(type, byAssembly, out string reason))
+            if (!TryAddType(t, exportNameOverride, byAssembly, out string reason))
             {
                 skipped++;
                 if (!string.IsNullOrEmpty(reason))
                 {
-                    Debug.LogWarning("ZLua ExportTypes (SLua): skip " + Describe(type) + " — " + reason);
+                    Debug.LogWarning("ZLua ExportTypes (SLua): skip " + Describe(t) + " — " + reason);
                 }
             }
         }
 
+        CollectCustomTypes(Add);
+
         string absPath = Path.Combine(Application.dataPath, OutputRelativePath.Replace('/', Path.DirectorySeparatorChar));
-        WriteLuaModule(absPath, "SLua", byAssembly);
+        WriteLuaModule(absPath, byAssembly);
         AssetDatabase.Refresh();
 
         int count = byAssembly.Sum(kv => kv.Value.Count);
@@ -52,22 +67,10 @@ public static class ZLuaSLuaExportTypes
         }
     }
 
-    static List<Type> CollectCustomTypes()
+    static void CollectCustomTypes(LuaCodeGen.ExportGenericDelegate add)
     {
-        var result = new List<Type>();
-        var seen = new HashSet<Type>();
-
-        void Add(Type t, string ns)
-        {
-            if (t != null && seen.Add(t))
-            {
-                result.Add(t);
-            }
-        }
-
         HashSet<string> namespaces = CustomExport.OnAddCustomNamespace() ?? new HashSet<string>();
 
-        // Merge ICustomExportPost.OnAddCustomNamespace results (same as LuaCodeGen.Custom).
         object[] unused = null;
         List<object> customNsSets = LuaCodeGen.InvokeEditorMethod<ICustomExportPost>("OnAddCustomNamespace", ref unused);
         if (customNsSets != null)
@@ -87,15 +90,13 @@ public static class ZLuaSLuaExportTypes
             }
         }
 
-        ScanAssembly("Assembly-CSharp-firstpass", namespaces, Add);
-        ScanAssembly("Assembly-CSharp", namespaces, Add);
+        ScanAssembly("Assembly-CSharp-firstpass", namespaces, add);
+        ScanAssembly("Assembly-CSharp", namespaces, add);
 
-        CustomExport.OnAddCustomClass(Add);
+        CustomExport.OnAddCustomClass(add);
 
-        object[] args = { (LuaCodeGen.ExportGenericDelegate)Add };
+        object[] args = { add };
         LuaCodeGen.InvokeEditorMethod<ICustomExportPost>("OnAddCustomClass", ref args);
-
-        return result;
     }
 
     static void ScanAssembly(string assemblyName, HashSet<string> namespaces, LuaCodeGen.ExportGenericDelegate add)
@@ -116,11 +117,14 @@ public static class ZLuaSLuaExportTypes
         }
         catch (Exception)
         {
-            // firstpass / missing assembly is normal.
         }
     }
 
-    static bool TryAddType(Type type, SortedDictionary<string, SortedSet<string>> byAssembly, out string reason)
+    static bool TryAddType(
+        Type type,
+        string exportNameOverride,
+        SortedDictionary<string, SortedSet<Entry>> byAssembly,
+        out string reason)
     {
         reason = null;
         if (type == null)
@@ -161,28 +165,29 @@ public static class ZLuaSLuaExportTypes
             return false;
         }
 
-        SortedSet<string> set;
+        string exportName = exportNameOverride;
+        if (string.IsNullOrEmpty(exportName))
+        {
+            exportName = fullName.Replace('+', '.');
+        }
+
+        SortedSet<Entry> set;
         if (!byAssembly.TryGetValue(asmName, out set))
         {
-            set = new SortedSet<string>(StringComparer.Ordinal);
+            set = new SortedSet<Entry>();
             byAssembly[asmName] = set;
         }
 
-        set.Add(fullName);
+        set.Add(new Entry { FullName = fullName, ExportName = exportName });
         return true;
     }
 
     static string Describe(Type type)
     {
-        if (type == null)
-        {
-            return "<null>";
-        }
-
-        return type.FullName ?? type.Name;
+        return type == null ? "<null>" : (type.FullName ?? type.Name);
     }
 
-    static void WriteLuaModule(string absPath, string scheme, SortedDictionary<string, SortedSet<string>> byAssembly)
+    static void WriteLuaModule(string absPath, SortedDictionary<string, SortedSet<Entry>> byAssembly)
     {
         string dir = Path.GetDirectoryName(absPath);
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -191,13 +196,14 @@ public static class ZLuaSLuaExportTypes
         }
 
         var sb = new StringBuilder(8 * 1024);
-        sb.AppendLine("-- Auto-generated by ZLua/ExportTypes (" + scheme + ").");
+        sb.AppendLine("-- Auto-generated by ZLua/ExportTypes (SLua).");
         sb.AppendLine("-- " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         sb.AppendLine("-- Do not edit by hand; regenerate after changing SLua custom export config.");
         sb.AppendLine("return {");
+        sb.AppendLine("  types = {");
 
         bool firstAsm = true;
-        foreach (KeyValuePair<string, SortedSet<string>> kv in byAssembly)
+        foreach (KeyValuePair<string, SortedSet<Entry>> kv in byAssembly)
         {
             if (!firstAsm)
             {
@@ -205,12 +211,12 @@ public static class ZLuaSLuaExportTypes
             }
 
             firstAsm = false;
-            sb.Append("  [");
+            sb.Append("    [");
             sb.Append(LuaQuote(kv.Key));
             sb.AppendLine("] = {");
 
             bool firstType = true;
-            foreach (string fullName in kv.Value)
+            foreach (Entry e in kv.Value)
             {
                 if (!firstType)
                 {
@@ -218,8 +224,14 @@ public static class ZLuaSLuaExportTypes
                 }
 
                 firstType = false;
-                sb.Append("    ");
-                sb.Append(LuaQuote(fullName));
+                sb.Append("      { full_name = ");
+                sb.Append(LuaQuote(e.FullName));
+                if (!string.Equals(e.ExportName, e.FullName, StringComparison.Ordinal))
+                {
+                    sb.Append(", export_name = ");
+                    sb.Append(LuaQuote(e.ExportName));
+                }
+                sb.Append(" }");
             }
 
             if (kv.Value.Count > 0)
@@ -227,7 +239,7 @@ public static class ZLuaSLuaExportTypes
                 sb.AppendLine();
             }
 
-            sb.Append("  }");
+            sb.Append("    }");
         }
 
         if (byAssembly.Count > 0)
@@ -235,6 +247,7 @@ public static class ZLuaSLuaExportTypes
             sb.AppendLine();
         }
 
+        sb.AppendLine("  },");
         sb.AppendLine("}");
 
         File.WriteAllText(absPath, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
