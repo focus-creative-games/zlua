@@ -4,51 +4,71 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using UnityEditor;
-using System.Reflection;
-#if (UNITY_2020 || UNITY_2021) && (UNITY_IOS || UNITY_TVOS)
-using UnityEditor.Build;
 using UnityEditor.Callbacks;
-using UnityEditor.iOS.Xcode;
 using UnityEngine;
+using ZLua.Utils;
+
+#if UNITY_2020 || UNITY_2021
+using UnityEditor.iOS.Xcode;
 
 namespace ZLua.BuildProcessors
 {
+    /// <summary>
+    /// Unity 2020/2021 iOS ships a prebuilt <c>libil2cpp.a</c>. Replace it with Local Il2Cpp
+    /// sources (lumps) so ZLua C++ and icalls are linked. Do not gate this file on
+    /// <c>UNITY_IOS</c>: that define is often absent when the Editor assembly last compiled
+    /// for a non-iOS active target, which would skip PostProcessBuild registration.
+    /// </summary>
     public static class AddLil2cppSourceCodeToXcodeproj2020Or2021
     {
-
-        [PostProcessBuild]
+        [PostProcessBuild(50)]
         public static void OnPostProcessBuild(BuildTarget target, string pathToBuiltProject)
         {
-            if (!HybridCLRSettings.Instance.enable)
+            if (!Settings.EnableForCurrentBuildTarget)
+            {
                 return;
+            }
+
+            if (target != BuildTarget.iOS && target != BuildTarget.tvOS)
+            {
+                return;
+            }
+
             /*
-             *  1. 生成lump，并且添加到工程
-                3. 将libil2cpp目录复制到 Library/. 删除旧的. search paths里修改 libil2cpp/include为libil2cpp
-                3. Libraries/bdwgc/include -> Libraries/external/bdwgc/include
-                4. 将external目录复制到 Library/external。删除旧目录
-                5. 将Library/external/baselib/Platforms/OSX改名为 IOS 全大写
-                6. 将 external/zlib下c 文件添加到工程
-                7. 移除libil2cpp.a
-                8. Include path add libil2cpp/os/ClassLibraryPAL/brotli/include
-                9. add external/xxHash
+             *  1. 生成 lump，并且添加到工程
+             *  2. 将 libil2cpp 目录复制到 Libraries/
+             *  3. 将 external 复制到 Libraries/external；OSX baselib → IOS
+             *  4. 移除 libil2cpp.a，改为编译 lump / extra .c
              */
 
-            string pbxprojFile = XCodeUtil.GetXcodeProjectFile(pathToBuiltProject);
-            string srcLibil2cppDir = $"{SettingsUtil.LocalIl2CppDir}/libil2cpp";
-            string dstLibil2cppDir = $"{pathToBuiltProject}/Libraries/libil2cpp";
-            string lumpDir = $"{pathToBuiltProject}/Libraries/lumps";
-            string srcExternalDir = $"{SettingsUtil.LocalIl2CppDir}/external";
-            string dstExternalDir = $"{pathToBuiltProject}/Libraries/external";
-            //RemoveExternalLibil2cppOption(srcExternalDir, dstExternalDir);
+            string pbxprojFile = GetXcodeProjectFile(pathToBuiltProject);
+            string srcLibil2cppDir = CommonDirs.LocalLibil2cppPath;
+            string dstLibil2cppDir = Path.Combine(pathToBuiltProject, "Libraries", "libil2cpp");
+            string lumpDir = Path.Combine(pathToBuiltProject, "Libraries", "lumps");
+            string srcExternalDir = Path.Combine(CommonDirs.LocalIl2CppPath, "external");
+            string dstExternalDir = Path.Combine(pathToBuiltProject, "Libraries", "external");
+
+            if (!Directory.Exists(srcLibil2cppDir))
+            {
+                throw new InvalidOperationException(
+                    $"[ZLua] Local libil2cpp missing at '{srcLibil2cppDir}'. Run ZLua Install first.");
+            }
+
             CopyLibil2cppToXcodeProj(srcLibil2cppDir, dstLibil2cppDir);
             CopyExternalToXcodeProj(srcExternalDir, dstExternalDir);
             var lumpFiles = CreateLumps(dstLibil2cppDir, lumpDir);
             var extraSources = GetExtraSourceFiles(dstExternalDir, dstLibil2cppDir);
-            var cflags = new List<string>()
+            var cflags = new List<string>
             {
                 "-DIL2CPP_MONO_DEBUGGER_DISABLED",
             };
             ModifyPBXProject(pathToBuiltProject, pbxprojFile, lumpFiles, extraSources, cflags);
+            Debug.Log($"[AddLil2cppSourceCodeToXcodeproj] 2020/2021 iOS: lumps={lumpFiles.Count} extras={extraSources.Count}");
+        }
+
+        private static string GetXcodeProjectFile(string pathToBuiltProject)
+        {
+            return Path.Combine(pathToBuiltProject, "Unity-iPhone.xcodeproj", "project.pbxproj");
         }
 
         private static string GetRelativePathFromProj(string path)
@@ -61,7 +81,6 @@ namespace ZLua.BuildProcessors
             var proj = new PBXProject();
             proj.ReadFromFile(pbxprojFile);
             string targetGUID = proj.GetUnityFrameworkTargetGuid();
-            // 移除旧的libil2cpp.a
             var libil2cppGUID = proj.FindFileGuidByProjectPath("Libraries/libil2cpp.a");
             if (!string.IsNullOrEmpty(libil2cppGUID))
             {
@@ -69,8 +88,6 @@ namespace ZLua.BuildProcessors
                 proj.RemoveFile(libil2cppGUID);
                 File.Delete(Path.Combine(pathToBuiltProject, "Libraries", "libil2cpp.a"));
             }
-
-            //var lumpGroupGuid = proj.AddFile("Lumps", $"Classes/Lumps", PBXSourceTree.Group);
 
             foreach (var lumpFile in lumpFiles)
             {
@@ -83,6 +100,7 @@ namespace ZLua.BuildProcessors
                     proj.RemoveFileFromBuild(targetGUID, lumpGuid);
                     proj.RemoveFile(lumpGuid);
                 }
+
                 lumpGuid = proj.AddFile(relativePathOfFile, projPathOfFile, PBXSourceTree.Source);
                 proj.AddFileToBuild(targetGUID, lumpGuid);
             }
@@ -95,19 +113,17 @@ namespace ZLua.BuildProcessors
                 {
                     proj.RemoveFileFromBuild(targetGUID, extraFileGuid);
                     proj.RemoveFile(extraFileGuid);
-                    //Debug.LogWarning($"remove exist extra file:{projPathOfFile} guid:{extraFileGuid}");
                 }
+
                 var lumpGuid = proj.AddFile(GetRelativePathFromProj(extraFile), projPathOfFile, PBXSourceTree.Source);
                 proj.AddFileToBuild(targetGUID, lumpGuid);
             }
 
-            foreach(var configName in proj.BuildConfigNames())
+            foreach (var configName in proj.BuildConfigNames())
             {
-                //Debug.Log($"build config:{bcn}");
                 string configGuid = proj.BuildConfigByName(targetGUID, configName);
                 string headerSearchPaths = "HEADER_SEARCH_PATHS";
-                string hspProp = proj.GetBuildPropertyForConfig(configGuid, headerSearchPaths);
-                //Debug.Log($"config guid:{configGuid} prop:{hspProp}");
+                string hspProp = proj.GetBuildPropertyForConfig(configGuid, headerSearchPaths) ?? string.Empty;
                 string newPro = hspProp.Replace("libil2cpp/include", "libil2cpp")
                     .Replace("Libraries/bdwgc", "Libraries/external/bdwgc");
 
@@ -115,16 +131,17 @@ namespace ZLua.BuildProcessors
                 {
                     newPro += " $(SRCROOT)/Libraries/libil2cpp/os/ClassLibraryPAL/brotli/include";
                 }
+
                 if (!newPro.Contains("Libraries/external/xxHash"))
                 {
                     newPro += " $(SRCROOT)/Libraries/external/xxHash";
                 }
-                newPro += " $(SRCR00T)/Libraries/external/mono";
-                //Debug.Log($"config:{bcn} new prop:{newPro}");
+
+                newPro += " $(SRCROOT)/Libraries/external/mono";
                 proj.SetBuildPropertyForConfig(configGuid, headerSearchPaths, newPro);
 
                 string cflagKey = "OTHER_CFLAGS";
-                string cfProp = proj.GetBuildPropertyForConfig(configGuid, cflagKey);
+                string cfProp = proj.GetBuildPropertyForConfig(configGuid, cflagKey) ?? string.Empty;
                 foreach (var flag in cflags)
                 {
                     if (!cfProp.Contains(flag))
@@ -132,31 +149,43 @@ namespace ZLua.BuildProcessors
                         cfProp += " " + flag;
                     }
                 }
+
                 if (configName.Contains("Debug") && !cfProp.Contains("-DIL2CPP_DEBUG="))
                 {
                     cfProp += " -DIL2CPP_DEBUG=1 -DDEBUG=1";
                 }
-                proj.SetBuildPropertyForConfig(configGuid, cflagKey, cfProp);
 
+                proj.SetBuildPropertyForConfig(configGuid, cflagKey, cfProp);
             }
+
             proj.WriteToFile(pbxprojFile);
         }
 
         private static void CopyLibil2cppToXcodeProj(string srcLibil2cppDir, string dstLibil2cppDir)
         {
-            BashUtil.RemoveDir(dstLibil2cppDir);
-            BashUtil.CopyDir(srcLibil2cppDir, dstLibil2cppDir, true);
+            DirectoryUtil.RemoveDir(dstLibil2cppDir);
+            DirectoryUtil.CopyDir(srcLibil2cppDir, dstLibil2cppDir, true);
         }
-
 
         private static void CopyExternalToXcodeProj(string srcExternalDir, string dstExternalDir)
         {
-            BashUtil.RemoveDir(dstExternalDir);
-            BashUtil.CopyDir(srcExternalDir, dstExternalDir, true);
+            if (!Directory.Exists(srcExternalDir))
+            {
+                throw new InvalidOperationException(
+                    $"[ZLua] Local il2cpp external missing at '{srcExternalDir}'. Run ZLua Install first.");
+            }
 
-            string baselibPlatfromsDir = $"{dstExternalDir}/baselib/Platforms";
-            BashUtil.RemoveDir($"{baselibPlatfromsDir}/IOS");
-            BashUtil.CopyDir($"{baselibPlatfromsDir}/OSX", $"{baselibPlatfromsDir}/IOS", true);
+            DirectoryUtil.RemoveDir(dstExternalDir);
+            DirectoryUtil.CopyDir(srcExternalDir, dstExternalDir, true);
+
+            string baselibPlatfromsDir = Path.Combine(dstExternalDir, "baselib", "Platforms");
+            string osx = Path.Combine(baselibPlatfromsDir, "OSX");
+            string ios = Path.Combine(baselibPlatfromsDir, "IOS");
+            if (Directory.Exists(osx))
+            {
+                DirectoryUtil.RemoveDir(ios);
+                DirectoryUtil.CopyDir(osx, ios, true);
+            }
         }
 
         class LumpFile
@@ -181,25 +210,34 @@ namespace ZLua.BuildProcessors
                 {
                     lumpFileContent.Add($"#include \"{GetRelativePathFromProj(file)}\"");
                 }
+
                 File.WriteAllLines(lumpFile, lumpFileContent, Encoding.UTF8);
-                Debug.Log($"create lump file:{lumpFile}");
             }
         }
 
         private static List<LumpFile> CreateLumps(string libil2cppDir, string outputDir)
         {
-            BashUtil.RecreateDir(outputDir);
+            DirectoryUtil.RecreateDir(outputDir);
 
-            string il2cppConfigFile = $"{libil2cppDir}/il2cpp-config.h";
+            string il2cppConfigFile = Path.Combine(libil2cppDir, "il2cpp-config.h");
             var lumpFiles = new List<LumpFile>();
             int lumpFileIndex = 0;
-            foreach (var cppDir in Directory.GetDirectories(libil2cppDir, "*", SearchOption.AllDirectories).Concat(new string[] {libil2cppDir}))
+            foreach (var cppDir in Directory.GetDirectories(libil2cppDir, "*", SearchOption.AllDirectories).Concat(new string[] { libil2cppDir }))
             {
-                var lumpFile = new LumpFile($"{outputDir}/lump_{Path.GetFileName(cppDir)}_{lumpFileIndex}.cpp", il2cppConfigFile);
+                var lumpFile = new LumpFile(
+                    Path.Combine(outputDir, $"lump_{Path.GetFileName(cppDir)}_{lumpFileIndex}.cpp"),
+                    il2cppConfigFile);
                 foreach (var file in Directory.GetFiles(cppDir, "*.cpp", SearchOption.TopDirectoryOnly))
                 {
                     lumpFile.cppFiles.Add(file);
                 }
+
+                // Skip empty lumps (only the config include).
+                if (lumpFile.cppFiles.Count <= 1)
+                {
+                    continue;
+                }
+
                 lumpFile.SaveFile();
                 lumpFiles.Add(lumpFile);
                 ++lumpFileIndex;
@@ -208,14 +246,16 @@ namespace ZLua.BuildProcessors
             var mmFiles = Directory.GetFiles(libil2cppDir, "*.mm", SearchOption.AllDirectories);
             if (mmFiles.Length > 0)
             {
-                var lumpFile = new LumpFile($"{outputDir}/lump_mm.mm", il2cppConfigFile);
+                var lumpFile = new LumpFile(Path.Combine(outputDir, "lump_mm.mm"), il2cppConfigFile);
                 foreach (var file in mmFiles)
                 {
                     lumpFile.cppFiles.Add(file);
                 }
+
                 lumpFile.SaveFile();
                 lumpFiles.Add(lumpFile);
             }
+
             return lumpFiles;
         }
 
@@ -224,17 +264,19 @@ namespace ZLua.BuildProcessors
             var files = new List<string>();
             foreach (string extraDir in new string[]
             {
-                $"{externalDir}/zlib",
-                $"{externalDir}/xxHash",
-                $"{libil2cppDir}/os/ClassLibraryPAL/brotli",
+                Path.Combine(externalDir, "zlib"),
+                Path.Combine(externalDir, "xxHash"),
+                Path.Combine(libil2cppDir, "os", "ClassLibraryPAL", "brotli"),
             })
             {
                 if (!Directory.Exists(extraDir))
                 {
                     continue;
                 }
+
                 files.AddRange(Directory.GetFiles(extraDir, "*.c", SearchOption.AllDirectories));
             }
+
             return files;
         }
     }

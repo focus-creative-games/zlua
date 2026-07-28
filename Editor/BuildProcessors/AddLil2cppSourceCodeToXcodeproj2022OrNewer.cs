@@ -7,16 +7,21 @@ using UnityEditor.Callbacks;
 using UnityEngine;
 using ZLua.Utils;
 
-#if UNITY_2022 && !UNITY_2023_1_OR_NEWER && (UNITY_IOS || UNITY_TVOS || UNITY_VISIONOS)
+#if UNITY_2022 && !UNITY_2023_1_OR_NEWER
 
 namespace ZLua.BuildProcessors
 {
     public static class AddLil2cppSourceCodeToXcodeproj2022OrNewer
     {
-        [PostProcessBuild]
+        [PostProcessBuild(50)]
         public static void OnPostProcessBuild(BuildTarget target, string pathToBuiltProject)
         {
             if (!Settings.EnableForCurrentBuildTarget)
+            {
+                return;
+            }
+
+            if (target != BuildTarget.iOS && target != BuildTarget.tvOS)
             {
                 return;
             }

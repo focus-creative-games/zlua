@@ -1067,7 +1067,12 @@ uint32_t MetadataUtil::GetParameterToken(const MethodInfo* method, int paramInde
     }
     else
     {
+#if ZLUA_UNITY_VERSION < 20220000
+        // Unity 2021.3 MetadataCache has no GetReturnParameterToken.
+        return 0;
+#else
         return il2cpp::vm::MetadataCache::GetReturnParameterToken(methodHandle);
+#endif
     }
 }
 

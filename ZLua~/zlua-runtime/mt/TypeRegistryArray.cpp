@@ -62,7 +62,7 @@ static il2cpp_array_size_t ResolveFlatIndex(lua_State* L, Il2CppArray* array, in
         if (!TryReadIntIndex(L, indexStart + i, &indices[(size_t)i]))
             luaL_error(L, "zlua: expected integer indices");
     }
-    return il2cpp::vm::Array::IndexFromIndices(array, indices.data());
+    return ArrayIndexFromIndices(array, indices.data());
 }
 
 static int PushArrayElement(lua_State* L, Il2CppArray* array, il2cpp_array_size_t arrayIndex)

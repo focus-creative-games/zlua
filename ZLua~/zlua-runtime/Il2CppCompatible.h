@@ -19,6 +19,7 @@
 #include "il2cpp-tabledefs.h"
 #include "gc/WriteBarrier.h"
 #include "utils/Memory.h"
+#include "vm/Array.h"
 #include "vm/MetadataCache.h"
 #include "vm/Reflection.h"
 
@@ -56,6 +57,22 @@ inline bool CustomAttributeHandleHasAttribute(
     return il2cpp::vm::MetadataCache::HasAttribute(handle, attributeClass);
 #else
     return il2cpp::vm::Reflection::HasAttribute(handle, attributeClass);
+#endif
+}
+
+// Unity 2022+ exposes Array::IndexFromIndices; Unity 2021 does not — mirror the same formula.
+inline il2cpp_array_size_t ArrayIndexFromIndices(Il2CppArray* array, const int32_t* indices)
+{
+#if ZLUA_UNITY_VERSION < 20220000
+    Il2CppClass* ac = array->klass;
+    il2cpp_array_size_t pos = (il2cpp_array_size_t)(indices[0] - array->bounds[0].lower_bound);
+    for (int32_t i = 1; i < ac->rank; i++)
+    {
+        pos = pos * array->bounds[i].length + (il2cpp_array_size_t)(indices[i] - array->bounds[i].lower_bound);
+    }
+    return pos;
+#else
+    return il2cpp::vm::Array::IndexFromIndices(array, indices);
 #endif
 }
 
