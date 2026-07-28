@@ -591,8 +591,8 @@ namespace ZLua
             if (!found)
             {
                 Debug.LogWarning(
-                    $"[ZLua] Editor plugin '{fileName}' not found under {pluginsRoot}. "
-                    + "Replace/add the matching series binary yourself (e.g. lua53.dll / lua54.dll or luajit21.dll). "
+                    $"[ZLua] Editor plugin '{fileName}' not found under {pluginsRoot} (expected Plugins/lua/<series>/). "
+                    + "Replace/add the matching series binary yourself (e.g. lua/lua53/lua53.dll or lua/luajit21/luajit21.dylib). "
                     + "Il2Cpp Player uses downloaded sources; Editor Mono needs the plugin DLL.");
             }
         }

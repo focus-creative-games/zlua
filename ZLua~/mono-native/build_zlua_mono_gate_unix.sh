@@ -9,22 +9,25 @@ OUT_ROOT="$(cd "$ROOT/../../Plugins" && pwd)"
 uname_s="$(uname -s)"
 case "$uname_s" in
   Darwin)
-    # Intel + Apple Silicon fat binary when both toolchains can target both.
-    ARCHS="${ARCHS:-}"
-    if [[ -z "$ARCHS" ]]; then
-      ARCHS="$(uname -m)"
-    fi
-    OUT_DIR="$OUT_ROOT/macOS"
+    # Default: universal (arm64 + x86_64). Override with ARCHS="arm64" etc.
+    ARCHS="${ARCHS:-arm64 x86_64}"
+    OUT_DIR="$OUT_ROOT/lua"
     mkdir -p "$OUT_DIR"
     OUT="$OUT_DIR/libzlua_mono_gate.dylib"
+    arch_flags=()
+    for a in $ARCHS; do
+      arch_flags+=(-arch "$a")
+    done
     clang -shared -fPIC -O2 -dynamiclib \
+      "${arch_flags[@]}" \
       -install_name "@rpath/libzlua_mono_gate.dylib" \
       -o "$OUT" "$SRC"
     echo "Built: $OUT"
     lipo -info "$OUT" || true
+    nm -gU "$OUT" | grep zlua_ || true
     ;;
   Linux)
-    OUT_DIR="$OUT_ROOT/Linux"
+    OUT_DIR="$OUT_ROOT/lua"
     mkdir -p "$OUT_DIR"
     OUT="$OUT_DIR/libzlua_mono_gate.so"
     gcc -shared -fPIC -O2 -o "$OUT" "$SRC"

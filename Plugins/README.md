@@ -1,15 +1,27 @@
 # Native Lua plugins (Editor)
 
 ZLua does **not** ship every series binary as a hard requirement of Install.  
-Put / replace the DLL that matches your Settings `luaVersionId` series:
+Put / replace the binary that matches your Settings `luaVersionId` series under `Plugins/lua/<series>/`:
 
-- 5.3.x: `x64/lua53.dll`, define `ZLUA_LUA_5_3`
-- 5.4.x: `x64/lua54.dll`, define `ZLUA_LUA_5_4`
-- 5.5.x: `x64/lua55.dll`, define `ZLUA_LUA_5_5`
-- LuaJIT 2.1: `x64/luajit21.dll`, defines `ZLUA_USE_LUAJIT`, `ZLUA_LUAJIT_2_1`
-- LuaJIT 2.0: `x64/luajit20.dll`, defines `ZLUA_USE_LUAJIT`, `ZLUA_LUAJIT_2_0`
+```text
+Plugins/lua/
+  lua51/{lua51.dll, lua51.dylib}
+  lua52/{lua52.dll, lua52.dylib}
+  lua53/{lua53.dll, lua53.dylib}
+  lua54/{lua54.dll, lua54.dylib}
+  lua55/{lua55.dll, lua55.dylib}
+  luajit20/{luajit20.dll, luajit20.dylib}  # macOS: x86_64 only (2.0 has no arm64)
+  luajit21/{luajit21.dll, luajit21.dylib}
+```
 
-Naming: `lua` + major + minor → `lua53` for 5.3.x (no patch digit).
+| Series folder | Define(s) |
+|---------------|-----------|
+| `lua51` … `lua55` | `ZLUA_LUA_5_1` … `ZLUA_LUA_5_5` |
+| `luajit21` | `ZLUA_USE_LUAJIT`, `ZLUA_LUAJIT_2_1` |
+| `luajit20` | `ZLUA_USE_LUAJIT`, `ZLUA_LUAJIT_2_0` |
+
+Naming: `lua` + major + minor → `lua53` for 5.3.x (no patch digit).  
+Windows: `*.dll` (Editor x86_64). macOS: `*.dylib` (universal when available).
 
 ## EmmyLua debugger (Editor)
 
@@ -27,19 +39,16 @@ One build per **PUC major series** (not per patch); all LuaJIT 2.x share **`luaj
 
 ```text
 emmylua/
-  lua51/win32-x64/emmy_core.dll   # Windows shipped
-  lua52/win32-x64/…
-  lua53/win32-x64/…
-  lua54/win32-x64/…
-  lua55/                          # Windows + macOS + Linux shipped
-    win32-x64/emmy_core.dll
-    darwin-arm64/emmy_core.dylib
-    darwin-x64/emmy_core.dylib
-    linux-x64/emmy_core.so
-  luajit/win32-x64/…              # Windows shipped (Emmy jit)
+  lua51/{win32-x64,darwin-arm64,darwin-x64}/…
+  lua52/{win32-x64,darwin-arm64,darwin-x64}/…
+  lua53/{win32-x64,darwin-arm64,darwin-x64}/…
+  lua54/{win32-x64,darwin-arm64,darwin-x64}/…
+  lua55/{win32-x64,darwin-arm64,darwin-x64,linux-x64}/…
+  luajit/{win32-x64,darwin-arm64,darwin-x64}/…  # 2.0/2.1 share one folder
 ```
 
-**Shipped today:** all series above for **Windows x64**; non-Windows currently **`lua55` only**. Other OS/series: build yourself per EmmyLuaDebugger docs.  
+**Shipped today:** Windows x64 for `lua51`–`lua55` + `luajit`; macOS arm64+x64 for `lua51`–`lua55` + `luajit`; Linux x64 for `lua55`.  
+(`luajit20` macOS Editor lib is **x86_64 only** — LuaJIT 2.0 has no arm64.)  
 Settings: `enableDebugger` / `debuggerPort` / `debuggerWaitIDE` (spec `build/04-EMMYLUA-DEBUGGER`).  
 Missing series dir → **LogError and skip** (does not throw).  
 **PluginImporter:** keep all `emmy_core` **disabled** on every platform (Lua loads via `package.cpath` only).
@@ -48,12 +57,12 @@ Missing series dir → **LogError and skip** (does not throw).
 
 ## Mono callback gate (Editor)
 
-`x64/zlua_mono_gate.dll` wraps managed Lua→C# callbacks so `lua_error` runs in native code after the managed frame returns (Editor Mono × all Lua series, including LuaJIT SEH). Rebuild: `ZLua~/mono-native/build_zlua_mono_gate.ps1` / `build_zlua_mono_gate_unix.sh`.
+`Plugins/lua/zlua_mono_gate.dll` / `Plugins/lua/libzlua_mono_gate.dylib` wrap managed Lua→C# callbacks so `lua_error` runs in native code after the managed frame returns (Editor Mono × all Lua series, including LuaJIT SEH). Rebuild: `ZLua~/mono-native/build_zlua_mono_gate.ps1` / `build_zlua_mono_gate_unix.sh`.
 
 | Platform | Binary | Rebuild |
 |----------|--------|---------|
-| Windows Editor x64 | `x64/zlua_mono_gate.dll` | `build_zlua_mono_gate.ps1` |
-| macOS Editor | `macOS/libzlua_mono_gate.dylib` | `build_zlua_mono_gate_unix.sh` |
-| Linux Editor | `Linux/libzlua_mono_gate.so` | same |
+| Windows Editor x64 | `Plugins/lua/zlua_mono_gate.dll` | `build_zlua_mono_gate.ps1` |
+| macOS Editor | `Plugins/lua/libzlua_mono_gate.dylib` (universal arm64+x86_64) | `build_zlua_mono_gate_unix.sh` |
+| Linux Editor | `Plugins/lua/libzlua_mono_gate.so` | same |
 
 `DllImport("zlua_mono_gate")`. Does **not** require patching Lua/LuaJIT sources. Editor-only (`ZLua.Mono`).

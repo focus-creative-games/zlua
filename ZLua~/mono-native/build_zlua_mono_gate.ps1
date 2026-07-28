@@ -1,7 +1,7 @@
-# Build zlua_mono_gate.dll (x64) into Packages/.../Plugins/x64/
+# Build zlua_mono_gate.dll (x64) into Packages/.../Plugins/lua/
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$outDir = (Resolve-Path (Join-Path $here "..\..\Plugins\x64")).Path
+$outDir = (Resolve-Path (Join-Path $here "..\..\Plugins\lua")).Path
 $outDll = Join-Path $outDir "zlua_mono_gate.dll"
 $stageDll = Join-Path $here "zlua_mono_gate_build.dll"
 
