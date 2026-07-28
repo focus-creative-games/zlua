@@ -5,29 +5,35 @@ using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Callbacks;
 using UnityEngine;
+using ZLua.Utils;
 
-#if UNITY_2022 && (UNITY_IOS || UNITY_TVOS || UNITY_VISIONOS)
+#if UNITY_2022 && !UNITY_2023_1_OR_NEWER && (UNITY_IOS || UNITY_TVOS || UNITY_VISIONOS)
 
 namespace ZLua.BuildProcessors
 {
     public static class AddLil2cppSourceCodeToXcodeproj2022OrNewer
     {
-
         [PostProcessBuild]
         public static void OnPostProcessBuild(BuildTarget target, string pathToBuiltProject)
         {
-            if (!HybridCLRSettings.Instance.enable)
+            if (!Settings.EnableForCurrentBuildTarget)
+            {
                 return;
-            string pbxprojFile = XCodeUtil.GetXcodeProjectFile(pathToBuiltProject);
+            }
+
+            string pbxprojFile = GetXcodeProjectFile(pathToBuiltProject);
             RemoveExternalLibil2cppOption(pbxprojFile);
             CopyLibil2cppToXcodeProj(pathToBuiltProject);
         }
 
-        private static string TryRemoveDunplicateShellScriptSegment(string pbxprojFile, string pbxprojContent)
+        private static string GetXcodeProjectFile(string pathToBuiltProject)
         {
-            // will appear duplicated Shell Script segment when append to existed xcode project.
-            // This is unity bug.
-            // we remove duplicated Shell Script to avoid build error.
+            return Path.Combine(pathToBuiltProject, "Unity-iPhone.xcodeproj", "project.pbxproj");
+        }
+
+        private static string TryRemoveDuplicateShellScriptSegment(string pbxprojFile, string pbxprojContent)
+        {
+            // Unity may append a duplicated Shell Script segment when appending to an existing Xcode project.
             string copyFileComment = @"/\* CopyFiles \*/,\s+([A-Z0-9]{24}) /\* ShellScript \*/,\s+([A-Z0-9]{24}) /\* ShellScript \*/,";
             var m = Regex.Match(pbxprojContent, copyFileComment, RegexOptions.Multiline);
             if (!m.Success)
@@ -37,7 +43,7 @@ namespace ZLua.BuildProcessors
 
             if (m.Groups[1].Value != m.Groups[2].Value)
             {
-                throw new BuildFailedException($"find invalid /* ShellScript */ segment");
+                throw new BuildFailedException("find invalid /* ShellScript */ segment");
             }
 
             int startIndexOfDupShellScript = m.Groups[2].Index;
@@ -59,21 +65,22 @@ namespace ZLua.BuildProcessors
             }
             else
             {
-                Debug.LogWarning($"[AddLil2cppSourceCodeToXcodeproj] project.pbxproj remove building option:'{removeBuildOption}' fail. This may occur when 'Append' to existing xcode project in building");
+                Debug.LogWarning(
+                    $"[AddLil2cppSourceCodeToXcodeproj] project.pbxproj remove building option:'{removeBuildOption}' fail. " +
+                    "This may occur when 'Append' to existing xcode project in building");
             }
 
-            pbxprojContent = TryRemoveDunplicateShellScriptSegment(pbxprojFile, pbxprojContent);
-
-
+            pbxprojContent = TryRemoveDuplicateShellScriptSegment(pbxprojFile, pbxprojContent);
             File.WriteAllText(pbxprojFile, pbxprojContent, Encoding.UTF8);
         }
 
         private static void CopyLibil2cppToXcodeProj(string pathToBuiltProject)
         {
-            string srcLibil2cppDir = $"{SettingsUtil.LocalIl2CppDir}/libil2cpp";
-            string destLibil2cppDir = $"{pathToBuiltProject}/Il2CppOutputProject/IL2CPP/libil2cpp";
-            BashUtil.RemoveDir(destLibil2cppDir);
-            BashUtil.CopyDir(srcLibil2cppDir, destLibil2cppDir, true);
+            string srcLibil2cppDir = CommonDirs.LocalLibil2cppPath;
+            string destLibil2cppDir = Path.Combine(pathToBuiltProject, "Il2CppOutputProject", "IL2CPP", "libil2cpp");
+            DirectoryUtil.RemoveDir(destLibil2cppDir);
+            DirectoryUtil.CopyDir(srcLibil2cppDir, destLibil2cppDir, true);
+            Debug.Log($"[AddLil2cppSourceCodeToXcodeproj] copied libil2cpp -> {destLibil2cppDir}");
         }
     }
 }

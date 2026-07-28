@@ -46,7 +46,7 @@ static const char* CopyRuntimeAliasKey(const std::string& key)
     auto it = s_methodAliasKeys.find(key.c_str());
     if (it != s_methodAliasKeys.end())
         return *it;
-    const char* newKey = _strdup(key.c_str());
+    const char* newKey = zlua_strdup(key.c_str());
     s_methodAliasKeys.insert(newKey);
     return newKey;
 }

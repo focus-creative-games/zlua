@@ -429,7 +429,7 @@ static int ZLuaMakeGenericMethod(lua_State* L)
     MetaInfo newMeta = {};
     newMeta.kind = MetaKind::Method;
     newMeta.method.closureRef = closureRef;
-    const char* key = _strdup(methodSignature.c_str());
+    const char* key = zlua_strdup(methodSignature.c_str());
     nmm.insert({key, newMeta});
     LuaUtil::PushRef(L, closureRef);
     return 1;
@@ -476,7 +476,7 @@ static int ZLuaRegisterMethod(lua_State* L)
     MetaInfo newMeta = {};
     newMeta.kind = MetaKind::Method;
     newMeta.method.closureRef = LuaUtil::ToLuaRef(L);
-    const char* key = _strdup(aliasName);   
+    const char* key = zlua_strdup(aliasName);   
     map.insert({key, newMeta});
     return 0;
     ZLUA_TRY_END()

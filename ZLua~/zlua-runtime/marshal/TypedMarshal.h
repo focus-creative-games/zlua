@@ -169,6 +169,38 @@ struct DefaultTypedMarshal<uint64_t>
     }
 };
 
+// 64-bit LP64 (Apple/Android/Linux): intptr_t is long, distinct from int64_t (long long).
+// Windows LLP64 and 32-bit: intptr_t aliases int64_t / int32_t — already specialized above.
+#if INTPTR_MAX == INT64_MAX && !defined(_WIN32)
+template <>
+struct DefaultTypedMarshal<intptr_t>
+{
+    static void Push(lua_State* L, intptr_t v)
+    {
+        PrimitiveMarshal::PushIntPtr(L, v);
+    }
+
+    static intptr_t Pop(lua_State* L, int idx)
+    {
+        return PrimitiveMarshal::PopIntPtr(L, idx);
+    }
+};
+
+template <>
+struct DefaultTypedMarshal<uintptr_t>
+{
+    static void Push(lua_State* L, uintptr_t v)
+    {
+        PrimitiveMarshal::PushUIntPtr(L, v);
+    }
+
+    static uintptr_t Pop(lua_State* L, int idx)
+    {
+        return PrimitiveMarshal::PopUIntPtr(L, idx);
+    }
+};
+#endif
+
 template <>
 struct DefaultTypedMarshal<float>
 {

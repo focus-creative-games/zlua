@@ -338,6 +338,9 @@ namespace ZLua
                 // Standalone interpreter / compiler must not enter Il2Cpp (duplicate main, unused tools).
                 RemoveLuaStandaloneSources(CommonDirs.LocalLuaSrcPath);
 
+                // iOS/tvOS/watchOS: system(3) is unavailable; enable Lua's IOS profile (+ fallback).
+                EnsureAppleMobileLuaOsProfile(CommonDirs.LocalLuaSrcPath);
+
                 // Lua 5.1/5.2: luai_num* macros are gated on LUA_CORE; Il2Cpp lumps break that.
                 // Lua 5.1 only: lua_tmpnam gated on loslib_c (5.2+ defines it inside loslib.c).
                 int family = EngineVersionUtil.EncodeLuaApiFamily(luaInfo);
@@ -536,6 +539,58 @@ namespace ZLua
 
             File.WriteAllText(luaconf, next, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             Debug.Log($"[ZLua] Ungated lua_tmpnam macros for Il2Cpp lump in {luaconf}");
+        }
+
+        /// <summary>
+        /// Apple mobile SDKs mark <c>system(3)</c> unavailable. PUC-Rio 5.4+ gates this behind
+        /// <c>LUA_USE_IOS</c>; older series call <c>system</c> directly. Inject auto-detect so
+        /// Il2Cpp iOS/simulator builds do not need per-target compiler flags.
+        /// </summary>
+        private static void EnsureAppleMobileLuaOsProfile(string luaSrcDir)
+        {
+            string luaconf = Path.Combine(luaSrcDir, "luaconf.h");
+            if (!File.Exists(luaconf))
+            {
+                throw new InvalidOperationException(
+                    $"[ZLua] luaconf.h not found under {luaSrcDir}; cannot apply Apple mobile OS profile.");
+            }
+
+            string text = File.ReadAllText(luaconf, Encoding.UTF8);
+            const string marker = "ZLua: Apple mobile";
+            if (text.Contains(marker))
+            {
+                return;
+            }
+
+            const string block =
+                "\n"
+                + "/* ZLua: Apple mobile — system(3) is unavailable on iOS/tvOS/watchOS. */\n"
+                + "#if defined(__APPLE__)\n"
+                + "#include <TargetConditionals.h>\n"
+                + "#if TARGET_OS_IPHONE\n"
+                + "#if !defined(LUA_USE_IOS)\n"
+                + "#define LUA_USE_IOS\n"
+                + "#endif\n"
+                + "/* Fallback for older Lua that call system() directly (pre-LUA_USE_IOS). */\n"
+                + "#include <stdlib.h>\n"
+                + "#undef system\n"
+                + "#define system(s) ((s) == NULL ? 1 : -1)\n"
+                + "#endif\n"
+                + "#endif\n";
+
+            // Prefer inserting before the final include-guard #endif.
+            int lastEndif = text.LastIndexOf("#endif", StringComparison.Ordinal);
+            if (lastEndif >= 0)
+            {
+                text = text.Insert(lastEndif, block + "\n");
+            }
+            else
+            {
+                text = text.TrimEnd() + "\n" + block;
+            }
+
+            File.WriteAllText(luaconf, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Debug.Log($"[ZLua] Ensured Apple mobile Lua OS profile in {luaconf}");
         }
 
         /// <summary>
