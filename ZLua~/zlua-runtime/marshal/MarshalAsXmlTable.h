@@ -7,8 +7,6 @@
 #include <vector>
 
 struct MethodInfo;
-struct FieldInfo;
-struct PropertyInfo;
 struct Il2CppClass;
 struct Il2CppImage;
 
@@ -23,7 +21,7 @@ enum class LuaMarshalAsXmlKind : uint8_t
     Return = 4,
 };
 
-/// Name-based entry from MarshalAsCodegen (tokens resolved lazily at runtime after strip).
+/// Name-based entry from MarshalAsCodegen (tokens resolved at RegisterEntries / startup).
 struct LuaMarshalAsXmlEntry
 {
     LuaMarshalAsXmlKind kind;
@@ -47,7 +45,7 @@ class MarshalAsXmlTable
 {
   public:
     static void Clear();
-    /// Store name-based entries; per-image maps are built lazily on first lookup.
+    /// Store entries and resolve all tokens immediately (Il2Cpp has loaded assemblies).
     static void RegisterEntries(const LuaMarshalAsXmlEntry* entries, size_t count);
 
     /// Type / Field / Property: image → memberToken → Rule

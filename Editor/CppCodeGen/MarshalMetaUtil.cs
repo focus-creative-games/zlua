@@ -18,7 +18,7 @@ namespace ZLua.CppCodeGen
     public class LuaMarshalAsInfo
     {
         public LuaMarshalType marshalType;
-        public List<string> fieldOrProperties;
+        public List<string> members;
     }
 
     public sealed class ParamMarshalInfo
@@ -55,13 +55,87 @@ namespace ZLua.CppCodeGen
                 foreach (var named in attr.NamedArguments)
                 {
                     string argName = named.Name;
-                    if (argName == "Members" || argName == "FieldOrPropertyNames")
+                    if (argName == "Members")
                     {
-                        info.fieldOrProperties = ((UTF8String[])named.Value)?.Select(s => s.ToString()).ToList();
+                        // dnlib: string[] named-args are IList<CAArgument>, not UTF8String[].
+                        info.members = ParseStringArrayArgument(named.Value);
                     }
                 }
             }
             return info;
+        }
+
+        private static List<string> ParseStringArrayArgument(object value)
+        {
+            if (value == null)
+            {
+                return null;
+            }
+
+            if (value is UTF8String[] utf8Array)
+            {
+                return utf8Array.Select(s => s?.ToString() ?? string.Empty).ToList();
+            }
+
+            if (value is string[] stringArray)
+            {
+                return stringArray.ToList();
+            }
+
+            if (value is IList<CAArgument> caArgs)
+            {
+                var list = new List<string>(caArgs.Count);
+                for (int i = 0; i < caArgs.Count; i++)
+                {
+                    list.Add(CaArgumentToString(caArgs[i]));
+                }
+                return list;
+            }
+
+            if (value is System.Collections.IEnumerable enumerable && !(value is string))
+            {
+                var list = new List<string>();
+                foreach (object item in enumerable)
+                {
+                    if (item is CAArgument ca)
+                    {
+                        list.Add(CaArgumentToString(ca));
+                    }
+                    else if (item is UTF8String utf8)
+                    {
+                        list.Add(utf8.ToString());
+                    }
+                    else if (item != null)
+                    {
+                        list.Add(item.ToString());
+                    }
+                    else
+                    {
+                        list.Add(string.Empty);
+                    }
+                }
+                return list;
+            }
+
+            return null;
+        }
+
+        private static string CaArgumentToString(CAArgument arg)
+        {
+            object v = arg.Value;
+            if (v == null)
+            {
+                return string.Empty;
+            }
+            if (v is UTF8String utf8)
+            {
+                return utf8.ToString();
+            }
+            if (v is CAArgument nested)
+            {
+                return CaArgumentToString(nested);
+            }
+            return v.ToString();
         }
 
         private static readonly Dictionary<TypeDef, LuaMarshalAsInfo> _luaMarshalAsInfoCache = new Dictionary<TypeDef, LuaMarshalAsInfo>();
@@ -113,6 +187,11 @@ namespace ZLua.CppCodeGen
             }
 
             return GetLuaMarshalAsInfo(declaringType);
+        }
+
+        public static LuaMarshalAsInfo GetLuaMarshalAsInfoForType(TypeDef typeDef)
+        {
+            return GetLuaMarshalAsInfo(typeDef);
         }
 
         public static TypeSig ToSharedGenericInstTypeSig(TypeSig typeSig)

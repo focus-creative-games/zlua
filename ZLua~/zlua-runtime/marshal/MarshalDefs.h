@@ -12,20 +12,6 @@ enum class LuaMarshalType : uint8_t
     OpaqueValue,
     UnpackedValues,
     Table,
-    ParamsTable,
-};
-
-struct LuaMarshalMemberDesc
-{
-    const char* clrName;
-    bool optional;
-};
-
-struct LuaMarshalSlotDesc
-{
-    LuaMarshalType marshalType;
-    const LuaMarshalMemberDesc* members;
-    uint16_t memberCount;
 };
 
 enum class MetaTableKind : uint8_t
@@ -40,6 +26,22 @@ struct MarshalMetaInfo;
 typedef void (*FnMarshalLua2Cs)(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx);
 typedef void (*FnMarshalCs2Lua)(lua_State* L, void* address, const MarshalMetaInfo* ctx);
 
+/// Pre-resolved Table / UnpackedValues member (no name lookup on hot path).
+struct CompositeMember
+{
+    const char* clrName;
+    bool optional;
+    bool isField;
+    union
+    {
+        const FieldInfo* field;
+        const PropertyInfo* property;
+    };
+    /// Offset into valuetype payload (excludes Il2CppObject header). Valid when isField.
+    int32_t fieldOffset;
+    const MarshalMetaInfo* memberMeta;
+};
+
 struct MarshalMetaInfo
 {
     FnMarshalLua2Cs lua2csWriter;
@@ -50,7 +52,10 @@ struct MarshalMetaInfo
     int luaByValRefIndex;
     int luaByObjRefIndex;
     bool passByValue;
-    // size_t offset;
+    LuaMarshalType marshalType;
+    uint16_t stackSlots; // Default/Table/... = 1; UnpackedValues = memberCount
+    uint16_t memberCount;
+    const CompositeMember* members;
 };
 
 struct FieldMarshalCtx
@@ -101,6 +106,7 @@ struct MethodMarshalCtx
     const MarshalMetaInfo* retMeta;
     int32_t valueSize; // sizeof(void*) for refrence type, klass->instance - sizeof(Il2CppObject) for struct
     int32_t totalParamsSize;
+    int32_t luaArity; // Σ paramsMeta[i]->stackSlots
     bool byVal;
     /* Precomputed: true when method is effectively sealed (non-virtual, method final, klass sealed, or byVal). */
     bool sealed;

@@ -101,6 +101,10 @@ namespace ZLua.CppCodeGen
             delegateCodegen.Generate();
             var marshalAsCodegen = new MarshalAsCodegen(_outputDir);
             marshalAsCodegen.Generate();
+            var compositeSpecializedCodegen = new CompositeSpecializedCodegen(_assemblyCache, _assemblyNames, _outputDir);
+            compositeSpecializedCodegen.Generate();
+            var aliasCodegen = new AliasCodegen(_outputDir);
+            aliasCodegen.Generate();
         }
 
     }

@@ -91,6 +91,38 @@ namespace ZLua.CppCodeGen
             }
         }
 
+        public void CollectStructType(TypeSig type)
+        {
+            if (MetaUtil.IsStruct(type))
+            {
+                _structTypes.Add(type);
+            }
+        }
+
+        /// <summary>
+        /// Maps a CLR instance field name to the ForwardDeclareStructs cpp field name (__N).
+        /// </summary>
+        public bool TryGetCppFieldName(TypeSig structType, string clrFieldName, out string cppFieldName)
+        {
+            cppFieldName = null;
+            if (structType == null || string.IsNullOrEmpty(clrFieldName))
+            {
+                return false;
+            }
+
+            ReducedTypeInfo info = GetReducedTypeInfo(structType);
+            for (int i = 0; i < info.fields.Count; i++)
+            {
+                if (info.fields[i].field.Name == clrFieldName)
+                {
+                    cppFieldName = "__" + i;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         ReducedTypeInfo GetReducedTypeInfo(TypeSig type)
         {
             if (_reducedTypeInfos.TryGetValue(type, out var reducedTypeInfo))

@@ -9,6 +9,8 @@
 #include "../bridge/MethodBridge.h"
 #include "../bridge/DelegateBridge.h"
 #include "../generated/MarshalBindings.h"
+#include "../generated/CompositeSpecializedBindings.h"
+#include "../generated/AliasBindings.h"
 
 #include "vm/Exception.h"
 
@@ -22,6 +24,8 @@ void LuaAppDomain::Initialize()
     MethodBridge::Initialize();
     DelegateBridge::Initialize();
     RegisterMarshalBindingTables();
+    RegisterCompositeSpecializedWriters();
+    RegisterAliasBindingTables();
     LuaInternalCalls::RegisterCoreInternalCalls();
 
     LuaLoader::RegisterRoots();

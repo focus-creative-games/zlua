@@ -126,6 +126,10 @@ namespace ZLua.CppCodeGen
                 {
                     continue;
                 }
+                if (UsesCompositeMarshal(binding))
+                {
+                    continue;
+                }
                 effectiveBindings.Add(binding);
             }
 
@@ -159,6 +163,35 @@ namespace ZLua.CppCodeGen
             writer.WriteLine("} // namespace methodbridge");
             writer.WriteLine("} // namespace zlua");
             writer.Save(Path.Combine(_outputDir, "MethodBridgeStub.cpp"));
+        }
+
+        private static bool IsCompositeMarshal(LuaMarshalAsInfo info)
+        {
+            return info != null
+                && (info.marshalType == LuaMarshalType.Table || info.marshalType == LuaMarshalType.UnpackedValues);
+        }
+
+        private static bool UsesCompositeMarshal(MethodBindingInfo binding)
+        {
+            if (IsCompositeMarshal(binding.returnMetaInfo?.marshalAsInfo))
+            {
+                return true;
+            }
+
+            if (binding.parameters == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < binding.parameters.Count; i++)
+            {
+                if (IsCompositeMarshal(binding.parameters[i].marshalMetaInfo?.marshalAsInfo))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void GenerateMethodBridgeFunctions(CodeWriter writer, MethodBindingInfo binding)

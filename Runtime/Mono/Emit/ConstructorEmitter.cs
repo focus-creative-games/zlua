@@ -104,7 +104,7 @@ namespace ZLua.Emit
         {
             for (int i = 0; i < ctors.Count; i++)
             {
-                if (ctors[i].GetParameters().Length == arity)
+                if (InterpretedMethodInvoker.GetLuaArity(ctors[i]) == arity)
                 {
                     return true;
                 }
@@ -143,17 +143,31 @@ namespace ZLua.Emit
 
         private static bool CanEmit(ConstructorInfo ctor)
         {
-            ParameterInfo[] parameters = ctor.GetParameters();
-            for (int i = 0; i < parameters.Length; i++)
+            if (InterpretedMethodInvoker.NeedsInterpreted(ctor))
             {
-                Type paramType = parameters[i].ParameterType;
-                // Expression trees cannot Convert to pointer types (methods use DynamicMethod).
+                ParameterInfo[] parameters = ctor.GetParameters();
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    if (parameters[i].ParameterType.IsByRef
+                        || PointerMarshal.IsPointerLikeType(parameters[i].ParameterType))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            ParameterInfo[] parameters2 = ctor.GetParameters();
+            for (int i = 0; i < parameters2.Length; i++)
+            {
+                Type paramType = parameters2[i].ParameterType;
                 if (PointerMarshal.IsPointerLikeType(paramType))
                 {
                     return false;
                 }
 
-                if (!BridgeMarshaling.IsSupportedParameter(parameters[i]))
+                if (!BridgeMarshaling.IsSupportedParameter(parameters2[i]))
                 {
                     return false;
                 }
@@ -192,7 +206,10 @@ namespace ZLua.Emit
 
         private static LuaCSFunction CompileDirect(ConstructorInfo ctor, Type type)
         {
-            return Wrap(BuildDirectCore(ctor, type));
+            Func<IntPtr, int> core = InterpretedMethodInvoker.NeedsInterpreted(ctor)
+                ? InterpretedMethodInvoker.CompileConstructor(ctor, type)
+                : BuildDirectCore(ctor, type);
+            return Wrap(core);
         }
 
         private static Func<IntPtr, int> BuildDirectCore(ConstructorInfo ctor, Type type)
@@ -254,7 +271,7 @@ namespace ZLua.Emit
             for (int i = 0; i < ctors.Count; i++)
             {
                 ConstructorInfo ctor = ctors[i];
-                int arity = ctor.GetParameters().Length;
+                int arity = InterpretedMethodInvoker.GetLuaArity(ctor);
                 if (!byArity.TryGetValue(arity, out List<ConstructorInfo> list))
                 {
                     list = new List<ConstructorInfo>();
@@ -267,9 +284,17 @@ namespace ZLua.Emit
             var cores = new Dictionary<int, Func<IntPtr, int>>();
             foreach (KeyValuePair<int, List<ConstructorInfo>> kv in byArity)
             {
-                cores[kv.Key] = kv.Value.Count == 1
-                    ? BuildDirectCore(kv.Value[0], type)
-                    : BuildSameArityDispatchCore(kv.Value, type);
+                if (kv.Value.Count == 1)
+                {
+                    ConstructorInfo only = kv.Value[0];
+                    cores[kv.Key] = InterpretedMethodInvoker.NeedsInterpreted(only)
+                        ? InterpretedMethodInvoker.CompileConstructor(only, type)
+                        : BuildDirectCore(only, type);
+                }
+                else
+                {
+                    cores[kv.Key] = BuildSameArityDispatchCore(kv.Value, type);
+                }
             }
 
             if (includeDefaultStruct && !cores.ContainsKey(0))
@@ -330,7 +355,9 @@ namespace ZLua.Emit
             for (int i = 0; i < ctors.Count; i++)
             {
                 ctorArray[i] = ctors[i];
-                cores[i] = BuildDirectCore(ctors[i], type);
+                cores[i] = InterpretedMethodInvoker.NeedsInterpreted(ctors[i])
+                    ? InterpretedMethodInvoker.CompileConstructor(ctors[i], type)
+                    : BuildDirectCore(ctors[i], type);
             }
 
             return L =>

@@ -8,6 +8,8 @@
 #include "../utils/LuaUtil.h"
 #include "../utils/MetadataUtil.h"
 #include "../bridge/PropertyBridge.h"
+#include "../bridge/MethodBridge.h"
+#include "../bridge/DelegateBridge.h"
 #include "../marshal/ObjectMarshal.h"
 #include "../marshal/StructMarshal.h"
 #include "../marshal/StructRegistry.h"
@@ -191,47 +193,14 @@ static int DelegateInstanceCall(lua_State* L)
     const MethodInfo* invokeMethod = il2cpp::vm::Runtime::GetDelegateInvoke(obj->klass);
     IL2CPP_ASSERT(invokeMethod != nullptr);
 
+    const MethodMarshalCtx* invokeCtx = DelegateBridge::GetOrCreateMethodMarshalCtx(L, invokeMethod);
     const int luaArgCount = lua_gettop(L) - 1;
-    if (luaArgCount != invokeMethod->parameters_count)
+    if (luaArgCount != invokeCtx->luaArity)
     {
-        return luaL_error(L, "zlua: delegate invoke expects %d argument(s), got %d", invokeMethod->parameters_count, luaArgCount);
+        return luaL_error(L, "zlua: argument mismatch: delegate invoke expects %d argument(s), got %d", invokeCtx->luaArity, luaArgCount);
     }
 
-    const int paramCount = invokeMethod->parameters_count;
-    std::vector<void*> params((size_t)paramCount, nullptr);
-
-    for (int i = 0; i < paramCount; ++i)
-    {
-        const Il2CppType* paramType = invokeMethod->parameters[i];
-        const size_t sz = MetadataUtil::GetValueSize(paramType);
-        bool isReferenceOrByRefOrPtr =
-            il2cpp::vm::Type::IsReference(paramType) || paramType->byref || paramType->type == IL2CPP_TYPE_PTR || paramType->type == IL2CPP_TYPE_BYREF;
-        void* dataPtr;
-        if (isReferenceOrByRefOrPtr)
-            dataPtr = &params[i];
-        else
-        {
-            dataPtr = alloca(sz);
-            params[i] = dataPtr;
-        }
-        TypedMarshal::PopByType(L, i + 2, dataPtr, paramType);
-    }
-
-    bool isVoidReturn = invokeMethod->return_type->type == IL2CPP_TYPE_VOID;
-
-    void* ret = isVoidReturn ? nullptr : alloca(MetadataUtil::GetValueSize(invokeMethod->return_type));
-    // FIXME: handle managed exception
-    invokeMethod->invoker_method(invokeMethod->methodPointer, invokeMethod, delegate, params.data(), ret);
-
-    if (isVoidReturn)
-    {
-        return 0;
-    }
-    else
-    {
-        TypedMarshal::PushByType(L, ret, invokeMethod->return_type);
-        return 1;
-    }
+    return MethodBridge::InvokeLua2Cs(L, delegate, 2, invokeCtx);
 }
 
 static const MetaInfo* LookupMeta(const NameMetaMap* map, const char* key)

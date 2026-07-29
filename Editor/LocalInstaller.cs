@@ -127,6 +127,41 @@ namespace ZLua
             return false;
         }
 
+        /// <summary>
+        /// Dev helper: refresh install fingerprint stamps to match the current package mtime
+        /// without re-running Install. Use in the ZLua development project when editing package
+        /// sources frequently so Generate/Build stale-install checks stay quiet.
+        /// </summary>
+        public void MarkAsInstalled()
+        {
+            if (!HasInstalledToLocal())
+            {
+                throw new InvalidOperationException(
+                    "[ZLua] Local install not found. Run menu 'ZLua/Install...' first.");
+            }
+
+            string luaId = LuaVersionUtil.ResolveConfiguredOrDefault(Settings.Instance.luaVersionId, out _);
+            if (!LuaVersionUtil.TryParse(luaId, out LuaVersionInfo luaInfo))
+            {
+                throw new InvalidOperationException($"[ZLua] Invalid luaVersionId: {luaId}");
+            }
+
+            InstallFingerprint.TryRead(out InstallFingerprintData saved);
+            InstallFingerprint.Write(new InstallFingerprintData
+            {
+                unityVersion = Application.unityVersion,
+                luaVersionId = luaInfo.Id,
+                luaSeries = saved != null && !string.IsNullOrEmpty(saved.luaSeries)
+                    ? saved.luaSeries
+                    : luaInfo.Series,
+                libil2cppPatchKey = saved?.libil2cppPatchKey ?? string.Empty,
+                luaPatchKey = saved?.luaPatchKey ?? string.Empty,
+                packageContentStamp = ComputePackageContentStamp(),
+                defines = saved?.defines ?? string.Empty,
+            });
+            WriteLegacyPackageMtimeStamp();
+        }
+
         public static string PlatformDirName
         {
             get

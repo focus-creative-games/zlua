@@ -33,10 +33,14 @@ namespace ZLua.Emit
                 return false;
             }
 
+            // Type-level Table/Unpacked is supported via InterpretedMethodInvoker, not Expression PopArg.
             if (type.IsDefined(typeof(LuaMarshalAsAttribute), inherit: false))
             {
                 LuaMarshalAsAttribute attr = type.GetCustomAttribute<LuaMarshalAsAttribute>(inherit: false);
-                if (attr != null && attr.LuaMarshalType != LuaMarshalType.Default)
+                if (attr != null
+                    && attr.LuaMarshalType != LuaMarshalType.Default
+                    && attr.LuaMarshalType != LuaMarshalType.Table
+                    && attr.LuaMarshalType != LuaMarshalType.UnpackedValues)
                 {
                     return false;
                 }
@@ -69,11 +73,47 @@ namespace ZLua.Emit
                 LuaMarshalAsAttribute attr = parameter.GetCustomAttribute<LuaMarshalAsAttribute>(inherit: false);
                 if (attr != null && attr.LuaMarshalType != LuaMarshalType.Default)
                 {
+                    // Table/Unpacked handled by interpreted path; other non-Default still block Expression.
+                    if (attr.LuaMarshalType == LuaMarshalType.Table
+                        || attr.LuaMarshalType == LuaMarshalType.UnpackedValues)
+                    {
+                        return IsSupportedType(type);
+                    }
+
                     return false;
                 }
             }
 
             return IsSupportedType(type);
+        }
+
+        /// <summary>
+        /// True when the closed method can use the Expression fast path (no composite marshal).
+        /// </summary>
+        internal static bool CanExpressionEmit(MethodBase method)
+        {
+            if (method == null || InterpretedMethodInvoker.NeedsInterpreted(method))
+            {
+                return false;
+            }
+
+            ParameterInfo[] parameters = method.GetParameters();
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                if (!IsSupportedParameter(parameters[i]))
+                {
+                    return false;
+                }
+            }
+
+            if (method is MethodInfo methodInfo
+                && methodInfo.ReturnType != typeof(void)
+                && !IsSupportedType(methodInfo.ReturnType))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>

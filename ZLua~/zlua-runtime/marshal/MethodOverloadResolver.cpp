@@ -241,18 +241,56 @@ struct ConversionScore
     int score;
 };
 
+static ConversionKind GetCompositeConversionKind(lua_State* L, int32_t slot, const MarshalMetaInfo* paramMeta)
+{
+    if (paramMeta->marshalType == LuaMarshalType::Table)
+    {
+        const int luaType = lua_type(L, slot);
+        if (paramMeta->typeKlass != nullptr && paramMeta->typeKlass->nullabletype && luaType == LUA_TNIL)
+            return ConversionKind::NullLiteral;
+        if (luaType == LUA_TTABLE)
+            return ConversionKind::Identity;
+        return ConversionKind::NotConvertible;
+    }
+
+    if (paramMeta->marshalType == LuaMarshalType::UnpackedValues)
+    {
+        ConversionKind worst = ConversionKind::Identity;
+        for (uint16_t k = 0; k < paramMeta->memberCount; ++k)
+        {
+            ConversionKind kind = GetConversionKind(L, slot + static_cast<int32_t>(k), paramMeta->members[k].memberMeta);
+            if (kind == ConversionKind::NotConvertible)
+                return ConversionKind::NotConvertible;
+            if (kind > worst)
+                worst = kind;
+        }
+        return worst;
+    }
+
+    return GetConversionKind(L, slot, paramMeta);
+}
+
 static ConversionScore ComputeMethodConversionScore(lua_State* L, int32_t argStart, int32_t argCount, const MethodMarshalCtx* method)
 {
+    (void)argCount;
     ConversionScore bestConversionScore = {ConversionKind::Identity, 0};
-    for (int j = 0; j < argCount; j++)
+    int32_t slot = argStart;
+    for (uint8_t j = 0; j < method->method->parameters_count; j++)
     {
         const MarshalMetaInfo* paramMeta = method->paramsMeta[j];
-        ConversionKind conversionKind = GetConversionKind(L, argStart + j, paramMeta);
+        ConversionKind conversionKind = GetCompositeConversionKind(L, slot, paramMeta);
+        if (conversionKind == ConversionKind::NotConvertible)
+        {
+            bestConversionScore.kind = ConversionKind::NotConvertible;
+            bestConversionScore.score = 0;
+            return bestConversionScore;
+        }
         if (conversionKind > bestConversionScore.kind)
         {
             bestConversionScore.kind = conversionKind;
         }
         bestConversionScore.score += static_cast<int>(conversionKind);
+        slot += paramMeta->stackSlots > 0 ? paramMeta->stackSlots : 1;
     }
     return bestConversionScore;
 }
@@ -267,11 +305,15 @@ static MethodOverloadResolutionResult FindBestMatchMethod(lua_State* L, const Me
     for (size_t i = 0; i < methodCount; i++)
     {
         const MethodMarshalCtx* method = methods[i];
-        if (method->method->parameters_count != argCount)
+        if (method->luaArity != argCount)
         {
             continue;
         }
         ConversionScore conversionScore = ComputeMethodConversionScore(L, argStart, argCount, method);
+        if (conversionScore.kind == ConversionKind::NotConvertible)
+        {
+            continue;
+        }
         if (conversionScore.kind < bestConversionScore.kind)
         {
             bestConversionScore = conversionScore;
@@ -319,7 +361,7 @@ MethodOverloadResolutionResult MethodOverloadResolver::Resolve(lua_State* L, con
     if (groups->largeArgCountMethodCount == 1)
     {
         const MethodMarshalCtx* method = groups->largeArgCountMethods[0];
-        if (method->method->parameters_count != argCount)
+        if (method->luaArity != argCount)
         {
             return MethodOverloadResolutionResult{MethodOverloadResolutionKind::None, nullptr};
         }

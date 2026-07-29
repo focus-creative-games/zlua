@@ -19,6 +19,8 @@ class MetadataUtil
     static Il2CppClass* ResolveTypeFromName(const char* typeFullName);
     static const MethodInfo* FindMethod(Il2CppClass* klass, const char* name, int parameterCount, bool isStatic);
     static const MethodInfo* FindConstructor(Il2CppClass* klass, int parameterCount);
+    /// Match name + parameter signature; ignores static vs instance.
+    static const MethodInfo* FindMethodByParameterSignature(Il2CppClass* klass, const char* name, const char* parameterSignature);
     static const MethodInfo* FindMethodByParameterSignature(Il2CppClass* klass, const char* name, const char* parameterSignature, bool isStatic);
     static std::string GetLuaFullName(Il2CppClass* klass);
     static std::string GetLuaFullName(const Il2CppType* type);

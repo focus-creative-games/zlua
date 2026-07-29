@@ -152,13 +152,14 @@ namespace ZLua
                 return;
             }
 
-            // Method-level [LuaMarshalAs] is not supported (MARSHAL_SPEC §6).
+            // Method-level [LuaMarshalAs] is not supported (MARSHAL_SPEC §6) — Mono: log + ignore.
             if (method.GetCustomAttribute<LuaMarshalAsAttribute>(inherit: false) != null)
             {
-                throw new LuaMarshalAsConfigurationException(
-                    "[ZLua] LuaMarshalAs configuration error: "
-                    + method.DeclaringType?.FullName + "." + method.Name
-                    + "\n  LuaMarshalAsAttribute must not be applied to methods.");
+                LogInvalidOnce(
+                    method.DeclaringType?.FullName + "." + method.Name,
+                    method.DeclaringType,
+                    LuaMarshalType.Default,
+                    "LuaMarshalAsAttribute must not be applied to methods; ignoring.");
             }
 
             ValidateTypeLevelConfiguration(method.DeclaringType);
@@ -194,206 +195,179 @@ namespace ZLua
 
             string memberSignature = BuildMemberSignature(method, parameter, isReturnValue);
             LuaMarshalType marshalType = attribute.LuaMarshalType;
-            Type targetType = UnwrapType(clrType);
+            Type declaredType = StripByRef(clrType);
+            Type memberOwnerType = UnwrapType(clrType);
 
-            ValidateConfigurationOrThrow(
+            string invalidReason = GetConfigurationInvalidReason(
                 marshalType,
                 attribute,
-                targetType,
-                parameter,
-                method,
-                direction,
+                declaredType,
+                memberOwnerType,
                 memberSignature);
+            if (invalidReason == null)
+            {
+                invalidReason = GetTypeOrDirectionInvalidReason(marshalType, clrType, parameter, direction);
+            }
 
-            string invalidReason = GetTypeOrDirectionInvalidReason(marshalType, targetType, parameter, direction);
             if (invalidReason != null)
             {
-                LogInvalidOnce(memberSignature, targetType, marshalType, invalidReason);
+                LogInvalidOnce(memberSignature, declaredType ?? memberOwnerType, marshalType, invalidReason);
                 return false;
             }
 
-            LuaMarshalMemberBinding[] members = ExpandMembers(
-                marshalType,
-                targetType,
-                attribute.Members,
-                direction,
-                memberSignature);
+            if (!TryExpandMembers(
+                    marshalType,
+                    memberOwnerType,
+                    attribute.Members,
+                    direction,
+                    memberSignature,
+                    out LuaMarshalMemberBinding[] members,
+                    out string expandReason))
+            {
+                LogInvalidOnce(memberSignature, memberOwnerType, marshalType, expandReason);
+                return false;
+            }
 
             binding = new LuaMarshalBinding(marshalType, members);
             return true;
         }
 
-        private static void ValidateConfigurationOrThrow(
+        /// <summary>
+        /// Mono Attribute path: configuration problems become log + Default (spec §4.1).
+        /// </summary>
+        private static string GetConfigurationInvalidReason(
             LuaMarshalType marshalType,
             LuaMarshalAsAttribute attribute,
-            Type targetType,
-            ParameterInfo parameter,
-            MethodBase method,
-            LuaMarshalDirection direction,
+            Type declaredType,
+            Type memberOwnerType,
             string memberSignature)
         {
-            if (!LuaMarshalAsXmlRegistry.IsDeterminedMarshalTargetType(targetType))
+            if (!LuaMarshalAsXmlRegistry.IsDeterminedMarshalTargetType(declaredType)
+                && !LuaMarshalAsXmlRegistry.IsDeterminedMarshalTargetType(memberOwnerType))
             {
-                throw new LuaMarshalAsConfigurationException(
-                    "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                    + "LuaMarshalAs cannot be applied to undetermined generic types "
-                    + "(e.g. type parameter T, List<T>, or open generic definitions).");
+                return "LuaMarshalAs cannot be applied to undetermined generic types "
+                    + "(e.g. type parameter T, List<T>, or open generic definitions); falling back to Default.";
             }
 
-            switch (marshalType)
+            if (marshalType == LuaMarshalType.Table || marshalType == LuaMarshalType.UnpackedValues)
             {
-                case LuaMarshalType.Table:
-                case LuaMarshalType.UnpackedValues:
-                    if (attribute.Members == null || attribute.Members.Length == 0)
-                    {
-                        throw new LuaMarshalAsConfigurationException(
-                            "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                            + "LuaMarshalType." + marshalType + " requires non-empty Members.");
-                    }
+                if (attribute.Members == null || attribute.Members.Length == 0)
+                {
+                    return "LuaMarshalType." + marshalType + " requires non-empty Members; falling back to Default.";
+                }
 
-                    if (marshalType == LuaMarshalType.UnpackedValues)
+                if (marshalType == LuaMarshalType.UnpackedValues)
+                {
+                    for (int i = 0; i < attribute.Members.Length; i++)
                     {
-                        for (int i = 0; i < attribute.Members.Length; i++)
+                        if (HasOptionalSuffix(attribute.Members[i]))
                         {
-                            if (HasOptionalSuffix(attribute.Members[i]))
-                            {
-                                throw new LuaMarshalAsConfigurationException(
-                                    "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                                    + "UnpackedValues does not support optional member suffix '?'.");
-                            }
+                            return "UnpackedValues does not support optional member suffix '?'; falling back to Default.";
                         }
                     }
-
-                    if (targetType.IsInterface)
-                    {
-                        throw new LuaMarshalAsConfigurationException(
-                            "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                            + "LuaMarshalType." + marshalType + " is not allowed on interface types.");
-                    }
-
-                    if (!IsStructType(targetType) && !targetType.IsClass)
-                    {
-                        throw new LuaMarshalAsConfigurationException(
-                            "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                            + "LuaMarshalType." + marshalType + " requires struct or class type.");
-                    }
-                    break;
-
-                case LuaMarshalType.ParamsTable:
-                    if (parameter == null || !parameter.IsDefined(typeof(ParamArrayAttribute), inherit: false))
-                    {
-                        throw new LuaMarshalAsConfigurationException(
-                            "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                            + "LuaMarshalType.ParamsTable requires a params T[] parameter.");
-                    }
-
-                    if (!IsSzArray(targetType))
-                    {
-                        throw new LuaMarshalAsConfigurationException(
-                            "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                            + "LuaMarshalType.ParamsTable requires a one-dimensional array parameter.");
-                    }
-                    break;
+                }
             }
-
-            if (marshalType != LuaMarshalType.Table
-                && attribute.Members != null
-                && attribute.Members.Length > 0)
+            else if (attribute.Members != null && attribute.Members.Length > 0)
             {
                 for (int i = 0; i < attribute.Members.Length; i++)
                 {
                     if (HasOptionalSuffix(attribute.Members[i]))
                     {
-                        throw new LuaMarshalAsConfigurationException(
-                            "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                            + "Optional member suffix '?' is only allowed with LuaMarshalType.Table.");
+                        return "Optional member suffix '?' is only allowed with LuaMarshalType.Table; falling back to Default.";
                     }
                 }
             }
+
+            return null;
         }
 
-        private static LuaMarshalMemberBinding[] ExpandMembers(
+        private static bool TryExpandMembers(
             LuaMarshalType marshalType,
-            Type targetType,
+            Type memberOwnerType,
             string[] fieldOrPropertyNames,
             LuaMarshalDirection direction,
-            string memberSignature)
+            string memberSignature,
+            out LuaMarshalMemberBinding[] members,
+            out string reason)
         {
+            members = Array.Empty<LuaMarshalMemberBinding>();
+            reason = null;
             if (marshalType != LuaMarshalType.Table && marshalType != LuaMarshalType.UnpackedValues)
             {
-                return Array.Empty<LuaMarshalMemberBinding>();
+                return true;
             }
 
-            var members = new LuaMarshalMemberBinding[fieldOrPropertyNames.Length];
+            members = new LuaMarshalMemberBinding[fieldOrPropertyNames.Length];
             for (int i = 0; i < fieldOrPropertyNames.Length; i++)
             {
                 string rawName = fieldOrPropertyNames[i];
                 if (string.IsNullOrWhiteSpace(rawName))
                 {
-                    throw new LuaMarshalAsConfigurationException(
-                        "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                        + "Members contains an empty entry.");
+                    reason = "Members contains an empty entry; falling back to Default.";
+                    return false;
                 }
 
                 bool optional = marshalType == LuaMarshalType.Table && HasOptionalSuffix(rawName);
                 string clrName = optional ? rawName.Substring(0, rawName.Length - 1) : rawName;
                 if (string.IsNullOrWhiteSpace(clrName))
                 {
-                    throw new LuaMarshalAsConfigurationException(
-                        "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                        + "Members entry '" + rawName + "' is invalid.");
+                    reason = "Members entry '" + rawName + "' is invalid; falling back to Default.";
+                    return false;
                 }
 
-                MemberInfo member = ResolveMember(targetType, clrName);
+                MemberInfo member = ResolveMember(memberOwnerType, clrName);
                 if (member == null)
                 {
-                    throw new LuaMarshalAsConfigurationException(
-                        "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                        + "Members entry '" + clrName + "' is not a public field or property on "
-                        + targetType.FullName + ".");
+                    reason = "Members entry '" + clrName + "' is not a public field or property on "
+                        + memberOwnerType.FullName + "; falling back to Default.";
+                    return false;
                 }
 
-                ValidateMemberAccess(member, direction, memberSignature, clrName);
+                if (!TryValidateMemberAccess(member, direction, clrName, out reason))
+                {
+                    return false;
+                }
+
                 members[i] = new LuaMarshalMemberBinding(clrName, optional, member);
             }
 
-            return members;
+            return true;
         }
 
-        private static void ValidateMemberAccess(
+        private static bool TryValidateMemberAccess(
             MemberInfo member,
             LuaMarshalDirection direction,
-            string memberSignature,
-            string clrName)
+            string clrName,
+            out string reason)
         {
+            reason = null;
             if (member is FieldInfo field)
             {
                 if (field.IsStatic)
                 {
-                    throw new LuaMarshalAsConfigurationException(
-                        "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                        + "Members entry '" + clrName + "' must be an instance member.");
+                    reason = "Members entry '" + clrName + "' must be an instance member; falling back to Default.";
+                    return false;
                 }
 
-                return;
+                return true;
             }
 
             if (member is PropertyInfo property)
             {
                 if (direction == LuaMarshalDirection.LuaToCSharp && !property.CanWrite)
                 {
-                    throw new LuaMarshalAsConfigurationException(
-                        "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                        + "Property '" + clrName + "' is not writable for Lua→C#.");
+                    reason = "Property '" + clrName + "' is not writable for Lua→C#; falling back to Default.";
+                    return false;
                 }
 
                 if (direction == LuaMarshalDirection.CSharpToLua && !property.CanRead)
                 {
-                    throw new LuaMarshalAsConfigurationException(
-                        "[ZLua] LuaMarshalAs configuration error: " + memberSignature + "\n  "
-                        + "Property '" + clrName + "' is not readable for C#→Lua.");
+                    reason = "Property '" + clrName + "' is not readable for C#→Lua; falling back to Default.";
+                    return false;
                 }
             }
+
+            return true;
         }
 
         private static MemberInfo ResolveMember(Type targetType, string name)
@@ -415,6 +389,7 @@ namespace ZLua
             ParameterInfo parameter,
             LuaMarshalDirection direction)
         {
+            Type declaredType = StripByRef(clrType);
             Type targetType = UnwrapType(clrType);
             if (marshalType == LuaMarshalType.Default)
             {
@@ -467,29 +442,32 @@ namespace ZLua
 
             if (marshalType == LuaMarshalType.Table || marshalType == LuaMarshalType.UnpackedValues)
             {
-                if (targetType.IsInterface)
+                Type nullableUnderlying = declaredType != null ? Nullable.GetUnderlyingType(declaredType) : null;
+                if (nullableUnderlying != null)
                 {
-                    return $"LuaMarshalType.{marshalType} is not allowed for interface {targetType.FullName}; falling back to Default.";
-                }
+                    if (marshalType == LuaMarshalType.UnpackedValues)
+                    {
+                        return "LuaMarshalType.UnpackedValues is not allowed for Nullable<T> "
+                            + "(cannot distinguish nil vs non-nil); falling back to Default.";
+                    }
 
-                if (IsStructType(targetType) || targetType.IsClass)
-                {
+                    // Table + Nullable<struct> only.
+                    if (!IsStructType(nullableUnderlying))
+                    {
+                        return $"LuaMarshalType.Table is not allowed for Nullable<{nullableUnderlying.FullName}>; falling back to Default.";
+                    }
+
                     return null;
                 }
 
-                return $"LuaMarshalType.{marshalType} is not allowed for {targetType.FullName}; falling back to Default.";
-            }
-
-            if (marshalType == LuaMarshalType.ParamsTable)
-            {
-                if (parameter != null
-                    && parameter.IsDefined(typeof(ParamArrayAttribute), inherit: false)
-                    && IsSzArray(targetType))
+                if (!IsStructType(declaredType ?? targetType))
                 {
-                    return null;
+                    return $"LuaMarshalType.{marshalType} is only allowed for struct / closed generic struct"
+                        + (marshalType == LuaMarshalType.Table ? " / Nullable<struct>" : "")
+                        + $"; falling back to Default (got {declaredType?.FullName ?? targetType?.FullName}).";
                 }
 
-                return $"LuaMarshalType.{marshalType} is not allowed for {targetType.FullName}; falling back to Default.";
+                return null;
             }
 
             return $"LuaMarshalType.{marshalType} is not allowed for {targetType.FullName}; falling back to Default.";
@@ -596,6 +574,7 @@ namespace ZLua
 
         /// <summary>
         /// Type-level [LuaMarshalAs] is only valid on non-generic class/struct definitions (spec §1.1).
+        /// Mono: log + ignore invalid type-level attributes.
         /// </summary>
         public static void ValidateTypeLevelConfiguration(Type type)
         {
@@ -612,10 +591,11 @@ namespace ZLua
 
             if (type.IsGenericTypeDefinition || type.IsGenericType)
             {
-                throw new LuaMarshalAsConfigurationException(
-                    "[ZLua] LuaMarshalAs configuration error: " + (type.FullName ?? type.Name) + "\n  "
-                    + "LuaMarshalAsAttribute must not be applied to generic type definitions "
-                    + "(only non-generic types; closed generic positions use member-level attributes).");
+                LogInvalidOnce(
+                    type.FullName ?? type.Name,
+                    type,
+                    attr.LuaMarshalType,
+                    "LuaMarshalAsAttribute must not be applied to generic type definitions; falling back to Default.");
             }
         }
 
@@ -628,18 +608,34 @@ namespace ZLua
                 return null;
             }
 
+            // Generic type definitions already rejected in ValidateTypeLevelConfiguration (soft).
+            if (owner.IsGenericTypeDefinition)
+            {
+                return null;
+            }
+
             return owner.GetCustomAttribute<LuaMarshalAsAttribute>(inherit: false);
+        }
+
+        private static Type StripByRef(Type clrType)
+        {
+            if (clrType != null && clrType.IsByRef)
+            {
+                return clrType.GetElementType();
+            }
+
+            return clrType;
         }
 
         private static Type UnwrapType(Type clrType)
         {
-            Type targetType = Nullable.GetUnderlyingType(clrType) ?? clrType;
-            if (targetType != null && targetType.IsByRef)
+            Type targetType = StripByRef(clrType);
+            if (targetType == null)
             {
-                targetType = targetType.GetElementType();
+                return null;
             }
 
-            return targetType;
+            return Nullable.GetUnderlyingType(targetType) ?? targetType;
         }
 
         private static bool HasOptionalSuffix(string name)
@@ -668,13 +664,21 @@ namespace ZLua
             return name;
         }
 
-        /// Optional deferred reporter (Mono wires this at init; must not log with stack traces from Lua callbacks).
-        public static Action<string> ReportInvalidConfiguration;
-
         private static readonly HashSet<string> LoggedKeys = new HashSet<string>();
+
+        /// <summary>
+        /// When true, invalid LuaMarshalAs diagnostics are not written to the Unity console.
+        /// Intended for unit-test hosts that intentionally exercise invalid attributes.
+        /// </summary>
+        public static bool SuppressInvalidLogging { get; set; }
 
         private static void LogInvalidOnce(string memberSignature, Type clrType, LuaMarshalType marshalType, string reason)
         {
+            if (SuppressInvalidLogging)
+            {
+                return;
+            }
+
             string key = memberSignature + "|" + clrType.AssemblyQualifiedName + "|" + marshalType;
             lock (LoggedKeys)
             {
@@ -685,20 +689,7 @@ namespace ZLua
             }
 
             string message = "[ZLua] Invalid LuaMarshalAs: " + memberSignature + "\n  " + clrType.FullName + ": " + reason;
-            Action<string> reporter = ReportInvalidConfiguration;
-            if (reporter != null)
-            {
-                reporter(message);
-                return;
-            }
-
-#if UNITY_EDITOR
-            UnityEngine.Debug.LogFormat(
-                UnityEngine.LogType.Error,
-                UnityEngine.LogOption.NoStacktrace,
-                null,
-                message);
-#endif
+            UnityEngine.Debug.LogError(message);
         }
     }
 }

@@ -30,14 +30,16 @@ void MethodBridge::Initialize()
 int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStart, const MethodInfo* method, const MethodMarshalCtx* ctx)
 {
     void** params = (void**)alloca(method->parameters_count * sizeof(void*));
+    int slot = argStart;
     for (uint8_t i = 0; i < method->parameters_count; i++)
     {
         const MarshalMetaInfo* paramMeta = ctx->paramsMeta[i];
         IL2CPP_ASSERT(!paramMeta->passByValue || paramMeta->size == sizeof(void*));
         void* tempStorage = nullptr;
         void* storage = paramMeta->passByValue ? &tempStorage : alloca(paramMeta->size);
-        paramMeta->lua2csWriter(L, argStart + i, storage, paramMeta);
+        paramMeta->lua2csWriter(L, slot, storage, paramMeta);
         params[i] = paramMeta->passByValue ? tempStorage : storage;
+        slot += paramMeta->stackSlots > 0 ? paramMeta->stackSlots : 1;
     }
 
     if (ctx->retMeta != nullptr)
@@ -45,7 +47,7 @@ int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStar
         void* ret = alloca(ctx->retMeta->size);
         method->invoker_method(method->methodPointer, method, target, params, ret);
         ctx->retMeta->cs2luaWriter(L, ret, ctx->retMeta);
-        return 1;
+        return ctx->retMeta->stackSlots > 0 ? ctx->retMeta->stackSlots : 1;
     }
     else
     {

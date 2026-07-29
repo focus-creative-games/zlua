@@ -22,8 +22,7 @@ namespace ZLua.Emit
 
             for (int i = 0; i < ctors.Length; i++)
             {
-                ParameterInfo[] parameters = ctors[i].GetParameters();
-                if (!TryScore(L, argStart, parameters, out int score))
+                if (!TryScore(L, argStart, ctors[i], out int score))
                 {
                     continue;
                 }
@@ -38,21 +37,99 @@ namespace ZLua.Emit
             return selectedIndex >= 0;
         }
 
-        private static bool TryScore(IntPtr L, int argStart, ParameterInfo[] parameters, out int score)
+        internal static bool TrySelectMethod(
+            IntPtr L,
+            int argStart,
+            MethodInfo[] methods,
+            out int selectedIndex)
+        {
+            selectedIndex = -1;
+            int bestScore = -1;
+
+            for (int i = 0; i < methods.Length; i++)
+            {
+                if (!TryScore(L, argStart, methods[i], out int score))
+                {
+                    continue;
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    selectedIndex = i;
+                }
+            }
+
+            return selectedIndex >= 0;
+        }
+
+        private static bool TryScore(IntPtr L, int argStart, MethodBase method, out int score)
         {
             score = 0;
+            ParameterInfo[] parameters = method.GetParameters();
+            int slot = argStart;
             for (int i = 0; i < parameters.Length; i++)
             {
-                if (!TryMatch(L, argStart + i, parameters[i].ParameterType, out int part))
+                LuaMarshalBinding binding = LuaMarshalAsValidation.ResolveParameterBinding(
+                    parameters[i],
+                    method,
+                    LuaMarshalDirection.LuaToCSharp);
+                if (!TryMatchParameter(L, slot, parameters[i].ParameterType, binding, out int part))
                 {
                     score = -1;
                     return false;
                 }
 
                 score += part;
+                slot += binding.StackSlots;
             }
 
             return true;
+        }
+
+        private static bool TryMatchParameter(
+            IntPtr L,
+            int slot,
+            Type declaredType,
+            LuaMarshalBinding binding,
+            out int score)
+        {
+            score = 0;
+            if (binding != null && binding.MarshalType == LuaMarshalType.Table)
+            {
+                Type nullableUnderlying = Nullable.GetUnderlyingType(declaredType);
+                if (nullableUnderlying != null && LuaDll.lua_isnil(L, slot))
+                {
+                    score = 1;
+                    return true;
+                }
+
+                if (LuaDll.lua_istable(L, slot))
+                {
+                    score = 15;
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (binding != null && binding.MarshalType == LuaMarshalType.UnpackedValues)
+            {
+                for (int i = 0; i < binding.Members.Length; i++)
+                {
+                    Type memberType = CompositeMarshal.GetMemberType(binding.Members[i].Member);
+                    if (!TryMatch(L, slot + i, memberType, out int part))
+                    {
+                        return false;
+                    }
+
+                    score += part;
+                }
+
+                return true;
+            }
+
+            return TryMatch(L, slot, declaredType, out score);
         }
 
         private static bool TryMatch(IntPtr L, int index, Type declaredType, out int score)
@@ -214,7 +291,6 @@ namespace ZLua.Emit
                 return false;
             }
 
-            // Reference / object facade.
             if (luaType == LuaDataType.Nil)
             {
                 score = declaredType == typeof(object) ? 1 : 2;
@@ -280,7 +356,6 @@ namespace ZLua.Emit
             {
                 if (!ObjectRegistry.TryGetObject(L, index, out object obj))
                 {
-                    // ByVal userdata into a reference parameter — usually not a match.
                     return false;
                 }
 

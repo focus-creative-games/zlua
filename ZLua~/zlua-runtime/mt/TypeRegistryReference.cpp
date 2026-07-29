@@ -30,9 +30,9 @@ int CreateReferenceTypeInstance(lua_State* L)
     if (binding->uniqueCtorMethod != nullptr)
     {
         const MethodMarshalCtx* ctx = binding->uniqueCtorMethod;
-        if (argCount != ctx->method->parameters_count)
+        if (argCount != ctx->luaArity)
         {
-            LuaException::ThrowFormat("zlua: constructor has %d parameters, but %d were given", ctx->method->parameters_count, argCount);
+            LuaException::ThrowFormat("zlua: argument mismatch: constructor expects %d argument(s), but %d were given", ctx->luaArity, argCount);
         }
         targetMethodCtx = ctx;
     }

@@ -23,6 +23,7 @@
 #include "../marshal/MarshalMeta.h"
 #include "../marshal/MarshalDefs.h"
 #include "../marshal/MethodOverloadResolver.h"
+#include "AliasXmlTable.h"
 
 
 #include "vm/Class.h"
@@ -92,6 +93,7 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
     ctx->byVal = isByVal;
     ctx->sealed = MetadataUtil::IsMethodSealed(method, isByVal);
     ctx->valueSize = MetadataUtil::GetValueSize(&method->klass->byval_arg);
+    int32_t luaArity = 0;
     if (method->parameters_count > 0)
     {
         ctx->paramsMeta = LuaMetadataAlloc::CallocArray<const MarshalMetaInfo*>(method->parameters_count);
@@ -101,6 +103,7 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
             const MarshalMetaInfo* meta = MarshalMeta::Create(L, method, i);
             ctx->paramsMeta[i] = meta;
             totalParamsSize += meta->size;
+            luaArity += meta->stackSlots > 0 ? meta->stackSlots : 1;
         }
         ctx->totalParamsSize = totalParamsSize;
     }
@@ -109,6 +112,7 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
         ctx->paramsMeta = nullptr;
         ctx->totalParamsSize = 0;
     }
+    ctx->luaArity = luaArity;
     if (MetadataUtil::IsVoidType(method->return_type))
     {
         ctx->retMeta = nullptr;
@@ -117,6 +121,26 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
     {
         ctx->retMeta = MarshalMeta::Create(L, method, -1);
     }
+
+    bool needsStackCursor = false;
+    for (int i = 0; i < method->parameters_count; i++)
+    {
+        const MarshalMetaInfo* meta = ctx->paramsMeta[i];
+        if (meta->marshalType == LuaMarshalType::Table || meta->marshalType == LuaMarshalType::UnpackedValues || meta->stackSlots != 1)
+        {
+            needsStackCursor = true;
+            break;
+        }
+    }
+    if (!needsStackCursor && ctx->retMeta != nullptr &&
+        (ctx->retMeta->marshalType == LuaMarshalType::Table || ctx->retMeta->marshalType == LuaMarshalType::UnpackedValues ||
+         ctx->retMeta->stackSlots != 1))
+    {
+        needsStackCursor = true;
+    }
+    if (needsStackCursor)
+        ctx->lua2CsInvoker = MethodBridge::DefaultInvokeLuaMethod;
+
     return ctx;
 }
 
@@ -345,45 +369,46 @@ static MethodGroups* CreateMethodGroups(lua_State* L, const std::vector<const Me
     IL2CPP_ASSERT(methods.size() > 1);
     MethodGroups* groups = LuaMetadataAlloc::NewAny<MethodGroups>();
 
-    std::vector<const MethodInfo*> methodGroups[kMaxSmallArgCount + 1];
-    std::vector<const MethodInfo*> largeArgCountMethods;
+    std::vector<const MethodMarshalCtx*> methodGroups[kMaxSmallArgCount + 1];
+    std::vector<const MethodMarshalCtx*> largeArgCountMethods;
 
     for (const MethodInfo* method : methods)
     {
-        if (method->parameters_count > kMaxSmallArgCount)
+        const MethodMarshalCtx* ctx = MetaBinding::CreateMethodMarshalCtx(L, method, isByVal);
+        if (ctx->luaArity > static_cast<int32_t>(kMaxSmallArgCount))
         {
-            largeArgCountMethods.push_back(method);
+            largeArgCountMethods.push_back(ctx);
             continue;
         }
-        methodGroups[method->parameters_count].push_back(method);
+        methodGroups[ctx->luaArity].push_back(ctx);
     }
 
     for (size_t i = 0; i <= kMaxSmallArgCount; i++)
     {
-        std::vector<const MethodInfo*>& group = methodGroups[i];
+        std::vector<const MethodMarshalCtx*>& group = methodGroups[i];
         if (group.empty())
         {
             groups->smallArgCountMethodGroups[i] = nullptr;
             continue;
         }
         MethodGroup* mg = LuaMetadataAlloc::NewAny<MethodGroup>();
-        const MethodMarshalCtx** methods = LuaMetadataAlloc::CallocArray<const MethodMarshalCtx*>(group.size());
+        const MethodMarshalCtx** methodsArr = LuaMetadataAlloc::CallocArray<const MethodMarshalCtx*>(group.size());
         for (size_t j = 0; j < group.size(); j++)
         {
-            methods[j] = MetaBinding::CreateMethodMarshalCtx(L, group[j], isByVal);
+            methodsArr[j] = group[j];
         }
-        mg->methods = methods;
+        mg->methods = methodsArr;
         mg->methodCount = group.size();
         groups->smallArgCountMethodGroups[i] = mg;
     }
     if (!largeArgCountMethods.empty())
     {
-        const MethodMarshalCtx** methods = LuaMetadataAlloc::CallocArray<const MethodMarshalCtx*>(largeArgCountMethods.size());
+        const MethodMarshalCtx** methodsArr = LuaMetadataAlloc::CallocArray<const MethodMarshalCtx*>(largeArgCountMethods.size());
         for (size_t j = 0; j < largeArgCountMethods.size(); j++)
         {
-            methods[j] = MetaBinding::CreateMethodMarshalCtx(L, largeArgCountMethods[j], isByVal);
+            methodsArr[j] = largeArgCountMethods[j];
         }
-        groups->largeArgCountMethods = methods;
+        groups->largeArgCountMethods = methodsArr;
         groups->largeArgCountMethodCount = largeArgCountMethods.size();
     }
 
@@ -466,13 +491,20 @@ static void RegisterGenericMethodGroup(lua_State* L, TypeBinding* binding, const
 static void AddToMethodGroup(const std::vector<const MethodInfo*>& methods, AppendOnlyStringHashMap<std::vector<const MethodInfo*>>& methodGroups,
                              AppendOnlyStringHashMap<std::vector<const MethodInfo*>>& genericMethods)
 {
-    std::string tempMethodName;
+    std::string alias;
     for (const MethodInfo* method : methods)
     {
         auto& mg = il2cpp::vm::Method::IsGeneric(method) ? genericMethods : methodGroups;
-        if (MetadataUtil::TryReadLuaAlias(method, tempMethodName))
+
+        // Spec: alias (Attribute, else XML) replaces MethodInfo.Name — do not also keep the default name.
+        alias.clear();
+        if (MetadataUtil::TryReadLuaAlias(method, alias) && !alias.empty())
         {
-            mg[CopyRuntimeAliasKey(tempMethodName)].push_back(method);
+            mg[CopyRuntimeAliasKey(alias)].push_back(method);
+        }
+        else if (AliasXmlTable::TryGetAlias(method, alias) && !alias.empty())
+        {
+            mg[CopyRuntimeAliasKey(alias)].push_back(method);
         }
         else
         {

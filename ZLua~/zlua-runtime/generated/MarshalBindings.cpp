@@ -4,7 +4,7 @@
 
 namespace zlua
 {
-namespace
+namespace marshal_as_bindings
 {
 static const LuaMarshalAsXmlEntry kEntries[] = {
     {
@@ -118,10 +118,10 @@ static const LuaMarshalAsXmlEntry kEntries[] = {
         0,
     },
 };
-} // namespace
+} // namespace marshal_as_bindings
 
 void RegisterMarshalBindingTables()
 {
-    MarshalAsXmlTable::RegisterEntries(kEntries, sizeof(kEntries) / sizeof(kEntries[0]));
+    MarshalAsXmlTable::RegisterEntries(marshal_as_bindings::kEntries, sizeof(marshal_as_bindings::kEntries) / sizeof(marshal_as_bindings::kEntries[0]));
 }
 } // namespace zlua

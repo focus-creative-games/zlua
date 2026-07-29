@@ -10,7 +10,6 @@ namespace ZLua
         OpaqueValue,
         UnpackedValues,
         Table,
-        ParamsTable,
     }
 
     [AttributeUsage(
@@ -26,7 +25,8 @@ namespace ZLua
 
         /// <summary>
         /// Required for <see cref="LuaMarshalType.Table"/> / <see cref="LuaMarshalType.UnpackedValues"/>.
-        /// Elements are CLR field or property names (may mix). Trailing '?' marks optional Table keys (Lua→C#).
+        /// Elements are CLR field or property names on the underlying struct (Nullable unwraps to T).
+        /// Trailing '?' marks optional Table keys (Lua→C#). UnpackedValues does not support '?'.
         /// </summary>
         public string[] Members { get; set; }
 

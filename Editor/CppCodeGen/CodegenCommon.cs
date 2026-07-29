@@ -134,6 +134,10 @@ namespace ZLua.CppCodeGen
             {
                 return $"OpaqueValueMarshal::Push(L, {addressExpr}, {typeExpr});";
             }
+            case LuaMarshalType.Table:
+            case LuaMarshalType.UnpackedValues:
+                throw new CodeGenException(
+                    $"composite marshal type {marshalType} uses DefaultInvoke (no stub); method: {methodDef.FullName}");
             default:
                 throw new CodeGenException($"unsupported marshal type {marshalType}, method: {methodDef.FullName}");
             }
@@ -228,6 +232,10 @@ namespace ZLua.CppCodeGen
             {
                 return $"OpaqueValueMarshal::Pop(L, {luaValueIndex}, &{paramName}, {typeExpr});";
             }
+            case LuaMarshalType.Table:
+            case LuaMarshalType.UnpackedValues:
+                throw new CodeGenException(
+                    $"composite marshal type {marshalType} uses DefaultInvoke (no stub); method: {methodDef.FullName}");
             default:
                 throw new CodeGenException($"unsupported marshal type {marshalType}, method: {methodDef.FullName}");
             }

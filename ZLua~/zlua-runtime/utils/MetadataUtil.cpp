@@ -551,19 +551,31 @@ Il2CppClass* MetadataUtil::ResolveTypeFromName(const char* typeFullName)
     return il2cpp::vm::Class::FromIl2CppType(type, false);
 }
 
-const MethodInfo* MetadataUtil::FindMethodByParameterSignature(Il2CppClass* klass, const char* name, const char* parameterSignature, bool isStatic)
+const MethodInfo* MetadataUtil::FindMethodByParameterSignature(Il2CppClass* klass, const char* name, const char* parameterSignature)
 {
-    if (klass == nullptr || name == nullptr || parameterSignature == nullptr)
-        return nullptr;
-
     il2cpp::vm::Class::Init(klass);
     for (Il2CppClass* cursor = klass; cursor != nullptr; cursor = cursor->parent)
     {
         for (uint16_t i = 0; i < cursor->method_count; ++i)
         {
             const MethodInfo* method = cursor->methods[i];
-            if (method == nullptr || method->name == nullptr)
+            if (strcmp(method->name, name) != 0)
                 continue;
+            if (FormatParameterSignature(method) == parameterSignature)
+                return method;
+        }
+    }
+    return nullptr;
+}
+
+const MethodInfo* MetadataUtil::FindMethodByParameterSignature(Il2CppClass* klass, const char* name, const char* parameterSignature, bool isStatic)
+{
+    il2cpp::vm::Class::Init(klass);
+    for (Il2CppClass* cursor = klass; cursor != nullptr; cursor = cursor->parent)
+    {
+        for (uint16_t i = 0; i < cursor->method_count; ++i)
+        {
+            const MethodInfo* method = cursor->methods[i];
             if (strcmp(method->name, name) != 0)
                 continue;
             const bool methodIsStatic = (method->flags & METHOD_ATTRIBUTE_STATIC) != 0;
@@ -653,7 +665,7 @@ static bool TryReadLuaMarshalTypeFromAttributeObject(Il2CppObject* attr, LuaMars
         return false;
 
     const int32_t rawValue = *reinterpret_cast<int32_t*>(il2cpp::vm::Object::Unbox(enumValue));
-    if (rawValue < 0 || rawValue > static_cast<int32_t>(LuaMarshalType::ParamsTable))
+    if (rawValue < 0 || rawValue > static_cast<int32_t>(LuaMarshalType::Table))
         return false;
 
     marshalTypeOut = static_cast<LuaMarshalType>(rawValue);
@@ -777,27 +789,44 @@ static Il2CppClass* GetEffectiveMarshalClass(const Il2CppType* type)
 
 static bool IsMarshalTypeValidForParameter(LuaMarshalType marshalType, const Il2CppType* type, bool isReturnValue)
 {
-    Il2CppClass* klass = GetEffectiveMarshalClass(type);
+    if (type == nullptr)
+        return false;
+
+    Il2CppClass* klass = il2cpp::vm::Class::FromIl2CppType(type, false);
     if (klass == nullptr)
         return false;
+
+    il2cpp::vm::Class::Init(klass);
 
     switch (marshalType)
     {
     case LuaMarshalType::Default:
         return true;
     case LuaMarshalType::UserData:
-        return IsUserDataAllowed(klass);
+        return IsUserDataAllowed(GetEffectiveMarshalClass(type));
     case LuaMarshalType::Bytes:
-        return IsBytesAllowed(klass);
+        return IsBytesAllowed(GetEffectiveMarshalClass(type));
     case LuaMarshalType::OpaqueValue:
-        return isReturnValue && IsStructClass(klass);
+        return isReturnValue && IsStructClass(GetEffectiveMarshalClass(type));
     case LuaMarshalType::Table:
-    case LuaMarshalType::UnpackedValues:
+    {
+        if (il2cpp::vm::Class::IsNullable(klass))
+        {
+            Il2CppClass* arg = il2cpp::vm::Class::GetNullableArgument(klass);
+            return IsStructClass(arg) && !il2cpp::vm::Class::IsInterface(arg);
+        }
         if (il2cpp::vm::Class::IsInterface(klass))
             return false;
-        return IsStructClass(klass) || klass->byval_arg.type == IL2CPP_TYPE_CLASS;
-    case LuaMarshalType::ParamsTable:
-        return false;
+        return IsStructClass(klass);
+    }
+    case LuaMarshalType::UnpackedValues:
+    {
+        if (il2cpp::vm::Class::IsNullable(klass))
+            return false;
+        if (il2cpp::vm::Class::IsInterface(klass))
+            return false;
+        return IsStructClass(klass);
+    }
     default:
         return false;
     }

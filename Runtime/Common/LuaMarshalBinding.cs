@@ -23,6 +23,15 @@ namespace ZLua
             Members = members ?? System.Array.Empty<LuaMarshalMemberBinding>();
         }
 
+        /// <summary>
+        /// Lua stack slots occupied by this parameter/return (UnpackedValues = Members.Length; else 1).
+        /// </summary>
+        public int StackSlots =>
+            MarshalType == LuaMarshalType.UnpackedValues ? Members.Length : 1;
+
+        public bool IsComposite =>
+            MarshalType == LuaMarshalType.Table || MarshalType == LuaMarshalType.UnpackedValues;
+
         public static LuaMarshalBinding Default { get; } = new LuaMarshalBinding(LuaMarshalType.Default);
     }
 

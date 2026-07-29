@@ -8,11 +8,11 @@ namespace ZLua.Utils
     /// <summary>
     /// Lua <c>print</c> 在 native 回调里不能直接 <see cref="Debug.Log"/>（Editor 在活跃
     /// <c>lua_pcall</c> 时抓堆栈可能 SIGSEGV）。回调入队，最外层托管 pcall 返回后刷出。
+    /// Mono gate 只解决 <c>lua_error</c> 不落在托管 reverse-P/Invoke 帧上，不替代本缓冲。
     /// </summary>
     internal static class LuaPrintBuffer
     {
         private static readonly List<string> PendingLines = new List<string>();
-        private static readonly List<string> PendingErrors = new List<string>();
         private static readonly object Sync = new object();
         private static int _managedPcallDepth;
 
@@ -75,19 +75,6 @@ namespace ZLua.Utils
             }
         }
 
-        internal static void EnqueueEditorError(string message)
-        {
-            if (string.IsNullOrEmpty(message))
-            {
-                return;
-            }
-
-            lock (Sync)
-            {
-                PendingErrors.Add(message);
-            }
-        }
-
         public static void ForceFlushAll()
         {
             FlushCore();
@@ -96,23 +83,15 @@ namespace ZLua.Utils
         private static void FlushCore()
         {
             string[] lines;
-            string[] errors;
             lock (Sync)
             {
                 lines = PendingLines.Count == 0 ? Array.Empty<string>() : PendingLines.ToArray();
-                errors = PendingErrors.Count == 0 ? Array.Empty<string>() : PendingErrors.ToArray();
                 PendingLines.Clear();
-                PendingErrors.Clear();
             }
 
             for (int i = 0; i < lines.Length; i++)
             {
                 Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "{0}", lines[i]);
-            }
-
-            for (int i = 0; i < errors.Length; i++)
-            {
-                Debug.LogFormat(LogType.Error, LogOption.NoStacktrace, null, "{0}", errors[i]);
             }
         }
     }

@@ -26,6 +26,14 @@ namespace ZLua
 
         public static List<string> ExpandToXmlFiles(IEnumerable<string> configuredPaths, string projectRoot)
         {
+            return ExpandToXmlFiles(configuredPaths, projectRoot, "MarshalAs");
+        }
+
+        /// <summary>
+        /// Shared path expansion for MarshalAs / LuaAlias XML Settings lists.
+        /// </summary>
+        public static List<string> ExpandToXmlFiles(IEnumerable<string> configuredPaths, string projectRoot, string pathLabel)
+        {
             var files = new List<string>();
             if (configuredPaths == null)
             {
@@ -55,7 +63,7 @@ namespace ZLua
                     if (!string.Equals(Path.GetExtension(path), ".xml", StringComparison.OrdinalIgnoreCase))
                     {
                         throw new LuaMarshalAsConfigurationException(
-                            "[ZLua] MarshalAs XML path is not an .xml file: " + path);
+                            "[ZLua] " + pathLabel + " XML path is not an .xml file: " + path);
                     }
 
                     if (seenFiles.Add(path))
@@ -81,7 +89,7 @@ namespace ZLua
                 }
 
                 throw new LuaMarshalAsConfigurationException(
-                    "[ZLua] MarshalAs XML path not found: " + path);
+                    "[ZLua] " + pathLabel + " XML path not found: " + path);
             }
 
             files.Sort(StringComparer.OrdinalIgnoreCase);
@@ -311,6 +319,13 @@ namespace ZLua
                 throw new LuaMarshalAsConfigurationException(
                     "[ZLua] Obsolete MarshalAs type 'OpaqueLightUserData' in " + filePath
                     + "; use 'OpaqueValue'.");
+            }
+
+            if (string.Equals(typeName, "ParamsTable", StringComparison.Ordinal))
+            {
+                throw new LuaMarshalAsConfigurationException(
+                    "[ZLua] Removed MarshalAs type 'ParamsTable' in " + filePath
+                    + "; params T[] uses default szarray rules (single stack slot: userdata / table / nil).");
             }
 
             if (!Enum.TryParse(typeName, ignoreCase: false, out LuaMarshalType marshalType))

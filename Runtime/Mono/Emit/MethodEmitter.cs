@@ -145,21 +145,7 @@ namespace ZLua.Emit
 
         private static bool CanEmitClosed(MethodInfo method)
         {
-            ParameterInfo[] parameters = method.GetParameters();
-            for (int i = 0; i < parameters.Length; i++)
-            {
-                if (!BridgeMarshaling.IsSupportedParameter(parameters[i]))
-                {
-                    return false;
-                }
-            }
-
-            if (method.ReturnType != typeof(void) && !BridgeMarshaling.IsSupportedType(method.ReturnType))
-            {
-                return false;
-            }
-
-            return true;
+            return InterpretedMethodInvoker.CanBind(method);
         }
 
         private static LuaCSFunction CompileOpenGenericStub()
@@ -182,7 +168,10 @@ namespace ZLua.Emit
 
         private static LuaCSFunction CompileDirect(MethodInfo method, bool isStatic, bool isByVal)
         {
-            return Wrap(BuildDirectCore(method, isStatic, isByVal));
+            Func<IntPtr, int> core = InterpretedMethodInvoker.NeedsInterpreted(method)
+                ? InterpretedMethodInvoker.CompileMethod(method, isStatic, isByVal)
+                : BuildDirectCore(method, isStatic, isByVal);
+            return Wrap(core);
         }
 
         private static Func<IntPtr, int> BuildDirectCore(MethodInfo method, bool isStatic, bool isByVal)
@@ -419,23 +408,37 @@ namespace ZLua.Emit
 
         private static LuaCSFunction CompileOverloadDispatch(List<MethodInfo> methods, bool isStatic, bool isByVal, string name)
         {
-            var byArity = new Dictionary<int, MethodInfo>();
+            var byArity = new Dictionary<int, List<MethodInfo>>();
             for (int i = 0; i < methods.Count; i++)
             {
                 MethodInfo method = methods[i];
-                int arity = method.GetParameters().Length;
-                if (byArity.ContainsKey(arity))
+                int arity = InterpretedMethodInvoker.GetLuaArity(method);
+                if (!byArity.TryGetValue(arity, out List<MethodInfo> list))
                 {
-                    continue;
+                    list = new List<MethodInfo>();
+                    byArity[arity] = list;
                 }
 
-                byArity[arity] = method;
+                list.Add(method);
             }
 
             var cores = new Dictionary<int, Func<IntPtr, int>>();
-            foreach (KeyValuePair<int, MethodInfo> kv in byArity)
+            foreach (KeyValuePair<int, List<MethodInfo>> kv in byArity)
             {
-                cores[kv.Key] = BuildDirectCore(kv.Value, isStatic, isByVal);
+                List<MethodInfo> group = kv.Value;
+                MethodInfo first = group[0];
+                if (group.Count == 1 || !GroupNeedsScoredDispatch(group))
+                {
+                    // Same-arity Default overloads: keep first (legacy). Avoid compiling every
+                    // System.String overload via Expression while nested in another DynamicMethod.
+                    cores[kv.Key] = InterpretedMethodInvoker.NeedsInterpreted(first)
+                        ? InterpretedMethodInvoker.CompileMethod(first, isStatic, isByVal)
+                        : BuildDirectCore(first, isStatic, isByVal);
+                }
+                else
+                {
+                    cores[kv.Key] = BuildScoredOverloadCore(group, isStatic, isByVal, name);
+                }
             }
 
             int argStart = isStatic ? 1 : 2;
@@ -477,6 +480,47 @@ namespace ZLua.Emit
                     StructOpaqueScope.LeaveLuaToCSharp();
                     LuaCallbackBoundary.Leave();
                 }
+            };
+        }
+
+        private static bool GroupNeedsScoredDispatch(List<MethodInfo> methods)
+        {
+            for (int i = 0; i < methods.Count; i++)
+            {
+                if (InterpretedMethodInvoker.NeedsInterpreted(methods[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static Func<IntPtr, int> BuildScoredOverloadCore(
+            List<MethodInfo> methods,
+            bool isStatic,
+            bool isByVal,
+            string name)
+        {
+            var compiled = new Func<IntPtr, int>[methods.Count];
+            for (int i = 0; i < methods.Count; i++)
+            {
+                MethodInfo method = methods[i];
+                compiled[i] = InterpretedMethodInvoker.NeedsInterpreted(method)
+                    ? InterpretedMethodInvoker.CompileMethod(method, isStatic, isByVal)
+                    : BuildDirectCore(method, isStatic, isByVal);
+            }
+
+            MethodInfo[] methodArray = methods.ToArray();
+            int argStart = isStatic ? 1 : 2;
+            return L =>
+            {
+                if (!LuaArgMatcher.TrySelectMethod(L, argStart, methodArray, out int selected))
+                {
+                    LuaCallbackBoundary.Throw($"zlua: no matching overload of {name}");
+                }
+
+                return compiled[selected](L);
             };
         }
 

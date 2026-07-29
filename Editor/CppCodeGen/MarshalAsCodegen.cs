@@ -62,7 +62,8 @@ namespace ZLua.CppCodeGen
             writer.WriteLine();
             writer.WriteLine("namespace zlua");
             writer.WriteLine("{");
-            writer.WriteLine("namespace");
+            // Named (not anonymous) so Il2Cpp lumping multiple generated/*.cpp into one TU does not collide.
+            writer.WriteLine("namespace marshal_as_bindings");
             writer.WriteLine("{");
 
             if (rules.Count > 0)
@@ -123,7 +124,7 @@ namespace ZLua.CppCodeGen
                 writer.WriteLine("};");
             }
 
-            writer.WriteLine("} // namespace");
+            writer.WriteLine("} // namespace marshal_as_bindings");
             writer.WriteLine();
             writer.WriteLine("void RegisterMarshalBindingTables()");
             writer.WriteLine("{");
@@ -134,7 +135,7 @@ namespace ZLua.CppCodeGen
             }
             else
             {
-                writer.WriteLine("MarshalAsXmlTable::RegisterEntries(kEntries, sizeof(kEntries) / sizeof(kEntries[0]));");
+                writer.WriteLine("MarshalAsXmlTable::RegisterEntries(marshal_as_bindings::kEntries, sizeof(marshal_as_bindings::kEntries) / sizeof(marshal_as_bindings::kEntries[0]));");
             }
 
             writer.DecreaseIndent();

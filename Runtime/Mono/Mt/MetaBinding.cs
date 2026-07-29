@@ -68,8 +68,8 @@ namespace ZLua.Mt
     {
         private static readonly Dictionary<Type, TypeBinding> s_bindings = new Dictionary<Type, TypeBinding>();
 
-            private const BindingFlags PublicDeclared =
-            BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        private const BindingFlags PublicDeclared =
+        BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 
         internal static TypeBinding EnsureBinding(Type type)
         {
@@ -142,7 +142,7 @@ namespace ZLua.Mt
                     continue;
                 }
 
-                // Match Il2Cpp: [LuaAlias] replaces the default Lua key (does not also keep MethodInfo.Name).
+                // Spec: [LuaAlias] / XML alias replaces MethodInfo.Name (do not also keep the default name).
                 string finalName = GetLuaFinalName(method);
                 Dictionary<string, MetaInfo> map = method.IsStatic
                     ? binding.StaticMap
@@ -290,12 +290,22 @@ namespace ZLua.Mt
             }
         }
 
+        /// <summary>
+        /// Final Lua key: Attribute alias &gt; XML alias &gt; MethodInfo.Name.
+        /// When an alias is present, the default C# name is not registered.
+        /// </summary>
         private static string GetLuaFinalName(MethodInfo method)
         {
             LuaAliasAttribute alias = method.GetCustomAttribute<LuaAliasAttribute>(inherit: false);
             if (alias != null && !string.IsNullOrEmpty(alias.Alias))
             {
                 return alias.Alias;
+            }
+
+            if (LuaAliasXmlRegistry.TryGetAlias(method, out string xmlAlias)
+                && !string.IsNullOrEmpty(xmlAlias))
+            {
+                return xmlAlias;
             }
 
             return method.Name;

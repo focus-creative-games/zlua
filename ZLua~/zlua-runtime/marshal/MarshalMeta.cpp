@@ -1,6 +1,8 @@
 #include "MarshalMeta.h"
 
 #include "ArrayMarshal.h"
+#include "CompositeMarshal.h"
+#include "CompositeSpecializedTable.h"
 #include "MarshalAsXmlTable.h"
 #include "IntrinsicTypes.h"
 #include "ObjectMarshal.h"
@@ -9,6 +11,7 @@
 #include "StructMarshal.h"
 #include "PrimitiveMarshal.h"
 
+#include "../bridge/FieldBridge.h"
 #include "../utils/MetadataUtil.h"
 #include "../utils/LuaException.h"
 #include "../utils/LuaMetadataAlloc.h"
@@ -18,6 +21,7 @@
 #include "utils/StringUtils.h"
 #include "vm/Exception.h"
 #include "vm/Class.h"
+#include "vm/Field.h"
 #include "vm/GenericClass.h"
 #include "vm/Object.h"
 #include "vm/Runtime.h"
@@ -372,7 +376,7 @@ static void FillLuaMarshalAsDataFromAttribute(Il2CppObject* attr, LuaMarshalAsDa
     IL2CPP_ASSERT(exc == nullptr && enumValue != nullptr && enumValue->klass->enumtype);
 
     const int32_t rawValue = *reinterpret_cast<int32_t*>(il2cpp::vm::Object::Unbox(enumValue));
-    IL2CPP_ASSERT(rawValue >= 0 && rawValue <= static_cast<int32_t>(LuaMarshalType::ParamsTable));
+    IL2CPP_ASSERT(rawValue >= 0 && rawValue <= static_cast<int32_t>(LuaMarshalType::Table));
     data.marshalType = static_cast<LuaMarshalType>(rawValue);
 
     const PropertyInfo* namesProperty = il2cpp::vm::Class::GetPropertyFromName(attr->klass, "Members");
@@ -460,6 +464,13 @@ static bool CopyXmlData(const LuaMarshalAsResolvedData& xml, LuaMarshalAsData& d
     return data.marshalType != LuaMarshalType::Default;
 }
 
+enum class LuaMarshalAsResolveKind : uint8_t
+{
+    None = 0,
+    DeclaredOnMember = 1, // param/field/property attribute or XML slot
+    TypeLevel = 2,
+};
+
 static bool TryResolveTypeLevelLuaMarshalAsData(Il2CppClass* typeKlass, LuaMarshalAsData& data)
 {
     if (TryParseLuaMarshalAsDataFromType(typeKlass, data))
@@ -469,7 +480,7 @@ static bool TryResolveTypeLevelLuaMarshalAsData(Il2CppClass* typeKlass, LuaMarsh
     return MarshalAsXmlTable::TryGetForType(typeKlass, xml) && CopyXmlData(xml, data);
 }
 
-static bool TryResolveLuaMarshalAsDataForMethodSlot(
+static LuaMarshalAsResolveKind TryResolveLuaMarshalAsDataForMethodSlot(
     const Il2CppImage* image,
     uint32_t paramOrReturnToken,
     const MethodInfo* method,
@@ -478,37 +489,123 @@ static bool TryResolveLuaMarshalAsDataForMethodSlot(
     LuaMarshalAsData& data)
 {
     if (TryParseLuaMarshalAsData(image, paramOrReturnToken, data))
-        return true;
+        return LuaMarshalAsResolveKind::DeclaredOnMember;
 
     LuaMarshalAsResolvedData xml;
     if (MarshalAsXmlTable::TryGetForMethodSlot(method, argIndex, xml) && CopyXmlData(xml, data))
-        return true;
+        return LuaMarshalAsResolveKind::DeclaredOnMember;
 
-    return TryResolveTypeLevelLuaMarshalAsData(typeKlass, data);
+    if (TryResolveTypeLevelLuaMarshalAsData(typeKlass, data))
+        return LuaMarshalAsResolveKind::TypeLevel;
+    return LuaMarshalAsResolveKind::None;
 }
 
-static bool TryResolveLuaMarshalAsDataForField(const FieldInfo* field, Il2CppClass* typeKlass, LuaMarshalAsData& data)
+static LuaMarshalAsResolveKind TryResolveLuaMarshalAsDataForField(const FieldInfo* field, Il2CppClass* typeKlass, LuaMarshalAsData& data)
 {
     if (TryParseLuaMarshalAsData(field->parent->image, field->token, data))
-        return true;
+        return LuaMarshalAsResolveKind::DeclaredOnMember;
 
     LuaMarshalAsResolvedData xml;
     if (MarshalAsXmlTable::TryGet(field->parent->image, field->token, xml) && CopyXmlData(xml, data))
-        return true;
+        return LuaMarshalAsResolveKind::DeclaredOnMember;
 
-    return TryResolveTypeLevelLuaMarshalAsData(typeKlass, data);
+    if (TryResolveTypeLevelLuaMarshalAsData(typeKlass, data))
+        return LuaMarshalAsResolveKind::TypeLevel;
+    return LuaMarshalAsResolveKind::None;
 }
 
-static bool TryResolveLuaMarshalAsDataForProperty(const PropertyInfo* property, Il2CppClass* typeKlass, LuaMarshalAsData& data)
+static LuaMarshalAsResolveKind TryResolveLuaMarshalAsDataForProperty(const PropertyInfo* property, Il2CppClass* typeKlass, LuaMarshalAsData& data)
 {
     if (TryParseLuaMarshalAsData(property->parent->image, property->token, data))
-        return true;
+        return LuaMarshalAsResolveKind::DeclaredOnMember;
 
     LuaMarshalAsResolvedData xml;
     if (MarshalAsXmlTable::TryGet(property->parent->image, property->token, xml) && CopyXmlData(xml, data))
-        return true;
+        return LuaMarshalAsResolveKind::DeclaredOnMember;
 
-    return TryResolveTypeLevelLuaMarshalAsData(typeKlass, data);
+    if (TryResolveTypeLevelLuaMarshalAsData(typeKlass, data))
+        return LuaMarshalAsResolveKind::TypeLevel;
+    return LuaMarshalAsResolveKind::None;
+}
+
+static void SpecializedNullableTable_Lua2Cs(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* meta)
+{
+    Il2CppClass* klass = meta->typeKlass;
+    if (lua_isnil(L, valueIdx))
+    {
+        MetadataUtil::InitNullableValue(address, klass);
+        return;
+    }
+
+    void* valueAddr = MetadataUtil::GetNullableValue(address, klass);
+    FnMarshalLua2Cs inner = nullptr;
+    if (!CompositeSpecializedTable::TryGet(klass->element_class, LuaMarshalType::Table, &inner, nullptr, nullptr) || inner == nullptr)
+    {
+        LuaException::ThrowFormat(
+            "zlua: missing specialized Table writer for Nullable<%s.%s>",
+            klass->element_class->namespaze,
+            klass->element_class->name);
+    }
+    inner(L, valueIdx, valueAddr, meta);
+    MetadataUtil::NullableSetHasValue(address, klass);
+}
+
+static void SpecializedNullableTable_Cs2Lua(lua_State* L, void* address, const MarshalMetaInfo* meta)
+{
+    Il2CppClass* klass = meta->typeKlass;
+    if (!il2cpp::vm::Object::NullableHasValue(klass, address))
+    {
+        lua_pushnil(L);
+        return;
+    }
+
+    void* valueAddr = MetadataUtil::GetNullableValue(address, klass);
+    FnMarshalCs2Lua inner = nullptr;
+    if (!CompositeSpecializedTable::TryGet(klass->element_class, LuaMarshalType::Table, nullptr, &inner, nullptr) || inner == nullptr)
+    {
+        LuaException::ThrowFormat(
+            "zlua: missing specialized Table writer for Nullable<%s.%s>",
+            klass->element_class->namespaze,
+            klass->element_class->name);
+    }
+    inner(L, valueAddr, meta);
+}
+
+static bool TryAttachCompositeSpecializedWriters(
+    MarshalMetaInfo* meta,
+    Il2CppClass* klass,
+    LuaMarshalType marshalType,
+    bool fromTypeLevel)
+{
+    if (!fromTypeLevel)
+        return false;
+
+    Il2CppClass* specializedKlass = klass;
+    if (klass->nullabletype)
+    {
+        if (marshalType != LuaMarshalType::Table)
+            return false;
+        specializedKlass = klass->element_class;
+    }
+
+    FnMarshalLua2Cs lua2cs = nullptr;
+    FnMarshalCs2Lua cs2lua = nullptr;
+    uint16_t stackSlots = 1;
+    if (!CompositeSpecializedTable::TryGet(specializedKlass, marshalType, &lua2cs, &cs2lua, &stackSlots))
+        return false;
+
+    if (klass->nullabletype)
+    {
+        meta->lua2csWriter = SpecializedNullableTable_Lua2Cs;
+        meta->cs2luaWriter = SpecializedNullableTable_Cs2Lua;
+    }
+    else
+    {
+        meta->lua2csWriter = lua2cs;
+        meta->cs2luaWriter = cs2lua;
+    }
+    meta->stackSlots = stackSlots;
+    return true;
 }
 
 static MarshalMetaInfo* AllocMarshalMeta(const Il2CppType* type)
@@ -517,6 +614,10 @@ static MarshalMetaInfo* AllocMarshalMeta(const Il2CppType* type)
     meta->type = type;
     meta->luaByValRefIndex = LUA_NOREF;
     meta->luaByObjRefIndex = LUA_NOREF;
+    meta->marshalType = LuaMarshalType::Default;
+    meta->stackSlots = 1;
+    meta->memberCount = 0;
+    meta->members = nullptr;
     return meta;
 }
 
@@ -751,7 +852,165 @@ restart:
     }
 }
 
-static bool TryApplyDeclaredMarshalWriters(MarshalMetaInfo* meta, const Il2CppType* type, Il2CppClass* klass, const LuaMarshalAsData& data)
+static bool IsCompositeTargetValid(LuaMarshalType marshalType, Il2CppClass* klass)
+{
+    if (klass == nullptr)
+        return false;
+    if (marshalType == LuaMarshalType::Table)
+    {
+        if (klass->nullabletype)
+        {
+            Il2CppClass* arg = klass->element_class;
+            return arg != nullptr && arg->byval_arg.valuetype && !arg->enumtype && !il2cpp::vm::Class::IsInterface(arg);
+        }
+        if (il2cpp::vm::Class::IsInterface(klass))
+            return false;
+        return klass->byval_arg.valuetype && !klass->enumtype;
+    }
+    if (marshalType == LuaMarshalType::UnpackedValues)
+    {
+        if (klass->nullabletype)
+            return false;
+        if (il2cpp::vm::Class::IsInterface(klass))
+            return false;
+        return klass->byval_arg.valuetype && !klass->enumtype;
+    }
+    return false;
+}
+
+static MarshalMetaInfo* CreateByRefOpaqueMeta(const Il2CppType* type)
+{
+    MarshalMetaInfo* meta = AllocMarshalMeta(type);
+    meta->lua2csWriter = Lua2CSMarshalOpaque;
+    meta->cs2luaWriter = CS2LuaMarshalOpaque;
+    meta->size = sizeof(uintptr_t);
+    meta->passByValue = true;
+    return meta;
+}
+
+static MarshalMetaInfo* CreateDefaultOnlyMemberMeta(const Il2CppType* type)
+{
+    Il2CppClass* klass = il2cpp::vm::Class::FromIl2CppType(type);
+    il2cpp::vm::Class::Init(klass);
+    MarshalMetaInfo* meta = AllocMarshalMeta(type);
+    ApplySizeAndPassByValueAndKlass(meta, type, klass);
+    ApplyDefaultMarshalWriters(meta, type, klass);
+    return meta;
+}
+
+static bool IsPublicInstanceField(const FieldInfo* field)
+{
+    if (field == nullptr || !il2cpp::vm::Field::IsInstance(const_cast<FieldInfo*>(field)))
+        return false;
+    return (il2cpp::vm::Field::GetFlags(const_cast<FieldInfo*>(field)) & FIELD_ATTRIBUTE_FIELD_ACCESS_MASK) == FIELD_ATTRIBUTE_PUBLIC;
+}
+
+static bool IsPublicInstanceProperty(const PropertyInfo* property, bool requireGetter, bool requireSetter)
+{
+    if (property == nullptr)
+        return false;
+    if (requireGetter)
+    {
+        if (property->get == nullptr || !MetadataUtil::IsPublicMethod(property->get) || MetadataUtil::IsStaticMethod(property->get))
+            return false;
+        if (property->get->parameters_count != 0)
+            return false;
+    }
+    if (requireSetter)
+    {
+        if (property->set == nullptr || !MetadataUtil::IsPublicMethod(property->set) || MetadataUtil::IsStaticMethod(property->set))
+            return false;
+        if (property->set->parameters_count != 1)
+            return false;
+    }
+    return true;
+}
+
+static Il2CppClass* GetCompositeMemberOwnerClass(Il2CppClass* declaredKlass, LuaMarshalType marshalType)
+{
+    if (declaredKlass->nullabletype)
+    {
+        if (marshalType != LuaMarshalType::Table)
+            LuaException::ThrowFormat("zlua: Nullable is only allowed with LuaMarshalType.Table (%s.%s)", declaredKlass->namespaze, declaredKlass->name);
+        return declaredKlass->element_class;
+    }
+    return declaredKlass;
+}
+
+static void ResolveCompositeMembers(
+    Il2CppClass* memberOwner,
+    LuaMarshalType marshalType,
+    const std::vector<std::string>& names,
+    bool requireWrite,
+    bool requireRead,
+    CompositeMember*& outMembers,
+    uint16_t& outCount)
+{
+    if (names.empty())
+        LuaException::ThrowFormat("zlua: LuaMarshalType.%s requires non-empty Members (%s.%s)",
+                                  marshalType == LuaMarshalType::Table ? "Table" : "UnpackedValues", memberOwner->namespaze, memberOwner->name);
+
+    CompositeMember* members = LuaMetadataAlloc::CallocArray<CompositeMember>(names.size());
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        const std::string& raw = names[i];
+        if (raw.empty())
+            LuaException::ThrowFormat("zlua: empty Members entry on %s.%s", memberOwner->namespaze, memberOwner->name);
+
+        bool optional = false;
+        std::string clrName = raw;
+        if (!raw.empty() && raw.back() == '?')
+        {
+            if (marshalType != LuaMarshalType::Table)
+                LuaException::ThrowFormat("zlua: UnpackedValues does not support optional member suffix '?' (%s.%s)", memberOwner->namespaze, memberOwner->name);
+            optional = true;
+            clrName = raw.substr(0, raw.size() - 1);
+            if (clrName.empty())
+                LuaException::ThrowFormat("zlua: invalid optional Members entry on %s.%s", memberOwner->namespaze, memberOwner->name);
+        }
+
+        FieldInfo* field = il2cpp::vm::Class::GetFieldFromName(memberOwner, clrName.c_str());
+        const PropertyInfo* property = nullptr;
+        if (field == nullptr)
+            property = il2cpp::vm::Class::GetPropertyFromName(memberOwner, clrName.c_str());
+
+        CompositeMember& entry = members[i];
+        entry.optional = optional;
+        entry.clrName = zlua_strdup(clrName.c_str());
+
+        if (field != nullptr)
+        {
+            if (!IsPublicInstanceField(field))
+                LuaException::ThrowFormat("zlua: composite member '%s' is not a public instance field (%s.%s)", clrName.c_str(), memberOwner->namespaze,
+                                          memberOwner->name);
+            entry.isField = true;
+            entry.field = field;
+            entry.fieldOffset = FieldBridge::ComputeInstanceFieldOffset(field);
+            entry.memberMeta = CreateDefaultOnlyMemberMeta(field->type);
+        }
+        else if (property != nullptr)
+        {
+            if (!IsPublicInstanceProperty(property, requireRead, requireWrite))
+                LuaException::ThrowFormat("zlua: composite member '%s' is not a usable public instance property (%s.%s)", clrName.c_str(),
+                                          memberOwner->namespaze, memberOwner->name);
+            entry.isField = false;
+            entry.property = property;
+            entry.fieldOffset = 0;
+            const Il2CppType* propType = property->get != nullptr ? property->get->return_type : property->set->parameters[0];
+            entry.memberMeta = CreateDefaultOnlyMemberMeta(propType);
+        }
+        else
+        {
+            LuaException::ThrowFormat("zlua: composite member '%s' not found on %s.%s", clrName.c_str(), memberOwner->namespaze, memberOwner->name);
+        }
+    }
+
+    outMembers = members;
+    outCount = static_cast<uint16_t>(names.size());
+}
+
+static bool TryApplyDeclaredMarshalWriters(MarshalMetaInfo* meta, const Il2CppType* type, Il2CppClass* klass, const LuaMarshalAsData& data,
+                                           bool requireWrite, bool requireRead, bool allowUnpacked, bool fromTypeLevel)
 {
     LuaMarshalType marshalType = data.marshalType;
 
@@ -789,53 +1048,64 @@ static bool TryApplyDeclaredMarshalWriters(MarshalMetaInfo* meta, const Il2CppTy
     }
     case LuaMarshalType::UnpackedValues:
     {
-        // TODO: Implement UnpackedValues push/pop writers.
-        return false;
+        if (!allowUnpacked)
+            LuaException::ThrowFormat("zlua: UnpackedValues is not supported on fields/properties (%s.%s)", klass->namespaze, klass->name);
+        if (!IsCompositeTargetValid(LuaMarshalType::UnpackedValues, klass))
+            LuaException::ThrowFormat("zlua: invalid LuaMarshalType.UnpackedValues for %s.%s", klass->namespaze, klass->name);
+
+        Il2CppClass* owner = GetCompositeMemberOwnerClass(klass, LuaMarshalType::UnpackedValues);
+        CompositeMember* members = nullptr;
+        uint16_t memberCount = 0;
+        ResolveCompositeMembers(owner, LuaMarshalType::UnpackedValues, data.fieldOrPropertyNames, requireWrite, requireRead, members, memberCount);
+        meta->marshalType = LuaMarshalType::UnpackedValues;
+        meta->stackSlots = memberCount;
+        meta->memberCount = memberCount;
+        meta->members = members;
+        if (!TryAttachCompositeSpecializedWriters(meta, klass, LuaMarshalType::UnpackedValues, fromTypeLevel))
+        {
+            meta->lua2csWriter = CompositeMarshal::Lua2CSMarshalUnpacked;
+            meta->cs2luaWriter = CompositeMarshal::CS2LuaMarshalUnpacked;
+        }
+        return true;
     }
     case LuaMarshalType::Table:
     {
-        if (MetadataUtil::IsSzArrayClass(klass))
+        if (!IsCompositeTargetValid(LuaMarshalType::Table, klass))
+            LuaException::ThrowFormat("zlua: invalid LuaMarshalType.Table for %s.%s", klass->namespaze, klass->name);
+
+        Il2CppClass* owner = GetCompositeMemberOwnerClass(klass, LuaMarshalType::Table);
+        CompositeMember* members = nullptr;
+        uint16_t memberCount = 0;
+        ResolveCompositeMembers(owner, LuaMarshalType::Table, data.fieldOrPropertyNames, requireWrite, requireRead, members, memberCount);
+        meta->marshalType = LuaMarshalType::Table;
+        meta->stackSlots = 1;
+        meta->memberCount = memberCount;
+        meta->members = members;
+        if (!TryAttachCompositeSpecializedWriters(meta, klass, LuaMarshalType::Table, fromTypeLevel))
         {
-            meta->lua2csWriter = Lua2CsMarshalArrayAsTable;
-            meta->cs2luaWriter = CS2LuaMarshalArrayAsTable;
-            return true;
+            meta->lua2csWriter = CompositeMarshal::Lua2CSMarshalTable;
+            meta->cs2luaWriter = CompositeMarshal::CS2LuaMarshalTable;
         }
-        // TODO: Implement Table push/pop writers.
-        return false;
-    }
-    case LuaMarshalType::ParamsTable:
-    {
-        if (MetadataUtil::IsSzArrayClass(klass))
-        {
-            meta->lua2csWriter = Lua2CsMarshalArrayAsTable;
-            meta->cs2luaWriter = CS2LuaMarshalArrayAsTable;
-            return true;
-        }
-        return false;
+        return true;
     }
     default:
         return false;
     }
 }
 
-static MarshalMetaInfo* CreateByRefOpaqueMeta(const Il2CppType* type)
-{
-    MarshalMetaInfo* meta = AllocMarshalMeta(type);
-    meta->lua2csWriter = Lua2CSMarshalOpaque;
-    meta->cs2luaWriter = CS2LuaMarshalOpaque;
-    meta->size = sizeof(uintptr_t);
-    meta->passByValue = true;
-    return meta;
-}
-
 static void ApplyResolvedOrDefaultWriters(
     MarshalMetaInfo* meta,
     const Il2CppType* type,
     Il2CppClass* klass,
-    bool resolved,
-    const LuaMarshalAsData& marshalAs)
+    LuaMarshalAsResolveKind resolveKind,
+    const LuaMarshalAsData& marshalAs,
+    bool requireWrite,
+    bool requireRead,
+    bool allowUnpacked)
 {
-    if (!resolved || !TryApplyDeclaredMarshalWriters(meta, type, klass, marshalAs))
+    const bool fromTypeLevel = resolveKind == LuaMarshalAsResolveKind::TypeLevel;
+    if (resolveKind == LuaMarshalAsResolveKind::None
+        || !TryApplyDeclaredMarshalWriters(meta, type, klass, marshalAs, requireWrite, requireRead, allowUnpacked, fromTypeLevel))
         ApplyDefaultMarshalWriters(meta, type, klass);
 }
 
@@ -868,9 +1138,11 @@ MarshalMetaInfo* MarshalMeta::Create(lua_State* L, const MethodInfo* method, int
 
     LuaMarshalAsData marshalAs;
     uint32_t token = MetadataUtil::GetParameterToken(method, argIndex);
-    bool resolved = TryResolveLuaMarshalAsDataForMethodSlot(
+    LuaMarshalAsResolveKind resolveKind = TryResolveLuaMarshalAsDataForMethodSlot(
         method->klass->image, token, method, argIndex, klass, marshalAs);
-    ApplyResolvedOrDefaultWriters(meta, type, klass, resolved, marshalAs);
+    const bool requireWrite = argIndex >= 0;
+    const bool requireRead = argIndex < 0;
+    ApplyResolvedOrDefaultWriters(meta, type, klass, resolveKind, marshalAs, requireWrite, requireRead, /*allowUnpacked*/ true);
     return meta;
 }
 
@@ -883,8 +1155,8 @@ MarshalMetaInfo* MarshalMeta::Create(lua_State* L, const FieldInfo* field)
         return meta;
 
     LuaMarshalAsData marshalAs;
-    bool resolved = TryResolveLuaMarshalAsDataForField(field, klass, marshalAs);
-    ApplyResolvedOrDefaultWriters(meta, field->type, klass, resolved, marshalAs);
+    LuaMarshalAsResolveKind resolveKind = TryResolveLuaMarshalAsDataForField(field, klass, marshalAs);
+    ApplyResolvedOrDefaultWriters(meta, field->type, klass, resolveKind, marshalAs, /*requireWrite*/ true, /*requireRead*/ true, /*allowUnpacked*/ false);
     return meta;
 }
 
@@ -898,8 +1170,8 @@ MarshalMetaInfo* MarshalMeta::Create(lua_State* L, const PropertyInfo* property)
         return meta;
 
     LuaMarshalAsData marshalAs;
-    bool resolved = TryResolveLuaMarshalAsDataForProperty(property, klass, marshalAs);
-    ApplyResolvedOrDefaultWriters(meta, type, klass, resolved, marshalAs);
+    LuaMarshalAsResolveKind resolveKind = TryResolveLuaMarshalAsDataForProperty(property, klass, marshalAs);
+    ApplyResolvedOrDefaultWriters(meta, type, klass, resolveKind, marshalAs, /*requireWrite*/ true, /*requireRead*/ true, /*allowUnpacked*/ false);
     return meta;
 }
 } // namespace zlua
