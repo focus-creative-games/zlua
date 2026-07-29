@@ -24,7 +24,9 @@ UserDataInfo InstanceTarget::GetUserDataInfo(lua_State* L, int index)
     }
     else if (header->kind == UserDataKind::ByObj)
     {
-        return UserDataInfo{header->kind, ObjectMarshal::PopByObjThis(L, index)->klass};
+        // Overload / facade must use declared view, not runtime obj->klass (e.g. cast to object).
+        ZLuaObjectUserData* ud = (ZLuaObjectUserData*)header;
+        return UserDataInfo{header->kind, ud->viewKlass};
     }
     else
     {

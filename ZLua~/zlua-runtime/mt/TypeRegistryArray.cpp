@@ -11,10 +11,13 @@
 #include "../utils/LuaUtil.h"
 #include "../marshal/TypedMarshal.h"
 #include "../marshal/ObjectMarshal.h"
+#include "../marshal/PrimitiveMarshal.h"
+#include "../marshal/StringMarshal.h"
 
 #include "vm/Array.h"
 #include "vm/Class.h"
 #include "vm/Type.h"
+#include "gc/GarbageCollector.h"
 
 namespace zlua
 {
@@ -69,39 +72,137 @@ static int PushArrayElement(lua_State* L, Il2CppArray* array, il2cpp_array_size_
 {
     Il2CppClass* arrayClass = array->klass;
     Il2CppClass* elementClass = arrayClass->element_class;
-    il2cpp::vm::Class::Init(elementClass);
 
     const il2cpp_array_size_t length = il2cpp::vm::Array::GetLength(array);
     if (arrayIndex >= length)
         return luaL_error(L, "zlua: array index out of range: %d", (int)arrayIndex);
 
     const int elementSize = il2cpp::vm::Array::GetElementSize(arrayClass);
-    void* elementAddress = il2cpp_array_addr_with_size(array, elementSize, arrayIndex);
+    // il2cpp-object-internals.h: il2cpp_array_addr_with_size(arr, idx, size) — not (arr, size, idx).
+    // (Unity vm/Array.h helpers often pass size/index swapped; multiply is commutative today.)
+    void* elementAddress = il2cpp_array_addr_with_size(array, arrayIndex, elementSize);
     const Il2CppType* elementType = &elementClass->byval_arg;
-    TypedMarshal::PushByType(L, elementAddress, elementType);
-    return 1;
+
+    switch (elementType->type)
+    {
+    case IL2CPP_TYPE_BOOLEAN:
+        PrimitiveMarshal::PushBool(L, *(bool*)elementAddress);
+        return 1;
+    case IL2CPP_TYPE_I1:
+        PrimitiveMarshal::PushInt8(L, *(int8_t*)elementAddress);
+        return 1;
+    case IL2CPP_TYPE_U1:
+        PrimitiveMarshal::PushUInt8(L, *(uint8_t*)elementAddress);
+        return 1;
+    case IL2CPP_TYPE_I2:
+        PrimitiveMarshal::PushInt16(L, *(int16_t*)elementAddress);
+        return 1;
+    case IL2CPP_TYPE_U2:
+    case IL2CPP_TYPE_CHAR:
+        PrimitiveMarshal::PushUInt16(L, *(uint16_t*)elementAddress);
+        return 1;
+    case IL2CPP_TYPE_I4:
+        PrimitiveMarshal::PushInt32(L, *(int32_t*)elementAddress);
+        return 1;
+    case IL2CPP_TYPE_U4:
+        PrimitiveMarshal::PushUInt32(L, *(uint32_t*)elementAddress);
+        return 1;
+    case IL2CPP_TYPE_I8:
+        PrimitiveMarshal::PushInt64(L, *(int64_t*)elementAddress);
+        return 1;
+    case IL2CPP_TYPE_U8:
+        PrimitiveMarshal::PushUInt64(L, *(uint64_t*)elementAddress);
+        return 1;
+    case IL2CPP_TYPE_R4:
+        PrimitiveMarshal::PushFloat(L, *(float*)elementAddress);
+        return 1;
+    case IL2CPP_TYPE_R8:
+        PrimitiveMarshal::PushDouble(L, *(double*)elementAddress);
+        return 1;
+    case IL2CPP_TYPE_STRING:
+        StringMarshal::Push(L, *(Il2CppString**)elementAddress);
+        return 1;
+    case IL2CPP_TYPE_CLASS:
+    case IL2CPP_TYPE_OBJECT:
+    case IL2CPP_TYPE_SZARRAY:
+    case IL2CPP_TYPE_ARRAY:
+        ObjectMarshal::Push(L, *(Il2CppObject**)elementAddress, elementClass);
+        return 1;
+    default:
+        TypedMarshal::PushByType(L, elementAddress, elementType);
+        return 1;
+    }
 }
 
 static int SetArrayElement(lua_State* L, Il2CppArray* array, il2cpp_array_size_t arrayIndex, int valueIndex)
 {
     Il2CppClass* arrayClass = array->klass;
     Il2CppClass* elementClass = arrayClass->element_class;
-    il2cpp::vm::Class::Init(elementClass);
+    if (!elementClass->initialized)
+        il2cpp::vm::Class::Init(elementClass);
 
     const il2cpp_array_size_t length = il2cpp::vm::Array::GetLength(array);
     if (arrayIndex >= length)
         return luaL_error(L, "zlua: array index out of range: %d", (int)arrayIndex);
 
     const int elementSize = il2cpp::vm::Array::GetElementSize(arrayClass);
-    void* elementAddress = il2cpp_array_addr_with_size(array, elementSize, arrayIndex);
+    // il2cpp-object-internals.h: il2cpp_array_addr_with_size(arr, idx, size)
+    void* elementAddress = il2cpp_array_addr_with_size(array, arrayIndex, elementSize);
     const Il2CppType* elementType = &elementClass->byval_arg;
 
-    TypedMarshal::PopByType(L, valueIndex, elementAddress, elementType);
-
-    if (il2cpp::vm::Type::IsReference(elementType))
+    switch (elementType->type)
+    {
+    case IL2CPP_TYPE_BOOLEAN:
+        *(bool*)elementAddress = PrimitiveMarshal::PopBool(L, valueIndex);
+        return 0;
+    case IL2CPP_TYPE_I1:
+        *(int8_t*)elementAddress = PrimitiveMarshal::PopInt8(L, valueIndex);
+        return 0;
+    case IL2CPP_TYPE_U1:
+        *(uint8_t*)elementAddress = PrimitiveMarshal::PopUInt8(L, valueIndex);
+        return 0;
+    case IL2CPP_TYPE_I2:
+        *(int16_t*)elementAddress = PrimitiveMarshal::PopInt16(L, valueIndex);
+        return 0;
+    case IL2CPP_TYPE_U2:
+    case IL2CPP_TYPE_CHAR:
+        *(uint16_t*)elementAddress = PrimitiveMarshal::PopUInt16(L, valueIndex);
+        return 0;
+    case IL2CPP_TYPE_I4:
+        *(int32_t*)elementAddress = PrimitiveMarshal::PopInt32(L, valueIndex);
+        return 0;
+    case IL2CPP_TYPE_U4:
+        *(uint32_t*)elementAddress = PrimitiveMarshal::PopUInt32(L, valueIndex);
+        return 0;
+    case IL2CPP_TYPE_I8:
+        *(int64_t*)elementAddress = PrimitiveMarshal::PopInt64(L, valueIndex);
+        return 0;
+    case IL2CPP_TYPE_U8:
+        *(uint64_t*)elementAddress = PrimitiveMarshal::PopUInt64(L, valueIndex);
+        return 0;
+    case IL2CPP_TYPE_R4:
+        *(float*)elementAddress = PrimitiveMarshal::PopFloat(L, valueIndex);
+        return 0;
+    case IL2CPP_TYPE_R8:
+        *(double*)elementAddress = PrimitiveMarshal::PopDouble(L, valueIndex);
+        return 0;
+    case IL2CPP_TYPE_STRING:
+        *(Il2CppString**)elementAddress = StringMarshal::Pop(L, valueIndex);
         il2cpp::gc::GarbageCollector::SetWriteBarrier((void**)elementAddress);
-
-    return 0;
+        return 0;
+    case IL2CPP_TYPE_CLASS:
+    case IL2CPP_TYPE_OBJECT:
+    case IL2CPP_TYPE_SZARRAY:
+    case IL2CPP_TYPE_ARRAY:
+        *(Il2CppObject**)elementAddress = ObjectMarshal::Pop(L, valueIndex, elementClass);
+        il2cpp::gc::GarbageCollector::SetWriteBarrier((void**)elementAddress);
+        return 0;
+    default:
+        TypedMarshal::PopByType(L, valueIndex, elementAddress, elementType);
+        if (il2cpp::vm::Type::IsReference(elementType))
+            il2cpp::gc::GarbageCollector::SetWriteBarrier((void**)elementAddress);
+        return 0;
+    }
 }
 
 static Il2CppArray* GetArrayThis(lua_State* L, int index)

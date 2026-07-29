@@ -120,7 +120,6 @@ void TypedMarshal::PopByType(lua_State* L, int idx, void* ptr, const Il2CppType*
 {
     if (type->byref)
     {
-        *(void**)ptr = PrimitiveMarshal::PopPointer(L, idx);
         OpaqueValueMarshal::Pop(L, idx, ptr, type);
         return;
     }
@@ -182,7 +181,7 @@ restart:
     case IL2CPP_TYPE_OBJECT:
     case IL2CPP_TYPE_ARRAY:
     case IL2CPP_TYPE_SZARRAY:
-        *(Il2CppObject**)ptr = ObjectMarshal::PopNotDelegate(L, idx, il2cpp::vm::Class::FromIl2CppType(type));
+        *(Il2CppObject**)ptr = ObjectMarshal::Pop(L, idx, il2cpp::vm::Class::FromIl2CppType(type));
         break;
     case IL2CPP_TYPE_CLASS:
         *(Il2CppObject**)ptr = ObjectMarshal::Pop(L, idx, il2cpp::vm::Class::FromIl2CppType(type));

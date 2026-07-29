@@ -7,6 +7,7 @@
 #include "../utils/LuaStackGuard.h"
 #include "../utils/LuaUtil.h"
 #include "../utils/MetadataUtil.h"
+#include "../utils/LuaException.h"
 #include "../bridge/PropertyBridge.h"
 #include "../bridge/MethodBridge.h"
 #include "../bridge/DelegateBridge.h"
@@ -184,16 +185,15 @@ static void AttachFastInstanceIndexTables(lua_State* L, TypeBinding* binding, co
 
 static int DelegateInstanceCall(lua_State* L)
 {
+    ZLUA_TRY_BEGIN()
+    const MethodMarshalCtx* invokeCtx = (const MethodMarshalCtx*)lua_touserdata(L, lua_upvalueindex(1));
+    IL2CPP_ASSERT(invokeCtx != nullptr);
+
     Il2CppObject* obj = TypeRegistryCommon::GetByObjThis(L, 1);
     IL2CPP_ASSERT(obj != nullptr);
     IL2CPP_ASSERT(MetadataUtil::IsDelegateClass(obj->klass));
 
     Il2CppDelegate* delegate = reinterpret_cast<Il2CppDelegate*>(obj);
-    // TODO: optimize this, use a faster way to get the invoke method
-    const MethodInfo* invokeMethod = il2cpp::vm::Runtime::GetDelegateInvoke(obj->klass);
-    IL2CPP_ASSERT(invokeMethod != nullptr);
-
-    const MethodMarshalCtx* invokeCtx = DelegateBridge::GetOrCreateMethodMarshalCtx(L, invokeMethod);
     const int luaArgCount = lua_gettop(L) - 1;
     if (luaArgCount != invokeCtx->luaArity)
     {
@@ -201,6 +201,7 @@ static int DelegateInstanceCall(lua_State* L)
     }
 
     return MethodBridge::InvokeLua2Cs(L, delegate, 2, invokeCtx);
+    ZLUA_TRY_END()
 }
 
 static const MetaInfo* LookupMeta(const NameMetaMap* map, const char* key)
@@ -481,7 +482,9 @@ void TypeRegistryCommon::AttachReferenceInstanceMetatable(lua_State* L, Il2CppCl
 #endif
     if (MetadataUtil::IsDelegateClass(klass))
     {
-        lua_pushcfunction(L, DelegateInstanceCall);
+        const MethodMarshalCtx* invokeCtx = DelegateBridge::GetOrCreateInvokeMarshalCtx(L, klass);
+        lua_pushlightuserdata(L, (void*)invokeCtx);
+        lua_pushcclosure(L, DelegateInstanceCall, 1);
         lua_setfield(L, mtIndex, LuaConsts::MetaCall);
     }
     lua_setfield(L, typeTableIndex, LuaConsts::ByObjInstanceMt);

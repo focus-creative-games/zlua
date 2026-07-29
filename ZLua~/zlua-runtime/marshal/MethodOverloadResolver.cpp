@@ -8,6 +8,7 @@
 #include "../utils/LuaException.h"
 
 #include "vm/Class.h"
+#include "il2cpp-class-internals.h"
 
 namespace zlua
 {
@@ -18,12 +19,28 @@ static ConversionKind GetConversionKind(lua_State* L, int index, const MarshalMe
     const Il2CppType* paramType = paramMeta->type;
     if (paramType->byref)
     {
-        // FIXME: handle byref
-        if (luaType != LUA_TLIGHTUSERDATA)
+        // Lua→C# byref: Opaque lightuserdata, ByVal payload of A, or temporary-copyable by-val forms.
+        if (luaType == LUA_TLIGHTUSERDATA)
+            return ConversionKind::Identity;
+
+        Il2CppType elemType = *paramType;
+        elemType.byref = false;
+        Il2CppClass* elemKlass = il2cpp::vm::Class::FromIl2CppType(&elemType);
+        il2cpp::vm::Class::Init(elemKlass);
+
+        if (luaType == LUA_TUSERDATA)
         {
-            return ConversionKind::NotConvertible;
+            UserDataInfo userDataInfo = InstanceTarget::GetUserDataInfo(L, index);
+            if (userDataInfo.klass == elemKlass && userDataInfo.kind == UserDataKind::ByVal)
+                return ConversionKind::Identity;
         }
-        return ConversionKind::Identity;
+
+        MarshalMetaInfo elemMeta = {};
+        elemMeta.type = &elemKlass->byval_arg;
+        elemMeta.typeKlass = elemKlass;
+        elemMeta.marshalType = LuaMarshalType::Default;
+        elemMeta.stackSlots = 1;
+        return GetConversionKind(L, index, &elemMeta);
     }
     switch (paramType->type)
     {
@@ -145,7 +162,12 @@ static ConversionKind GetConversionKind(lua_State* L, int index, const MarshalMe
         {
             return ConversionKind::NullLiteral;
         }
-        // FIXME: handle nullable or boxing value type
+        // Spec §3.3: primitive / string → object (ImplicitBoxing). Not to arbitrary class/interface.
+        if (paramMeta->typeKlass == il2cpp_defaults.object_class)
+        {
+            if (luaType == LUA_TNUMBER || luaType == LUA_TBOOLEAN || luaType == LUA_TSTRING)
+                return ConversionKind::ImplicitBoxing;
+        }
         break;
     }
     case IL2CPP_TYPE_ARRAY:
@@ -171,7 +193,6 @@ static ConversionKind GetConversionKind(lua_State* L, int index, const MarshalMe
         {
             return ConversionKind::NullLiteral;
         }
-        // FIXME: handle nullable or boxing value type
         break;
     }
     case IL2CPP_TYPE_VALUETYPE:
@@ -191,7 +212,24 @@ static ConversionKind GetConversionKind(lua_State* L, int index, const MarshalMe
             {
                 return ConversionKind::NullLiteral;
             }
-            klass = klass->element_class;
+            // Match against Nullable<T> userdata or underlying T (temporary / ByVal T).
+            if (luaType == LUA_TUSERDATA)
+            {
+                UserDataInfo userDataInfo = InstanceTarget::GetUserDataInfo(L, index);
+                if (userDataInfo.klass == klass)
+                {
+                    if (userDataInfo.kind == UserDataKind::ByVal)
+                        return ConversionKind::Identity;
+                    if (userDataInfo.kind == UserDataKind::ByObj)
+                        return ConversionKind::ImplicitBoxing;
+                }
+            }
+            MarshalMetaInfo underlyingMeta = {};
+            underlyingMeta.type = &klass->element_class->byval_arg;
+            underlyingMeta.typeKlass = klass->element_class;
+            underlyingMeta.marshalType = LuaMarshalType::Default;
+            underlyingMeta.stackSlots = 1;
+            return GetConversionKind(L, index, &underlyingMeta);
         }
         if (luaType == LUA_TUSERDATA)
         {

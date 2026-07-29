@@ -1,3 +1,6 @@
+#include <cstring>
+#include <vector>
+
 #include "ObjectRegistry.h"
 #include "StructMarshal.h"
 
@@ -10,9 +13,6 @@
 #include "gc/GarbageCollector.h"
 #include "utils/Memory.h"
 #include "vm/Class.h"
-
-#include <cstring>
-#include <stack>
 
 namespace zlua
 {
@@ -66,7 +66,7 @@ class ObjectSlotRegistry
             return;
 
         _registeredObjects[slotIndex] = nullptr;
-        _freeSlots.push(slotIndex);
+        _freeSlots.push_back(slotIndex);
     }
 
     Il2CppObject* GetObject(uint32_t slotIndex) const
@@ -76,20 +76,34 @@ class ObjectSlotRegistry
         return _registeredObjects[slotIndex];
     }
 
+    void Clear()
+    {
+        if (_registeredObjects != nullptr)
+        {
+            il2cpp::gc::GarbageCollector::UnregisterRoot((char*)_registeredObjects);
+            ZLuaIl2CppFree(_registeredObjects);
+            _registeredObjects = nullptr;
+        }
+        _capacity = 0;
+        _nextSlotIndex = 0;
+        _freeSlots.clear();
+    }
+
   private:
-    static constexpr int32_t kInitialCapacity = 1024;
+    // Larger initial capacity reduces RegisterRoot/UnregisterRoot churn on grow.
+    static constexpr int32_t kInitialCapacity = 4096;
 
     Il2CppObject** _registeredObjects = nullptr;
     int32_t _capacity = 0;
     int32_t _nextSlotIndex = 0;
-    std::stack<uint32_t> _freeSlots;
+    std::vector<uint32_t> _freeSlots;
 
     uint32_t AllocateSlot()
     {
         if (!_freeSlots.empty())
         {
-            const uint32_t slotIndex = _freeSlots.top();
-            _freeSlots.pop();
+            const uint32_t slotIndex = _freeSlots.back();
+            _freeSlots.pop_back();
             return slotIndex;
         }
 
@@ -138,6 +152,8 @@ void ObjectRegistry::Initialize(lua_State* L)
 {
     IL2CPP_ASSERT(s_objectCacheRef == LUA_NOREF);
     IL2CPP_ASSERT(s_objectViewRefs.empty());
+    /* Slots must be empty (Shutdown clears them); never leave a previous state's GC root. */
+    s_objectSlots.Clear();
 
     /* Single weak-values table; C++ HashMap holds integer keys into this table. */
     lua_newtable(L);
@@ -151,6 +167,7 @@ void ObjectRegistry::Initialize(lua_State* L)
 void ObjectRegistry::Shutdown(lua_State* L)
 {
     s_objectViewRefs.clear();
+    s_objectSlots.Clear();
     if (s_objectCacheRef != LUA_NOREF)
     {
         luaL_unref(L, LUA_REGISTRYINDEX, s_objectCacheRef);

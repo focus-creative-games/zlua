@@ -93,13 +93,24 @@ Il2CppObject* ObjectMarshal::Pop(lua_State* L, int objIndex, Il2CppClass* klass)
     {
         if (lua_isinteger(L, objIndex))
         {
-            int64_t value = (int64_t)lua_tointeger(L, objIndex);
-            Il2CppClass* numberClass = il2cpp_defaults.int32_class;
+            int64_t wide = (int64_t)lua_tointeger(L, objIndex);
+            if (wide >= (int64_t)INT32_MIN && wide <= (int64_t)INT32_MAX)
+            {
+                Il2CppClass* numberClass = il2cpp_defaults.int32_class;
+                if (!il2cpp::vm::Class::IsAssignableFrom(klass, numberClass))
+                {
+                    LuaException::ThrowFormat("zlua argument mismatch: number value can only be assigned to int32 type");
+                }
+                int32_t value = (int32_t)wide;
+                return il2cpp::vm::Object::Box(numberClass, &value);
+            }
+
+            Il2CppClass* numberClass = il2cpp_defaults.int64_class;
             if (!il2cpp::vm::Class::IsAssignableFrom(klass, numberClass))
             {
-                LuaException::ThrowFormat("zlua argument mismatch: number value can only be assigned to int32 type");
+                LuaException::ThrowFormat("zlua argument mismatch: integer out of int32 range requires int64-compatible target");
             }
-            return il2cpp::vm::Object::Box(numberClass, &value);
+            return il2cpp::vm::Object::Box(numberClass, &wide);
         }
         else
         {
@@ -133,10 +144,5 @@ Il2CppObject* ObjectMarshal::Pop(lua_State* L, int objIndex, Il2CppClass* klass)
         break;
     }
     LuaException::ThrowFormat("zlua argument mismatch: unsupported object type: %s", lua_typename(L, type));
-}
-
-Il2CppObject* ObjectMarshal::PopNotDelegate(lua_State* L, int objIndex, Il2CppClass* klass)
-{
-    return Pop(L, objIndex, klass);
 }
 } // namespace zlua

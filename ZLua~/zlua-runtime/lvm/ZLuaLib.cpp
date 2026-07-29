@@ -62,7 +62,8 @@ static int ZLuaBox(lua_State* L)
     if (!MetadataUtil::IsValueTypeClass(klass))
         LuaException::ThrowFormat("zlua.box expects value type, got: %s.%s", klass->namespaze, klass->name);
 
-    void* storage = malloc(MetadataUtil::GetValueSize(&klass->byval_arg));
+    // alloca: Box copies the value; avoid malloc leak if Pop throws (ZLUA_TRY → longjmp-free C++ catch).
+    void* storage = alloca(MetadataUtil::GetValueSize(&klass->byval_arg));
     TypedMarshal::PopByType(L, 2, storage, &klass->byval_arg);
     Il2CppObject* boxed = il2cpp::vm::Object::Box(klass, storage);
     ObjectMarshal::Push(L, boxed, klass);

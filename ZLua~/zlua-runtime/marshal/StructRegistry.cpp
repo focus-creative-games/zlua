@@ -36,6 +36,8 @@ void StructRegistry::Register(ByValUserDataHeader* header)
     IL2CPP_ASSERT(header != nullptr);
     IL2CPP_ASSERT(header->header.kind == UserDataKind::ByVal);
     IL2CPP_ASSERT(header->klass != nullptr);
+    // Intentional: each non-blittable ByVal payload needs its own GC root so embedded
+    // references remain visible. Blittable structs must not reach here.
     IL2CPP_ASSERT(!header->klass->is_blittable);
     IL2CPP_ASSERT(s_byValUserDataSet.find(header) == s_byValUserDataSet.end());
 

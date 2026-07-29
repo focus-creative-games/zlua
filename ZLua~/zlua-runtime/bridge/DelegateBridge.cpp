@@ -19,6 +19,7 @@ namespace zlua
 {
     AppendOnlyStringHashMap<Il2CppMethodPointer> s_nameToMethodPointer;
     AppendOnlyRawPointerHashMap<MethodInfo, const MethodMarshalCtx*> s_methodToMarshalCtx;
+    AppendOnlyRawPointerHashMap<Il2CppClass, const MethodMarshalCtx*> s_delegateKlassToInvokeCtx;
 
     void DelegateBridge::Initialize()
     {
@@ -52,6 +53,19 @@ namespace zlua
 
         const MethodMarshalCtx* ctx = MetaBinding::CreateMethodMarshalCtx(L, method, false);
         s_methodToMarshalCtx.insert({ method, ctx });
+        return ctx;
+    }
+
+    const MethodMarshalCtx* DelegateBridge::GetOrCreateInvokeMarshalCtx(lua_State* L, Il2CppClass* delegateClass)
+    {
+        auto it = s_delegateKlassToInvokeCtx.find(delegateClass);
+        if (it != s_delegateKlassToInvokeCtx.end())
+            return it->second;
+
+        const MethodInfo* invokeMethod = il2cpp::vm::Runtime::GetDelegateInvoke(delegateClass);
+        IL2CPP_ASSERT(invokeMethod != nullptr);
+        const MethodMarshalCtx* ctx = GetOrCreateMethodMarshalCtx(L, invokeMethod);
+        s_delegateKlassToInvokeCtx.insert({ delegateClass, ctx });
         return ctx;
     }
 }
