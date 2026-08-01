@@ -22,7 +22,7 @@ namespace ZLua.Marshaling
                 declaredType = runtimeType;
             }
 
-            if (declaredType == typeof(string) || runtimeType == typeof(string))
+            if (declaredType == typeof(string))
             {
                 PrimitiveMarshal.PushString(L, value as string);
                 return;
@@ -88,6 +88,24 @@ namespace ZLua.Marshaling
 
             if (declaredType == typeof(string))
             {
+                LuaDataType luaType = LuaDll.lua_type(L, index);
+                if (luaType == LuaDataType.UserData)
+                {
+                    object obj = ObjectRegistry.Pop(L, index);
+                    if (obj == null)
+                    {
+                        return null;
+                    }
+
+                    if (obj is string s)
+                    {
+                        return s;
+                    }
+
+                    LuaCallbackBoundary.Throw(
+                        $"zlua argument mismatch: expected string userdata, got: {obj.GetType().FullName}");
+                }
+
                 return PrimitiveMarshal.PopString(L, index);
             }
 

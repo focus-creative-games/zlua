@@ -173,6 +173,21 @@ namespace ZLua.Emit
                     return true;
                 }
 
+                // ByObj userdata with string view — e.g. zlua.cast(..., string). Use view, not runtime.
+                if (luaType == LuaDataType.UserData
+                    && ObjectRegistry.TryGetObject(L, index, out object strObj)
+                    && strObj != null)
+                {
+                    Type viewType = ObjectRegistry.GetViewType(L, index) ?? strObj.GetType();
+                    if (!typeof(string).IsAssignableFrom(viewType))
+                    {
+                        return false;
+                    }
+
+                    score = viewType == typeof(string) ? 20 : 10;
+                    return true;
+                }
+
                 return false;
             }
 
@@ -365,12 +380,14 @@ namespace ZLua.Emit
                     return !declaredType.IsValueType;
                 }
 
-                if (!declaredType.IsInstanceOfType(obj))
+                // Overload / facade must use declared view, not runtime type (e.g. cast to object).
+                Type viewType = ObjectRegistry.GetViewType(L, index) ?? obj.GetType();
+                if (!declaredType.IsAssignableFrom(viewType))
                 {
                     return false;
                 }
 
-                score = declaredType == obj.GetType() ? 20 : 10;
+                score = declaredType == viewType ? 20 : 10;
                 if (declaredType == typeof(object))
                 {
                     score = 2;

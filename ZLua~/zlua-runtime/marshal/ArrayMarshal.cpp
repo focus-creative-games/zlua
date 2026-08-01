@@ -16,26 +16,6 @@
 namespace zlua
 {
 
-// Process-level scratch for leaf primitive/string table→array Pop only.
-// Must NOT be used when PopByType can re-enter ArrayMarshal (e.g. T[][]), or nested
-// calls will overwrite the outer scan buffer.
-static std::vector<uint8_t> s_tablePopScratch;
-
-static void EnsureTablePopScratchBytes(size_t bytes)
-{
-    if (s_tablePopScratch.size() < bytes)
-        s_tablePopScratch.resize(bytes);
-}
-
-static size_t TableSequenceLenHint(lua_State* L, int index)
-{
-#if ZLUA_USE_LUAJIT || (ZLUA_LUA_API_FAMILY < 502)
-    return (size_t)lua_objlen(L, index);
-#else
-    return (size_t)lua_rawlen(L, index);
-#endif
-}
-
 bool ArrayMarshal::TryGetConsecutiveTableLength(lua_State* L, int index, int& length)
 {
     length = 0;
@@ -135,49 +115,22 @@ void PushAsPrimitiveTable(lua_State* L, Il2CppArray* array)
     }
 }
 
-/// Leaf primitive/string only — uses process scratch (DefaultTypedMarshal does not re-enter ArrayMarshal).
+/// Length known: Pop each element directly into the managed array (GC-safe; no native staging of refs).
 template <typename T, bool kNeedsWriteBarrier>
-Il2CppArray* PopFromPrimitiveTableSinglePass(lua_State* L, int arrayIndex, Il2CppClass* klass)
+Il2CppArray* PopFromPrimitiveTable(lua_State* L, int arrayIndex, Il2CppClass* klass, int32_t length)
 {
-    if (!lua_istable(L, arrayIndex))
+    Il2CppArray* newArray = (Il2CppArray*)il2cpp::vm::Array::NewSpecific(klass, (il2cpp_array_size_t)length);
+    T* startAddr = (T*)il2cpp_array_addr(newArray, T, 0);
+    for (int32_t i = 0; i < length; ++i)
     {
-        LuaException::ThrowFormat("zlua argument mismatch: table value must be a table");
-    }
-
-    const size_t elemSize = sizeof(T);
-    size_t hint = TableSequenceLenHint(L, arrayIndex);
-    if (hint < 16)
-        hint = 16;
-    // Pre-size capacity without changing logical size; avoid per-call heap churn.
-    if (s_tablePopScratch.capacity() < hint * elemSize)
-        s_tablePopScratch.reserve(hint * elemSize);
-
-    size_t count = 0;
-    for (int i = 1;; ++i)
-    {
-        lua_rawgeti(L, arrayIndex, i);
-        if (lua_isnil(L, -1))
-        {
-            lua_pop(L, 1);
-            break;
-        }
-        EnsureTablePopScratchBytes((count + 1) * elemSize);
-        T* slot = reinterpret_cast<T*>(&s_tablePopScratch[0] + count * elemSize);
-        *slot = DefaultTypedMarshal<T>::Pop(L, -1);
+        lua_rawgeti(L, arrayIndex, i + 1);
+        startAddr[i] = DefaultTypedMarshal<T>::Pop(L, -1);
         lua_pop(L, 1);
-        ++count;
     }
-
-    Il2CppArray* newArray = (Il2CppArray*)il2cpp::vm::Array::NewSpecific(klass, (il2cpp_array_size_t)count);
-    if (count > 0)
+    if (kNeedsWriteBarrier && length > 0)
     {
-        T* startAddr = (T*)il2cpp_array_addr(newArray, T, 0);
-        std::memcpy(startAddr, &s_tablePopScratch[0], count * elemSize);
-        if (kNeedsWriteBarrier)
-        {
-            il2cpp::gc::GarbageCollector::SetWriteBarrier(
-                reinterpret_cast<void**>(startAddr), count * elemSize);
-        }
+        il2cpp::gc::GarbageCollector::SetWriteBarrier(
+            reinterpret_cast<void**>(startAddr), (size_t)length * sizeof(T));
     }
     return newArray;
 }
@@ -263,78 +216,59 @@ Il2CppArray* ArrayMarshal::PopFromTable(lua_State* L, int arrayIndex, Il2CppClas
     {
         return nullptr;
     }
+
+    int32_t length = 0;
+    if (!TryGetConsecutiveTableLength(L, arrayIndex, length))
+    {
+        LuaException::ThrowFormat("zlua argument mismatch: table value must be a table");
+    }
+
     Il2CppClass* elementKlass = klass->element_class;
     const Il2CppType* elementType = &elementKlass->byval_arg;
 
     switch (elementType->type)
     {
     case IL2CPP_TYPE_BOOLEAN:
-        return PopFromPrimitiveTableSinglePass<bool, false>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<bool, false>(L, arrayIndex, klass, length);
     case IL2CPP_TYPE_CHAR:
-        return PopFromPrimitiveTableSinglePass<uint16_t, false>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<uint16_t, false>(L, arrayIndex, klass, length);
     case IL2CPP_TYPE_I1:
-        return PopFromPrimitiveTableSinglePass<int8_t, false>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<int8_t, false>(L, arrayIndex, klass, length);
     case IL2CPP_TYPE_U1:
-        return PopFromPrimitiveTableSinglePass<uint8_t, false>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<uint8_t, false>(L, arrayIndex, klass, length);
     case IL2CPP_TYPE_I2:
-        return PopFromPrimitiveTableSinglePass<int16_t, false>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<int16_t, false>(L, arrayIndex, klass, length);
     case IL2CPP_TYPE_U2:
-        return PopFromPrimitiveTableSinglePass<uint16_t, false>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<uint16_t, false>(L, arrayIndex, klass, length);
     case IL2CPP_TYPE_I4:
-        return PopFromPrimitiveTableSinglePass<int32_t, false>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<int32_t, false>(L, arrayIndex, klass, length);
     case IL2CPP_TYPE_U4:
-        return PopFromPrimitiveTableSinglePass<uint32_t, false>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<uint32_t, false>(L, arrayIndex, klass, length);
     case IL2CPP_TYPE_I8:
-        return PopFromPrimitiveTableSinglePass<int64_t, false>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<int64_t, false>(L, arrayIndex, klass, length);
     case IL2CPP_TYPE_U8:
-        return PopFromPrimitiveTableSinglePass<uint64_t, false>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<uint64_t, false>(L, arrayIndex, klass, length);
     case IL2CPP_TYPE_R4:
-        return PopFromPrimitiveTableSinglePass<float, false>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<float, false>(L, arrayIndex, klass, length);
     case IL2CPP_TYPE_R8:
-        return PopFromPrimitiveTableSinglePass<double, false>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<double, false>(L, arrayIndex, klass, length);
     case IL2CPP_TYPE_STRING:
-        return PopFromPrimitiveTableSinglePass<Il2CppString*, true>(L, arrayIndex, klass);
+        return PopFromPrimitiveTable<Il2CppString*, true>(L, arrayIndex, klass, length);
     default:
     {
-        if (!lua_istable(L, arrayIndex))
-        {
-            LuaException::ThrowFormat("zlua argument mismatch: table value must be a table");
-        }
-
-        // Local buffer: element Pop may recurse into ArrayMarshal (nested arrays / composites).
         const int elementSize = il2cpp_array_element_size(klass);
-        size_t hint = TableSequenceLenHint(L, arrayIndex);
-        if (hint < 16)
-            hint = 16;
-
-        std::vector<uint8_t> bytes;
-        bytes.reserve(hint * (size_t)elementSize);
-
-        int32_t length = 0;
-        for (int i = 1;; ++i)
-        {
-            lua_rawgeti(L, arrayIndex, i);
-            if (lua_isnil(L, -1))
-            {
-                lua_pop(L, 1);
-                break;
-            }
-            bytes.resize((size_t)i * (size_t)elementSize);
-            void* dest = &bytes[0] + (size_t)(i - 1) * (size_t)elementSize;
-            TypedMarshal::PopByType(L, -1, dest, elementType);
-            lua_pop(L, 1);
-            length = i;
-        }
-
         Il2CppArray* newArray = (Il2CppArray*)il2cpp::vm::Array::NewSpecific(klass, (il2cpp_array_size_t)length);
-        if (length > 0)
+        const bool needsWriteBarrier = !elementKlass->byval_arg.valuetype || !elementKlass->is_blittable;
+        for (int32_t i = 0; i < length; ++i)
         {
-            void* dest = il2cpp_array_addr_with_size(newArray, 0, elementSize);
-            std::memcpy(dest, &bytes[0], (size_t)length * (size_t)elementSize);
-            if (!elementKlass->byval_arg.valuetype || !elementKlass->is_blittable)
+            lua_rawgeti(L, arrayIndex, i + 1);
+            void* valueAddr = il2cpp_array_addr_with_size(newArray, i, elementSize);
+            TypedMarshal::PopByType(L, -1, valueAddr, elementType);
+            lua_pop(L, 1);
+            if (needsWriteBarrier)
             {
                 il2cpp::gc::GarbageCollector::SetWriteBarrier(
-                    reinterpret_cast<void**>(dest), (size_t)length * (size_t)elementSize);
+                    reinterpret_cast<void**>(valueAddr), (size_t)elementSize);
             }
         }
         return newArray;

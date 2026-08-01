@@ -427,10 +427,8 @@ namespace ZLua.Emit
             {
                 List<MethodInfo> group = kv.Value;
                 MethodInfo first = group[0];
-                if (group.Count == 1 || !GroupNeedsScoredDispatch(group))
+                if (group.Count == 1)
                 {
-                    // Same-arity Default overloads: keep first (legacy). Avoid compiling every
-                    // System.String overload via Expression while nested in another DynamicMethod.
                     cores[kv.Key] = InterpretedMethodInvoker.NeedsInterpreted(first)
                         ? InterpretedMethodInvoker.CompileMethod(first, isStatic, isByVal)
                         : BuildDirectCore(first, isStatic, isByVal);
@@ -483,32 +481,19 @@ namespace ZLua.Emit
             };
         }
 
-        private static bool GroupNeedsScoredDispatch(List<MethodInfo> methods)
-        {
-            for (int i = 0; i < methods.Count; i++)
-            {
-                if (InterpretedMethodInvoker.NeedsInterpreted(methods[i]))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
         private static Func<IntPtr, int> BuildScoredOverloadCore(
             List<MethodInfo> methods,
             bool isStatic,
             bool isByVal,
             string name)
         {
+            // Always interpret multi-overload bodies. BuildDirectCore uses Expression.Compile →
+            // DynamicMethod; Unity Mono throws if that runs while another DynamicMethod is active
+            // (e.g. C#→Lua UserData string push → bind System.String while bridge lambda is live).
             var compiled = new Func<IntPtr, int>[methods.Count];
             for (int i = 0; i < methods.Count; i++)
             {
-                MethodInfo method = methods[i];
-                compiled[i] = InterpretedMethodInvoker.NeedsInterpreted(method)
-                    ? InterpretedMethodInvoker.CompileMethod(method, isStatic, isByVal)
-                    : BuildDirectCore(method, isStatic, isByVal);
+                compiled[i] = InterpretedMethodInvoker.CompileMethod(methods[i], isStatic, isByVal);
             }
 
             MethodInfo[] methodArray = methods.ToArray();

@@ -679,15 +679,7 @@ namespace ZLua.Lvm
                         $"zlua argument mismatch: expected szarray, got: {runtimeType.FullName}");
                 }
 
-                Type elementType = array.GetType().GetElementType();
-                LuaDll.lua_createtable(L, array.Length, 0);
-                for (int i = 0; i < array.Length; i++)
-                {
-                    object element = array.GetValue(i);
-                    TypedMarshal.PushObject(L, element, elementType);
-                    LuaDll.lua_rawseti(L, -2, i + 1);
-                }
-
+                ArrayMarshal.PushSzArrayAsTable(L, array);
                 return 1;
             }
             catch (Exception ex)
@@ -901,9 +893,17 @@ namespace ZLua.Lvm
 
         private static object BoxValue(Type type, object value)
         {
-            Array arr = Array.CreateInstance(type, 1);
-            arr.SetValue(value ?? Activator.CreateInstance(type), 0);
-            return arr.GetValue(0);
+            if (value != null)
+            {
+                return value;
+            }
+
+            if (type.IsValueType)
+            {
+                return Activator.CreateInstance(type);
+            }
+
+            return null;
         }
 
         private static Array CreateMdArrayInstance(IntPtr L, Type arrayType, int lowboundsIndex, int sizesIndex)

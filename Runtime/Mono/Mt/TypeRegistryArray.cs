@@ -99,6 +99,13 @@ namespace ZLua.Mt
                     LuaCallbackBoundary.Throw($"zlua: get expects {rank} index argument(s)");
                 }
 
+                if (rank == 1)
+                {
+                    int index = ReadIndex1D(L, array, stackIndex: 2);
+                    ArrayMarshal.PushElement1D(L, array, index);
+                    return 1;
+                }
+
                 int[] indices = ReadIndices(L, array, indexStart: 2, indexCount: rank);
                 object element = array.GetValue(indices);
                 Type elementType = array.GetType().GetElementType();
@@ -125,10 +132,18 @@ namespace ZLua.Mt
                 }
 
                 int valueIndex = LuaDll.lua_gettop(L);
+                if (rank == 1)
+                {
+                    int index = ReadIndex1D(L, array, stackIndex: 2);
+                    Type elementType = array.GetType().GetElementType();
+                    ArrayMarshal.SetElement1D(L, array, index, valueIndex, elementType);
+                    return 0;
+                }
+
                 int[] indices = ReadIndices(L, array, indexStart: 2, indexCount: rank);
-                Type elementType = array.GetType().GetElementType();
-                object value = TypedMarshal.PopObject(L, valueIndex, elementType);
-                value = ArrayMarshal.CoerceToElementType(value, elementType);
+                Type mdElementType = array.GetType().GetElementType();
+                object value = TypedMarshal.PopObject(L, valueIndex, mdElementType);
+                value = ArrayMarshal.CoerceToElementType(value, mdElementType);
                 array.SetValue(value, indices);
                 return 0;
             }
@@ -150,6 +165,26 @@ namespace ZLua.Mt
             return null;
         }
 
+        private static int ReadIndex1D(IntPtr L, Array array, int stackIndex)
+        {
+            if (LuaDll.lua_type(L, stackIndex) != LuaDataType.Number
+                || LuaDll.lua_isinteger(L, stackIndex) == 0)
+            {
+                LuaCallbackBoundary.Throw("zlua: expected integer index");
+            }
+
+            long raw = LuaDll.lua_tointeger(L, stackIndex);
+            int index = checked((int)raw);
+            int lower = array.GetLowerBound(0);
+            int upper = lower + array.GetLength(0) - 1;
+            if (index < lower || index > upper)
+            {
+                LuaCallbackBoundary.Throw($"zlua: array index out of range: {index}");
+            }
+
+            return index;
+        }
+
         private static int[] ReadIndices(IntPtr L, Array array, int indexStart, int indexCount)
         {
             var indices = new int[indexCount];
@@ -159,9 +194,7 @@ namespace ZLua.Mt
                 if (LuaDll.lua_type(L, stackIndex) != LuaDataType.Number
                     || LuaDll.lua_isinteger(L, stackIndex) == 0)
                 {
-                    LuaCallbackBoundary.Throw(indexCount == 1
-                        ? "zlua: expected integer index"
-                        : "zlua: expected integer indices");
+                    LuaCallbackBoundary.Throw("zlua: expected integer indices");
                 }
 
                 long raw = LuaDll.lua_tointeger(L, stackIndex);

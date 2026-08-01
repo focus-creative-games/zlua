@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Reflection;
 using ZLua.Utils;
 
@@ -9,6 +10,18 @@ namespace ZLua.Marshaling
     /// </summary>
     internal static class PointerMarshal
     {
+        private static readonly PropertyInfo s_isFunctionPointerProp =
+            typeof(Type).GetProperty("IsFunctionPointer", BindingFlags.Public | BindingFlags.Instance);
+
+        private static readonly PropertyInfo s_isByRefLikeProp =
+            typeof(Type).GetProperty("IsByRefLike", BindingFlags.Public | BindingFlags.Instance);
+
+        private static readonly ConcurrentDictionary<Type, bool> s_isFunctionPointerByType =
+            new ConcurrentDictionary<Type, bool>();
+
+        private static readonly ConcurrentDictionary<Type, bool> s_isByRefLikeByType =
+            new ConcurrentDictionary<Type, bool>();
+
         internal static bool IsFunctionPointerType(Type type)
         {
             if (type == null)
@@ -16,8 +29,13 @@ namespace ZLua.Marshaling
                 return false;
             }
 
-            PropertyInfo property = typeof(Type).GetProperty("IsFunctionPointer", BindingFlags.Public | BindingFlags.Instance);
-            if (property?.PropertyType == typeof(bool) && (bool)property.GetValue(type))
+            return s_isFunctionPointerByType.GetOrAdd(type, ComputeIsFunctionPointer);
+        }
+
+        private static bool ComputeIsFunctionPointer(Type type)
+        {
+            if (s_isFunctionPointerProp?.PropertyType == typeof(bool)
+                && (bool)s_isFunctionPointerProp.GetValue(type))
             {
                 return true;
             }
@@ -57,10 +75,14 @@ namespace ZLua.Marshaling
                 return false;
             }
 
-            PropertyInfo property = typeof(Type).GetProperty("IsByRefLike", BindingFlags.Public | BindingFlags.Instance);
-            if (property?.PropertyType == typeof(bool))
+            return s_isByRefLikeByType.GetOrAdd(type, ComputeIsByRefLike);
+        }
+
+        private static bool ComputeIsByRefLike(Type type)
+        {
+            if (s_isByRefLikeProp?.PropertyType == typeof(bool))
             {
-                return (bool)property.GetValue(type);
+                return (bool)s_isByRefLikeProp.GetValue(type);
             }
 
             string name = type.FullName ?? type.ToString();

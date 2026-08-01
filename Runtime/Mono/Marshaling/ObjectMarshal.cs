@@ -79,12 +79,25 @@ namespace ZLua.Marshaling
                 {
                     if (LuaDll.lua_isinteger(L, objIndex) != 0)
                     {
-                        if (!declaredType.IsAssignableFrom(typeof(int)))
+                        long wide = LuaDll.lua_tointeger(L, objIndex);
+                        if (wide >= int.MinValue && wide <= int.MaxValue)
                         {
-                            LuaCallbackBoundary.Throw("zlua argument mismatch: number value can only be assigned to int32 type");
+                            if (!declaredType.IsAssignableFrom(typeof(int)))
+                            {
+                                LuaCallbackBoundary.Throw(
+                                    "zlua argument mismatch: number value can only be assigned to int32 type");
+                            }
+
+                            return (int)wide;
                         }
 
-                        return (int)LuaDll.lua_tointeger(L, objIndex);
+                        if (!declaredType.IsAssignableFrom(typeof(long)))
+                        {
+                            LuaCallbackBoundary.Throw(
+                                "zlua argument mismatch: integer out of int32 range requires int64-compatible target");
+                        }
+
+                        return wide;
                     }
 
                     if (!declaredType.IsAssignableFrom(typeof(double)))
