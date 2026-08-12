@@ -14,8 +14,11 @@
 #include "vm/Type.h"
 #include "vm/Image.h"
 #include "vm/GlobalMetadata.h"
+#include "vm/Exception.h"
 #include "utils/StringUtils.h"
 #include "utils/HashUtils.h"
+
+#include <unordered_set>
 
 
 namespace zlua
@@ -24,6 +27,8 @@ namespace zlua
 static Il2CppClass* s_paramArrayAttributeClass = nullptr;
 static Il2CppClass* s_luaMarshalAsAttributeClass = nullptr;
 static Il2CppClass* s_luaAliasAttributeClass = nullptr;
+static Il2CppClass* s_luaExtensionAttributeClass = nullptr;
+static Il2CppClass* s_extensionAttributeClass = nullptr;
 static Il2CppClass* s_luaExceptionClass = nullptr;
 static Il2CppClass* s_luaMethodClass = nullptr;
 static Il2CppClass* s_byteArrayClass = nullptr;
@@ -33,6 +38,9 @@ static void ResolveParamArrayAttributeClass()
 {
     s_paramArrayAttributeClass = il2cpp::vm::Class::FromName(il2cpp::vm::Image::GetCorlib(), "System", "ParamArrayAttribute");
     IL2CPP_ASSERT(s_paramArrayAttributeClass != nullptr);
+    s_extensionAttributeClass =
+        il2cpp::vm::Class::FromName(il2cpp::vm::Image::GetCorlib(), "System.Runtime.CompilerServices", "ExtensionAttribute");
+    IL2CPP_ASSERT(s_extensionAttributeClass != nullptr);
 }
 
 static void ResolveLuaClasses()
@@ -41,6 +49,8 @@ static void ResolveLuaClasses()
     IL2CPP_ASSERT(assembly != nullptr);
     s_luaAliasAttributeClass = il2cpp::vm::Class::FromName(assembly->image, "ZLua", "LuaAliasAttribute");
     IL2CPP_ASSERT(s_luaAliasAttributeClass != nullptr);
+    s_luaExtensionAttributeClass = il2cpp::vm::Class::FromName(assembly->image, "ZLua", "LuaExtensionAttribute");
+    IL2CPP_ASSERT(s_luaExtensionAttributeClass != nullptr);
     s_luaExceptionClass = il2cpp::vm::Class::FromName(assembly->image, "ZLua", "LuaScriptException");
     IL2CPP_ASSERT(s_luaExceptionClass != nullptr);
     s_luaMarshalAsAttributeClass = il2cpp::vm::Class::FromName(assembly->image, "ZLua", "LuaMarshalAsAttribute");
@@ -76,6 +86,11 @@ Il2CppClass* MetadataUtil::GetLuaMarshalAsAttributeClass()
 Il2CppClass* MetadataUtil::GetLuaAliasAttributeClass()
 {
     return s_luaAliasAttributeClass;
+}
+
+Il2CppClass* MetadataUtil::GetLuaExtensionAttributeClass()
+{
+    return s_luaExtensionAttributeClass;
 }
 
 Il2CppClass* MetadataUtil::GetLuaExceptionClass()
@@ -302,12 +317,15 @@ std::string MetadataUtil::CreateMethodNameWithParametersAndGenericArguments(cons
         name += ">";
     }
     name += "(";
-    for (int i = 0; i < method->parameters_count; i++)
+    const int paramStart = IsExtensionMethod(method) ? 1 : 0;
+    bool first = true;
+    for (int i = paramStart; i < method->parameters_count; i++)
     {
-        if (i > 0)
+        if (!first)
         {
             name += ',';
         }
+        first = false;
         name += MetadataUtil::GetLuaFullName(method->parameters[i]);
     }
     name += ")";
@@ -609,6 +627,68 @@ bool MetadataUtil::TryReadLuaAlias(const MethodInfo* method, std::string& aliasO
     Il2CppString* aliasStr = (Il2CppString*)aliasValue;
     aliasOut = il2cpp::utils::StringUtils::Utf16ToUtf8(il2cpp::utils::StringUtils::GetChars(aliasStr), il2cpp::utils::StringUtils::GetLength(aliasStr));
     return !aliasOut.empty();
+}
+
+bool MetadataUtil::IsExtensionMethod(const MethodInfo* method)
+{
+    if (method == nullptr || !IsStaticMethod(method) || method->parameters_count < 1)
+        return false;
+    return il2cpp::vm::Method::HasAttribute(method, s_extensionAttributeClass);
+}
+
+bool MetadataUtil::TryReadLuaExtensionTypes(Il2CppClass* klass, std::vector<Il2CppClass*>& outExtensionClasses)
+{
+    outExtensionClasses.clear();
+    if (klass == nullptr || s_luaExtensionAttributeClass == nullptr)
+        return false;
+
+    if (!il2cpp::vm::Class::HasAttribute(klass, s_luaExtensionAttributeClass))
+        return false;
+
+    Il2CppReflectionType* typeObj = il2cpp::vm::Reflection::GetTypeObject(&klass->byval_arg);
+    Il2CppArray* attrs = il2cpp::vm::Reflection::GetCustomAttrsInfo((Il2CppObject*)typeObj, s_luaExtensionAttributeClass);
+    if (attrs == nullptr || attrs->max_length == 0)
+        return false;
+
+    std::unordered_set<Il2CppClass*> seen;
+    for (il2cpp_array_size_t a = 0; a < attrs->max_length; ++a)
+    {
+        Il2CppObject* attr = il2cpp_array_get(attrs, Il2CppObject*, a);
+        if (attr == nullptr)
+            continue;
+
+        const PropertyInfo* typesProperty = il2cpp::vm::Class::GetPropertyFromName(attr->klass, "ExtensionTypes");
+        if (typesProperty == nullptr || typesProperty->get == nullptr)
+            continue;
+
+        Il2CppException* exc = nullptr;
+        Il2CppObject* typesObj = il2cpp::vm::Runtime::Invoke(typesProperty->get, attr, nullptr, &exc);
+        if (exc != nullptr || typesObj == nullptr)
+            continue;
+
+        Il2CppArray* types = reinterpret_cast<Il2CppArray*>(typesObj);
+        for (il2cpp_array_size_t i = 0; i < types->max_length; ++i)
+        {
+            Il2CppReflectionType* rt = il2cpp_array_get(types, Il2CppReflectionType*, i);
+            if (rt == nullptr)
+            {
+                il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetInvalidOperationException(
+                    "[ZLua] [LuaExtension] contains a null extension type"));
+            }
+
+            Il2CppClass* extKlass = il2cpp::vm::Class::FromSystemType(rt);
+            if (extKlass == nullptr)
+            {
+                il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetInvalidOperationException(
+                    "[ZLua] [LuaExtension] extension type could not be resolved"));
+            }
+
+            if (seen.insert(extKlass).second)
+                outExtensionClasses.push_back(extKlass);
+        }
+    }
+
+    return !outExtensionClasses.empty();
 }
 
 bool MetadataUtil::MethodParameterHasParamArrayAttribute(const MethodInfo* method, int parameterIndex)

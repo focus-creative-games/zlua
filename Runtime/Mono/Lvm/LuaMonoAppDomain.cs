@@ -44,6 +44,7 @@ namespace ZLua
 #if UNITY_EDITOR
             LoadMarshalAsXmlFromSettings();
             LoadLuaAliasXmlFromSettings();
+            LoadLuaExtensionXmlFromSettings();
 #endif
             AssemblyRegistry.EnsureCSharpRoot();
             ZLuaLib.RegisterGlobals(_luaEnv);
@@ -91,6 +92,26 @@ namespace ZLua
             catch (Exception ex)
             {
                 Debug.LogError("[ZLua] LuaAlias XML load failed at Initialize:\n" + ex.Message);
+                throw;
+            }
+        }
+
+        private static void LoadLuaExtensionXmlFromSettings()
+        {
+            try
+            {
+                if (!EditorSettingsAccess.TryGetInstance(out object settings, out Type settingsType))
+                {
+                    return;
+                }
+
+                EditorSettingsAccess.TryGetField(settings, settingsType, "luaExtensionXmlPaths", out string[] paths);
+                string projectRoot = Path.GetDirectoryName(Application.dataPath);
+                LuaExtensionXmlRegistry.Load(paths, projectRoot);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("[ZLua] LuaExtension XML load failed at Initialize:\n" + ex.Message);
                 throw;
             }
         }

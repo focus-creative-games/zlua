@@ -41,6 +41,8 @@ namespace ZLua.BuildProcessors
             "DelegateBridgeStub.cpp",
             "MarshalBindings.h",
             "MarshalBindings.cpp",
+            "ExtensionBindings.h",
+            "ExtensionBindings.cpp",
         };
 
         public int callbackOrder => 1;

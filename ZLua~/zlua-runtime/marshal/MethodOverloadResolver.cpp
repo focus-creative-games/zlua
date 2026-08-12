@@ -313,7 +313,8 @@ static ConversionScore ComputeMethodConversionScore(lua_State* L, int32_t argSta
     (void)argCount;
     ConversionScore bestConversionScore = {ConversionKind::Identity, 0};
     int32_t slot = argStart;
-    for (uint8_t j = 0; j < method->method->parameters_count; j++)
+    const uint8_t paramStart = method->isExtension ? 1 : 0;
+    for (uint8_t j = paramStart; j < method->method->parameters_count; j++)
     {
         const MarshalMetaInfo* paramMeta = method->paramsMeta[j];
         ConversionKind conversionKind = GetCompositeConversionKind(L, slot, paramMeta);

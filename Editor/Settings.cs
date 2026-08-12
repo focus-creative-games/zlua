@@ -41,6 +41,9 @@ namespace ZLua
         [Tooltip("LuaAlias XML files or directories (relative to project root or absolute). Root element ZLuaAlias. See spec 04-METHOD-OVERLOAD §5.4.")]
         public string[] luaAliasXmlPaths;
 
+        [Tooltip("LuaExtension XML files or directories (relative to project root or absolute). Root element ZLuaExtensions. See spec 13-EXTENSION-METHODS §2.2.")]
+        public string[] luaExtensionXmlPaths;
+
         [Tooltip("Editor Mono only: inject EmmyLua emmy_core after Initialize. Windows ships lua51–lua55 and luajit under Plugins/emmylua/; other OS currently lua55 only (self-build otherwise). Spec build/04-EMMYLUA-DEBUGGER.")]
         public bool enableDebugger = false;
 

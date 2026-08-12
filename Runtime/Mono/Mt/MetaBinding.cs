@@ -104,6 +104,7 @@ namespace ZLua.Mt
 
             CollectConstructors(binding, type);
             CollectMethods(binding, type);
+            CollectExtensionMethods(binding, type);
             CollectFieldsAndProperties(binding, type);
         }
 
@@ -183,6 +184,148 @@ namespace ZLua.Mt
                         binding.ByValInstanceMap[kv.Key] = kv.Value;
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// Collect C# extension methods into IMT (spec 13-EXTENSION-METHODS).
+        /// Attribute ∪ XML on T and base types; filter ExtensionAttribute + this assignable from T.
+        /// </summary>
+        private static void CollectExtensionMethods(TypeBinding binding, Type type)
+        {
+            List<Type> extensionClasses = ResolveExtensionClasses(type);
+            if (extensionClasses.Count == 0)
+            {
+                return;
+            }
+
+            const BindingFlags extFlags =
+                BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly;
+
+            for (int c = 0; c < extensionClasses.Count; c++)
+            {
+                Type extensionClass = extensionClasses[c];
+                MethodInfo[] methods = extensionClass.GetMethods(extFlags);
+                for (int i = 0; i < methods.Length; i++)
+                {
+                    MethodInfo method = methods[i];
+                    if (!ExtensionMethodUtil.IsExtensionMethod(method))
+                    {
+                        continue;
+                    }
+
+                    if (method.ContainsGenericParameters || method.IsGenericMethodDefinition)
+                    {
+                        continue;
+                    }
+
+                    ParameterInfo[] parameters = method.GetParameters();
+                    if (parameters.Length < 1)
+                    {
+                        continue;
+                    }
+
+                    Type thisType = parameters[0].ParameterType;
+                    if (thisType.IsByRef)
+                    {
+                        thisType = thisType.GetElementType();
+                    }
+
+                    if (thisType == null || !thisType.IsAssignableFrom(type))
+                    {
+                        continue;
+                    }
+
+                    RegisterInstanceMethod(binding, type, method);
+                }
+            }
+        }
+
+        private static List<Type> ResolveExtensionClasses(Type type)
+        {
+            var result = new List<Type>();
+            var seen = new HashSet<Type>();
+
+            Type walk = type;
+            while (walk != null && walk != typeof(object) && walk != typeof(ValueType) && walk != typeof(Enum))
+            {
+                object[] attrs = walk.GetCustomAttributes(typeof(LuaExtensionAttribute), inherit: false);
+                for (int i = 0; i < attrs.Length; i++)
+                {
+                    var attr = (LuaExtensionAttribute)attrs[i];
+                    Type[] extTypes = attr.ExtensionTypes;
+                    if (extTypes == null)
+                    {
+                        continue;
+                    }
+
+                    for (int j = 0; j < extTypes.Length; j++)
+                    {
+                        Type ext = extTypes[j];
+                        if (ext == null)
+                        {
+                            throw new LuaExtensionConfigurationException(
+                                "[ZLua] [LuaExtension] on " + walk.FullName
+                                + " contains a null extension type.");
+                        }
+
+                        if (seen.Add(ext))
+                        {
+                            result.Add(ext);
+                        }
+                    }
+                }
+
+                if (LuaExtensionXmlRegistry.TryGetExtensionTypes(walk, out Type[] xmlTypes))
+                {
+                    for (int i = 0; i < xmlTypes.Length; i++)
+                    {
+                        Type ext = xmlTypes[i];
+                        if (ext != null && seen.Add(ext))
+                        {
+                            result.Add(ext);
+                        }
+                    }
+                }
+
+                walk = walk.BaseType;
+            }
+
+            return result;
+        }
+
+        private static void RegisterInstanceMethod(TypeBinding binding, Type ownerType, MethodInfo method)
+        {
+            string finalName = GetLuaFinalName(method);
+            Dictionary<string, MetaInfo> map = binding.ByObjInstanceMap;
+
+            if (map.TryGetValue(finalName, out MetaInfo existing))
+            {
+                if (existing.Kind != MetaKind.Method)
+                {
+                    return;
+                }
+
+                if (existing.MethodOverloads == null)
+                {
+                    existing.MethodOverloads = new List<MethodInfo> { existing.Method };
+                }
+
+                existing.MethodOverloads.Add(method);
+                return;
+            }
+
+            MetaInfo info = new MetaInfo
+            {
+                Kind = MetaKind.Method,
+                Name = finalName,
+                IsStatic = false,
+                Method = method,
+            };
+            map[finalName] = info;
+            if (NeedsByValInstanceMap(ownerType))
+            {
+                binding.ByValInstanceMap[finalName] = info;
             }
         }
 

@@ -176,6 +176,11 @@ namespace ZLua.Emit
 
         private static Func<IntPtr, int> BuildDirectCore(MethodInfo method, bool isStatic, bool isByVal)
         {
+            if (ExtensionMethodUtil.IsExtensionMethod(method))
+            {
+                return BuildExtensionCore(method);
+            }
+
             if (!isStatic && isByVal && method.DeclaringType != null && method.DeclaringType.IsValueType)
             {
                 return BuildByValCore(method);
@@ -233,6 +238,69 @@ namespace ZLua.Emit
             Expression call = isStatic
                 ? Expression.Call(method, argExprs)
                 : Expression.Call(targetExpr, method, argExprs);
+
+            if (method.ReturnType == typeof(void))
+            {
+                exprs.Add(call);
+                exprs.Add(Expression.Constant(0));
+            }
+            else
+            {
+                ParameterExpression resultLocal = Expression.Variable(method.ReturnType, "result");
+                locals.Add(resultLocal);
+                exprs.Add(Expression.Assign(resultLocal, call));
+                exprs.Add(Expression.Call(
+                    EmitMethods.PushReturn,
+                    L,
+                    Expression.Constant(method.ReturnType, typeof(Type)),
+                    Expression.Convert(resultLocal, typeof(object))));
+            }
+
+            Expression body = Expression.Block(locals, exprs);
+            return Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
+        }
+
+        /// <summary>
+        /// Extension static-as-instance: slot 1 → CLR param 0; remaining from slot 2 (spec 13 §4).
+        /// </summary>
+        private static Func<IntPtr, int> BuildExtensionCore(MethodInfo method)
+        {
+            ParameterInfo[] parameters = method.GetParameters();
+            const int argStart = 2;
+            int expectedArgs = parameters.Length - 1;
+
+            ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
+            var locals = new List<ParameterExpression>();
+            var exprs = new List<Expression>
+            {
+                Expression.Call(
+                    EmitMethods.ValidateExactArgCount,
+                    L,
+                    Expression.Constant(expectedArgs),
+                    Expression.Constant(argStart)),
+            };
+
+            var argExprs = new Expression[parameters.Length];
+            Type p0Type = parameters[0].ParameterType;
+            Expression receiverPopped = Expression.Call(
+                EmitMethods.PopArg,
+                L,
+                Expression.Constant(1),
+                Expression.Constant(p0Type, typeof(Type)));
+            argExprs[0] = Expression.Convert(receiverPopped, p0Type);
+
+            for (int i = 1; i < parameters.Length; i++)
+            {
+                Type paramType = parameters[i].ParameterType;
+                Expression popped = Expression.Call(
+                    EmitMethods.PopArg,
+                    L,
+                    Expression.Constant(argStart + i - 1),
+                    Expression.Constant(paramType, typeof(Type)));
+                argExprs[i] = Expression.Convert(popped, paramType);
+            }
+
+            Expression call = Expression.Call(method, argExprs);
 
             if (method.ReturnType == typeof(void))
             {

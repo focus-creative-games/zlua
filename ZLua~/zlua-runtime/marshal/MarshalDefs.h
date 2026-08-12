@@ -106,10 +106,12 @@ struct MethodMarshalCtx
     const MarshalMetaInfo* retMeta;
     int32_t valueSize; // sizeof(void*) for refrence type, klass->instance - sizeof(Il2CppObject) for struct
     int32_t totalParamsSize;
-    int32_t luaArity; // Σ paramsMeta[i]->stackSlots
+    int32_t luaArity; // Σ paramsMeta[i]->stackSlots (extension: from param 1)
     bool byVal;
     /* Precomputed: true when method is effectively sealed (non-virtual, method final, klass sealed, or byVal). */
     bool sealed;
+    /* C# extension method bound as instance (static-as-instance). Set once at Bind. */
+    bool isExtension;
 };
 
 struct MethodGroup

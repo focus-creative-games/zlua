@@ -76,11 +76,15 @@ namespace ZLua.Emit
             return NeedsInterpreted(method) || BridgeMarshaling.CanExpressionEmit(method);
         }
 
+        /// <summary>
+        /// Lua arity for matching / exact-count. Extension methods omit CLR param 0 (this).
+        /// </summary>
         internal static int GetLuaArity(MethodBase method)
         {
             ParameterInfo[] parameters = method.GetParameters();
+            int start = ExtensionMethodUtil.IsExtensionMethod(method) ? 1 : 0;
             int slots = 0;
-            for (int i = 0; i < parameters.Length; i++)
+            for (int i = start; i < parameters.Length; i++)
             {
                 LuaMarshalBinding binding = LuaMarshalAsValidation.ResolveParameterBinding(
                     parameters[i],
@@ -108,6 +112,7 @@ namespace ZLua.Emit
                 ? LuaMarshalBinding.Default
                 : LuaMarshalAsValidation.ResolveReturnBinding(method, LuaMarshalDirection.CSharpToLua);
 
+            bool isExtension = ExtensionMethodUtil.IsExtensionMethod(method);
             int argStart = isStatic ? 1 : 2;
             int expectedArgs = GetLuaArity(method);
             Type declaringType = method.DeclaringType;
@@ -115,6 +120,13 @@ namespace ZLua.Emit
             return L =>
             {
                 BridgeMarshaling.ValidateExactArgCount(L, expectedArgs, argStart);
+
+                if (isExtension)
+                {
+                    object[] invokeArgs = PopExtensionArgs(L, argStart, parameters, paramBindings);
+                    object returnValue = method.Invoke(null, invokeArgs);
+                    return CompositeMarshal.Push(L, returnValue, method.ReturnType, returnBinding);
+                }
 
                 object target = null;
                 if (!isStatic)
@@ -129,9 +141,9 @@ namespace ZLua.Emit
                     target = BridgeMarshaling.PopTarget(L, 1, declaringType, isByVal: false);
                 }
 
-                object[] invokeArgs = PopArgs(L, argStart, parameters, paramBindings);
-                object returnValue = method.Invoke(target, invokeArgs);
-                return CompositeMarshal.Push(L, returnValue, method.ReturnType, returnBinding);
+                object[] invokeArgsNormal = PopArgs(L, argStart, parameters, paramBindings);
+                object returnValueNormal = method.Invoke(target, invokeArgsNormal);
+                return CompositeMarshal.Push(L, returnValueNormal, method.ReturnType, returnBinding);
             };
         }
 
@@ -158,6 +170,27 @@ namespace ZLua.Emit
                 TypeRegistry.PushConstructorInstance(L, instance, type);
                 return 1;
             };
+        }
+
+        private static object[] PopExtensionArgs(
+            IntPtr L,
+            int argStart,
+            ParameterInfo[] parameters,
+            LuaMarshalBinding[] bindings)
+        {
+            var args = new object[parameters.Length];
+            // Slot 1 = receiver → CLR param 0 (P0 type; ByObj or ByVal via CompositeMarshal).
+            args[0] = CompositeMarshal.Pop(L, 1, parameters[0].ParameterType, bindings[0]);
+            int slot = argStart;
+            for (int i = 1; i < parameters.Length; i++)
+            {
+                Type paramType = parameters[i].ParameterType;
+                LuaMarshalBinding binding = bindings[i];
+                args[i] = CompositeMarshal.Pop(L, slot, paramType, binding);
+                slot += binding.StackSlots;
+            }
+
+            return args;
         }
 
         private static object[] PopArgs(

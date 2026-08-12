@@ -67,8 +67,9 @@ namespace ZLua.Emit
         {
             score = 0;
             ParameterInfo[] parameters = method.GetParameters();
+            int paramStart = ExtensionMethodUtil.IsExtensionMethod(method) ? 1 : 0;
             int slot = argStart;
-            for (int i = 0; i < parameters.Length; i++)
+            for (int i = paramStart; i < parameters.Length; i++)
             {
                 LuaMarshalBinding binding = LuaMarshalAsValidation.ResolveParameterBinding(
                     parameters[i],

@@ -11,6 +11,7 @@
 #include "../generated/MarshalBindings.h"
 #include "../generated/CompositeSpecializedBindings.h"
 #include "../generated/AliasBindings.h"
+#include "../generated/ExtensionBindings.h"
 
 #include "vm/Exception.h"
 
@@ -26,6 +27,7 @@ void LuaAppDomain::Initialize()
     RegisterMarshalBindingTables();
     RegisterCompositeSpecializedWriters();
     RegisterAliasBindingTables();
+    RegisterExtensionBindingTables();
     LuaInternalCalls::RegisterCoreInternalCalls();
 
     LuaLoader::RegisterRoots();

@@ -6,6 +6,8 @@
 #include "vm/Class.h"
 #include "vm/Object.h"
 
+#include <vector>
+
 namespace zlua
 {
 class MetadataUtil
@@ -37,11 +39,15 @@ class MetadataUtil
     static const MethodInfo* GetObjectToStringMethod();
     static Il2CppClass* GetLuaMarshalAsAttributeClass();
     static Il2CppClass* GetLuaAliasAttributeClass();
+    static Il2CppClass* GetLuaExtensionAttributeClass();
     static Il2CppClass* GetLuaExceptionClass();
     static Il2CppClass* GetLuaMethodClass();
     static Il2CppClass* GetByteArrayClass();
 
     static bool TryReadLuaAlias(const MethodInfo* method, std::string& aliasOut);
+    /// Collect [LuaExtension] extension classes on klass (AllowMultiple). Does not walk base types.
+    static bool TryReadLuaExtensionTypes(Il2CppClass* klass, std::vector<Il2CppClass*>& outExtensionClasses);
+    static bool IsExtensionMethod(const MethodInfo* method);
     static bool MethodParameterHasParamArrayAttribute(const MethodInfo* method, int parameterIndex);
     static bool IsDelegateClass(Il2CppClass* klass);
 

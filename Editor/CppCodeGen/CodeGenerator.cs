@@ -105,6 +105,8 @@ namespace ZLua.CppCodeGen
             compositeSpecializedCodegen.Generate();
             var aliasCodegen = new AliasCodegen(_outputDir);
             aliasCodegen.Generate();
+            var extensionCodegen = new ExtensionCodegen(_outputDir);
+            extensionCodegen.Generate();
         }
 
     }

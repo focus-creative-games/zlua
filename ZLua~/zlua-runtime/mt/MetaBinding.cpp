@@ -24,7 +24,7 @@
 #include "../marshal/MarshalDefs.h"
 #include "../marshal/MethodOverloadResolver.h"
 #include "AliasXmlTable.h"
-
+#include "ExtensionXmlTable.h"
 
 #include "vm/Class.h"
 #include "vm/Field.h"
@@ -33,6 +33,8 @@
 #include "vm/Method.h"
 #include "vm/Type.h"
 #include "metadata/GenericMetadata.h"
+
+#include <unordered_set>
 
 namespace zlua
 {
@@ -82,16 +84,40 @@ static int InvokeInstanceMethodDirect(lua_State* L)
     ZLUA_TRY_END();
 }
 
+/// Extension static-as-instance: validate arity as instance (after self), invoke as static with argStart=1.
+static int InvokeExtensionMethodCore(lua_State* L, const MethodMarshalCtx* ctx)
+{
+    const int top = lua_gettop(L);
+    const int available = top >= 2 ? (top - 2 + 1) : 0;
+    if (available < ctx->luaArity)
+    {
+        LuaException::ThrowFormat("zlua: argument mismatch: expected %d argument(s), got %d", ctx->luaArity, available);
+    }
+    const MethodInfo* method = MetadataUtil::ResolveInvokeMethod(ctx->method, nullptr, /*sealed*/ true);
+    return ctx->lua2CsInvoker(L, nullptr, /*argStart*/ 1, method, ctx);
+}
+
+static int InvokeExtensionMethodDirect(lua_State* L)
+{
+    ZLUA_TRY_BEGIN()
+    const MethodMarshalCtx* ctx = (const MethodMarshalCtx*)lua_touserdata(L, lua_upvalueindex(kUpvalueIndexGroupsOrCtx));
+    return InvokeExtensionMethodCore(L, ctx);
+    ZLUA_TRY_END();
+}
+
 MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const MethodInfo* method, bool isByVal)
 {
+    const bool isExtension = MetadataUtil::IsExtensionMethod(method);
     bool isStatic = MetadataUtil::IsStaticMethod(method);
-    FnResolveMethodThis resolveThis = InstanceTarget::GetResolveMethodThisFunc(method->klass, isStatic, isByVal);
+    FnResolveMethodThis resolveThis =
+        isExtension ? nullptr : InstanceTarget::GetResolveMethodThisFunc(method->klass, isStatic, isByVal);
     MethodMarshalCtx* ctx = LuaMetadataAlloc::MallocAnyZeroed<MethodMarshalCtx>();
     ctx->method = method;
     ctx->resolveThis = resolveThis;
     ctx->lua2CsInvoker = MethodBridge::ResolveMethodInvoker(method);
     ctx->byVal = isByVal;
-    ctx->sealed = MetadataUtil::IsMethodSealed(method, isByVal);
+    ctx->isExtension = isExtension;
+    ctx->sealed = isExtension ? true : MetadataUtil::IsMethodSealed(method, isByVal);
     ctx->valueSize = MetadataUtil::GetValueSize(&method->klass->byval_arg);
     int32_t luaArity = 0;
     if (method->parameters_count > 0)
@@ -103,7 +129,9 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
             const MarshalMetaInfo* meta = MarshalMeta::Create(L, method, i);
             ctx->paramsMeta[i] = meta;
             totalParamsSize += meta->size;
-            luaArity += meta->stackSlots > 0 ? meta->stackSlots : 1;
+            // Extension: luaArity excludes CLR param 0 (this) — matches IMT argStart=2.
+            if (!isExtension || i >= 1)
+                luaArity += meta->stackSlots > 0 ? meta->stackSlots : 1;
         }
         ctx->totalParamsSize = totalParamsSize;
     }
@@ -155,7 +183,15 @@ int MetaBinding::CreateDirectMethodClosureRef(lua_State* L, const MethodInfo* me
     lua_pushnumber(L, (lua_Number)(int)(method->is_generic ? ClosureKind::DirectGeneric : ClosureKind::Direct));
     lua_pushlightuserdata(L, (void*)binding);
     lua_pushlightuserdata(L, ctx);
-    lua_CFunction dispatchFunc = method->is_generic ? InvokeMethodDirectGeneric : (isStatic ? InvokeStaticMethodDirect : InvokeInstanceMethodDirect);
+    lua_CFunction dispatchFunc;
+    if (method->is_generic)
+        dispatchFunc = InvokeMethodDirectGeneric;
+    else if (ctx->isExtension)
+        dispatchFunc = InvokeExtensionMethodDirect;
+    else if (isStatic)
+        dispatchFunc = InvokeStaticMethodDirect;
+    else
+        dispatchFunc = InvokeInstanceMethodDirect;
     lua_pushcclosure(L, dispatchFunc, 3);
     return LuaUtil::ToLuaRef(L);
 }
@@ -219,6 +255,9 @@ static int InvokeInstanceMethodDispatch(lua_State* L)
     const MethodGroups* groups = (const MethodGroups*)lua_touserdata(L, lua_upvalueindex(kUpvalueIndexGroupsOrCtx));
     const int argStart = 2;
     const MethodMarshalCtx* ctx = FindBestMethod(L, binding, groups, argStart);
+
+    if (ctx->isExtension)
+        return InvokeExtensionMethodCore(L, ctx);
 
     void* target = ctx->resolveThis(L, 1);
     return MethodBridge::InvokeLua2Cs(L, target, argStart, ctx);
@@ -513,6 +552,79 @@ static void AddToMethodGroup(const std::vector<const MethodInfo*>& methods, Appe
     }
 }
 
+static bool IsOpenGenericMethod(const MethodInfo* method)
+{
+    if (method->is_generic)
+        return true;
+    if (il2cpp::metadata::GenericMetadata::ContainsGenericParameters(method))
+        return true;
+    return false;
+}
+
+static void CollectExtensionMethods(Il2CppClass* klass, std::vector<const MethodInfo*>& outMethods)
+{
+    std::vector<Il2CppClass*> extensionClasses;
+    std::unordered_set<Il2CppClass*> seen;
+
+    for (Il2CppClass* walk = klass; walk != nullptr; walk = walk->parent)
+    {
+        if (walk == il2cpp_defaults.object_class || walk == il2cpp_defaults.value_type_class || walk == il2cpp_defaults.enum_class)
+            break;
+
+        std::vector<Il2CppClass*> attrTypes;
+        if (MetadataUtil::TryReadLuaExtensionTypes(walk, attrTypes))
+        {
+            for (size_t i = 0; i < attrTypes.size(); ++i)
+            {
+                Il2CppClass* ext = attrTypes[i];
+                if (ext != nullptr && seen.insert(ext).second)
+                    extensionClasses.push_back(ext);
+            }
+        }
+
+        std::vector<Il2CppClass*> xmlTypes;
+        if (ExtensionXmlTable::TryGetExtensionClasses(walk, xmlTypes))
+        {
+            for (size_t i = 0; i < xmlTypes.size(); ++i)
+            {
+                Il2CppClass* ext = xmlTypes[i];
+                if (ext != nullptr && seen.insert(ext).second)
+                    extensionClasses.push_back(ext);
+            }
+        }
+    }
+
+    for (size_t c = 0; c < extensionClasses.size(); ++c)
+    {
+        Il2CppClass* extKlass = extensionClasses[c];
+        il2cpp::vm::Class::Init(extKlass);
+        for (uint16_t i = 0; i < extKlass->method_count; ++i)
+        {
+            const MethodInfo* method = extKlass->methods[i];
+            if (!MetadataUtil::IsPublicMethod(method) || !MetadataUtil::IsStaticMethod(method))
+                continue;
+            if (MetadataUtil::IsCtorOrCCtor(method))
+                continue;
+            if (!MetadataUtil::IsExtensionMethod(method))
+                continue;
+            if (IsOpenGenericMethod(method))
+                continue;
+            if (method->parameters_count < 1)
+                continue;
+
+            const Il2CppType* p0Type = method->parameters[0];
+            Il2CppClass* p0Klass = il2cpp::vm::Class::FromIl2CppType(p0Type);
+            if (p0Klass == nullptr)
+                continue;
+            // P0.IsAssignableFrom(T) — Class::IsAssignableFrom(to, from)
+            if (!il2cpp::vm::Class::IsAssignableFrom(p0Klass, klass))
+                continue;
+
+            outMethods.push_back(method);
+        }
+    }
+}
+
 static void BuildBinding(lua_State* L, TypeBinding* binding)
 {
     Il2CppClass* klass = binding->klass;
@@ -557,6 +669,10 @@ static void BuildBinding(lua_State* L, TypeBinding* binding)
 
     AddToMethodGroup(staticMethods, staticGroups, staticGenericMethods);
     AddToMethodGroup(instanceMethods, instanceGroups, instanceGenericMethods);
+
+    std::vector<const MethodInfo*> extensionMethods;
+    CollectExtensionMethods(klass, extensionMethods);
+    AddToMethodGroup(extensionMethods, instanceGroups, instanceGenericMethods);
 
     for (const auto& kv : staticGroups)
     {
