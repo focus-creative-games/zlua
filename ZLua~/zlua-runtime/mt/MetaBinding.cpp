@@ -267,6 +267,7 @@ static int InvokeInstanceMethodDispatch(lua_State* L)
 static void CollectBindableMethods(Il2CppClass* klass, std::vector<const MethodInfo*>& ctorMethods, std::vector<const MethodInfo*>& staticMethods,
                                    std::vector<const MethodInfo*>& instanceMethods)
 {
+    MetadataUtil::EnsureMethods(klass);
     for (uint16_t i = 0; i < klass->method_count; ++i)
     {
         const MethodInfo* method = klass->methods[i];
@@ -331,10 +332,10 @@ static void SetupFieldAddressOrInstanceOffset(FieldMarshalCtx& ctx, const FieldI
 
 static void RegisterFields(lua_State* L, Il2CppClass* klass, NameMetaMap& instanceMap, NameMetaMap& staticMap)
 {
-    void* fieldIter = NULL;
-    FieldInfo* field;
-    while ((field = il2cpp::vm::Class::GetFields(klass, &fieldIter)) != NULL)
+    MetadataUtil::EnsureFields(klass);
+    for (uint16_t i = 0; i < klass->field_count; ++i)
     {
+        FieldInfo* field = klass->fields + i;
         if (!IsPublicField(field))
             continue;
         const bool isStatic = !il2cpp::vm::Field::IsInstance(field);
@@ -356,10 +357,10 @@ static void RegisterFields(lua_State* L, Il2CppClass* klass, NameMetaMap& instan
 
 static void RegisterProperties(lua_State* L, Il2CppClass* klass, NameMetaMap& instanceMap, NameMetaMap& staticMap)
 {
-    void* propertyIter = NULL;
-    const PropertyInfo* property;
-    while ((property = il2cpp::vm::Class::GetProperties(klass, &propertyIter)) != NULL)
+    MetadataUtil::EnsureProperties(klass);
+    for (uint16_t i = 0; i < klass->property_count; ++i)
     {
+        const PropertyInfo* property = klass->properties + i;
         if (!MetadataUtil::IsPublicProperty(property) || !MetadataUtil::IsZeroParameterProperty(property))
             continue;
 
@@ -597,7 +598,7 @@ static void CollectExtensionMethods(Il2CppClass* klass, std::vector<const Method
     for (size_t c = 0; c < extensionClasses.size(); ++c)
     {
         Il2CppClass* extKlass = extensionClasses[c];
-        il2cpp::vm::Class::Init(extKlass);
+        MetadataUtil::EnsureMethods(extKlass);
         for (uint16_t i = 0; i < extKlass->method_count; ++i)
         {
             const MethodInfo* method = extKlass->methods[i];

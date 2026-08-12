@@ -81,6 +81,7 @@ void TypeRegistryCommon::WriteCommonTypeFields(lua_State* L, Il2CppClass* klass,
 
 void TypeRegistryCommon::RegisterStaticLiteralFields(lua_State* L, Il2CppClass* klass, int typeTableIndex)
 {
+    MetadataUtil::EnsureFields(klass);
     for (uint16_t i = 0; i < klass->field_count; ++i)
     {
         FieldInfo* field = klass->fields + i;

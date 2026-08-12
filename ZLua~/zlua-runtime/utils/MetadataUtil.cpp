@@ -267,7 +267,7 @@ const MethodInfo* MetadataUtil::FindMethod(Il2CppClass* klass, const char* name,
     if (klass == nullptr || name == nullptr)
         return nullptr;
 
-    il2cpp::vm::Class::Init(klass);
+    EnsureMethods(klass);
     for (uint16_t i = 0; i < klass->method_count; ++i)
     {
         const MethodInfo* method = klass->methods[i];
@@ -571,9 +571,9 @@ Il2CppClass* MetadataUtil::ResolveTypeFromName(const char* typeFullName)
 
 const MethodInfo* MetadataUtil::FindMethodByParameterSignature(Il2CppClass* klass, const char* name, const char* parameterSignature)
 {
-    il2cpp::vm::Class::Init(klass);
     for (Il2CppClass* cursor = klass; cursor != nullptr; cursor = cursor->parent)
     {
+        EnsureMethods(cursor);
         for (uint16_t i = 0; i < cursor->method_count; ++i)
         {
             const MethodInfo* method = cursor->methods[i];
@@ -588,9 +588,9 @@ const MethodInfo* MetadataUtil::FindMethodByParameterSignature(Il2CppClass* klas
 
 const MethodInfo* MetadataUtil::FindMethodByParameterSignature(Il2CppClass* klass, const char* name, const char* parameterSignature, bool isStatic)
 {
-    il2cpp::vm::Class::Init(klass);
     for (Il2CppClass* cursor = klass; cursor != nullptr; cursor = cursor->parent)
     {
+        EnsureMethods(cursor);
         for (uint16_t i = 0; i < cursor->method_count; ++i)
         {
             const MethodInfo* method = cursor->methods[i];
@@ -1147,6 +1147,7 @@ bool MetadataUtil::IsUnsupportedMarshalType(Il2CppClass* klass)
 
 void* MetadataUtil::GetNullableValue(void* dataAddr, Il2CppClass* klass)
 {
+    EnsureFields(klass);
     IL2CPP_ASSERT(klass->fields[0].type->type == IL2CPP_TYPE_BOOLEAN);
     return reinterpret_cast<uint8_t*>(dataAddr) + klass->fields[1].offset - sizeof(Il2CppObject);
 }
@@ -1158,6 +1159,7 @@ void MetadataUtil::InitNullableValue(void* dataAddr, Il2CppClass* klass)
 
 void MetadataUtil::NullableSetHasValue(void* dataAddr, Il2CppClass* klass)
 {
+    EnsureFields(klass);
     IL2CPP_ASSERT(klass->fields[0].type->type == IL2CPP_TYPE_BOOLEAN);
     *(reinterpret_cast<uint8_t*>(dataAddr)) = 1;
 }

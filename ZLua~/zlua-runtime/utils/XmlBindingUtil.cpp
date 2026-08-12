@@ -1,6 +1,7 @@
 #include "XmlBindingUtil.h"
 
-#include "vm/Class.h"
+#include "MetadataUtil.h"
+
 #include "vm/GenericClass.h"
 
 namespace zlua
@@ -15,10 +16,10 @@ const MethodInfo* NormalizeMethodForToken(const MethodInfo* method)
     if (method->klass->generic_class != nullptr)
     {
         Il2CppClass* typeDef = il2cpp::vm::GenericClass::GetTypeDefinition(method->klass->generic_class);
-        il2cpp::vm::Class::Init(typeDef);
-        void* iter = nullptr;
-        while (const MethodInfo* m = il2cpp::vm::Class::GetMethods(typeDef, &iter))
+        MetadataUtil::EnsureMethods(typeDef);
+        for (uint16_t i = 0; i < typeDef->method_count; ++i)
         {
+            const MethodInfo* m = typeDef->methods[i];
             if (m->token == method->token)
                 return m;
         }

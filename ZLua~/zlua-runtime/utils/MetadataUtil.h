@@ -19,6 +19,32 @@ class MetadataUtil
     static Il2CppClass* ResolveCorlibType(const char* typeFullName);
     /// Same semantics as System.Type.GetType(string) / zlua.get_type_from_name.
     static Il2CppClass* ResolveTypeFromName(const char* typeFullName);
+    /// Tuanjie delayed-init: Class::Init alone may not populate members.
+    /// Prefer Ensure* + raw klass->methods/fields/properties/events over Class::Get* iterators.
+    static inline void EnsureMethods(Il2CppClass* klass)
+    {
+        IL2CPP_ASSERT(klass != nullptr);
+        il2cpp::vm::Class::SetupMethods(klass);
+    }
+
+    static inline void EnsureFields(Il2CppClass* klass)
+    {
+        IL2CPP_ASSERT(klass != nullptr);
+        il2cpp::vm::Class::SetupFields(klass);
+    }
+
+    static inline void EnsureProperties(Il2CppClass* klass)
+    {
+        IL2CPP_ASSERT(klass != nullptr);
+        il2cpp::vm::Class::SetupProperties(klass);
+    }
+
+    static inline void EnsureEvents(Il2CppClass* klass)
+    {
+        IL2CPP_ASSERT(klass != nullptr);
+        il2cpp::vm::Class::SetupEvents(klass);
+    }
+
     static const MethodInfo* FindMethod(Il2CppClass* klass, const char* name, int parameterCount, bool isStatic);
     static const MethodInfo* FindConstructor(Il2CppClass* klass, int parameterCount);
     /// Match name + parameter signature; ignores static vs instance.
