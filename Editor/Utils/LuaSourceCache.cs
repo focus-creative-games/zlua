@@ -11,7 +11,8 @@ namespace ZLua.Utils
 {
     /// <summary>
     /// Resolves PUC-Rio Lua / LuaJIT trees under <see cref="CommonDirs.LuaSrcCacheDir"/>.
-    /// PUC-Rio: download https://www.lua.org/ftp/lua-X.Y.Z.tar.gz when missing.
+    /// PUC-Rio: download from https://www.lua.org/ftp/ when missing
+    /// (lua-X.Y.Z.tar.gz; for ≤5.1 with patch 0 the archive is lua-X.Y.tar.gz).
     /// LuaJIT: clone the requested branch into a staging dir, then move into the cache folder.
     /// </summary>
     public static class LuaSourceCache
@@ -25,6 +26,42 @@ namespace ZLua.Utils
         private static readonly Regex s_luaJit = new Regex(
             @"^luajit-(\d+)\.(\d+)(?:\.(.+))?$",
             RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        /// <summary>
+        /// Official tarball stem on lua.org/ftp (without <c>lua-</c> / <c>.tar.gz</c>).
+        /// Releases ≤ 5.1 with patch <c>0</c> omit the patch segment
+        /// (e.g. <c>lua-5.1.0</c> → <c>5.1</c> → <c>lua-5.1.tar.gz</c>).
+        /// </summary>
+        internal static string GetPucRioArchiveVersion(int major, int minor, int patch)
+        {
+            // lua.org: lua-5.1.tar.gz, lua-5.0.tar.gz, lua-4.0.tar.gz, … — no ".0".
+            // From 5.2.0 onward first releases keep the patch: lua-5.2.0.tar.gz, …
+            if (patch == 0 && (major < 5 || (major == 5 && minor <= 1)))
+            {
+                return $"{major}.{minor}";
+            }
+
+            return $"{major}.{minor}.{patch}";
+        }
+
+        /// <summary>
+        /// Official tarball stem for a Settings id such as <c>lua-5.1.0</c>.
+        /// </summary>
+        internal static bool TryGetPucRioArchiveVersion(string versionId, out string archiveVer)
+        {
+            archiveVer = null;
+            Match m = s_pucRio.Match(versionId ?? string.Empty);
+            if (!m.Success)
+            {
+                return false;
+            }
+
+            archiveVer = GetPucRioArchiveVersion(
+                int.Parse(m.Groups[1].Value),
+                int.Parse(m.Groups[2].Value),
+                int.Parse(m.Groups[3].Value));
+            return true;
+        }
 
         public static string GetCacheDirForVersionId(string versionId)
         {
@@ -193,11 +230,15 @@ namespace ZLua.Utils
                 throw new InvalidOperationException($"Not a PUC-Rio version id: {versionId}");
             }
 
-            string ver = $"{m.Groups[1].Value}.{m.Groups[2].Value}.{m.Groups[3].Value}";
-            string url = $"https://lua.org/ftp/lua-{ver}.tar.gz";
+            int major = int.Parse(m.Groups[1].Value);
+            int minor = int.Parse(m.Groups[2].Value);
+            int patch = int.Parse(m.Groups[3].Value);
+            // Cache / Settings keep lua-X.Y.Z; ftp archive may drop trailing .0 for ≤5.1.
+            string archiveVer = GetPucRioArchiveVersion(major, minor, patch);
+            string url = $"https://www.lua.org/ftp/lua-{archiveVer}.tar.gz";
             string downloads = Path.Combine(CommonDirs.LuaSrcCacheDir, "downloads");
             Directory.CreateDirectory(downloads);
-            string tarball = Path.Combine(downloads, $"lua-{ver}.tar.gz");
+            string tarball = Path.Combine(downloads, $"lua-{archiveVer}.tar.gz");
 
             if (!File.Exists(tarball) || new FileInfo(tarball).Length < 1024)
             {
@@ -218,7 +259,8 @@ namespace ZLua.Utils
 
                     throw new InvalidOperationException(
                         $"[ZLua] Failed to download {url}. "
-                        + "Check the version id exists on https://lua.org/ftp/ (e.g. lua-5.3.6, lua-5.4.8, lua-5.5.0).\n"
+                        + "Check the version id exists on https://www.lua.org/ftp/ "
+                        + "(e.g. lua-5.1.0 → lua-5.1.tar.gz; lua-5.3.6, lua-5.4.8, lua-5.5.0).\n"
                         + ex.Message,
                         ex);
                 }
@@ -256,8 +298,8 @@ namespace ZLua.Utils
                 }
             }
 
-            // Official tarball extracts to lua-X.Y.Z/; rename/move if needed.
-            string extracted = Path.Combine(extractParent, $"lua-{ver}");
+            // Official tarball extracts to lua-{archiveVer}/ (e.g. lua-5.1/); cache folder is versionId.
+            string extracted = Path.Combine(extractParent, $"lua-{archiveVer}");
             if (!string.Equals(Path.GetFullPath(extracted), Path.GetFullPath(cacheDir), StringComparison.OrdinalIgnoreCase))
             {
                 if (Directory.Exists(extracted) && !Directory.Exists(cacheDir))

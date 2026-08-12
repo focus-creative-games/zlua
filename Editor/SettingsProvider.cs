@@ -116,7 +116,8 @@ namespace ZLua
                 prop.tooltip));
 
             EditorGUILayout.HelpBox(
-                "PUC-Rio versions are downloaded on Install from https://www.lua.org/ftp/lua-X.Y.Z.tar.gz "
+                "PUC-Rio versions are downloaded on Install from https://www.lua.org/ftp/ "
+                + "(lua-X.Y.Z.tar.gz; ≤5.1 with patch 0 uses lua-X.Y.tar.gz, e.g. lua-5.1.0 → lua-5.1.tar.gz) "
                 + $"into {CommonDirs.LuaSrcCacheDir}.\n"
                 + "LuaJIT: clone into LuaSrcCache/luajit-{major}.{minor} (e.g. luajit-2.1).\n"
                 + $"Default when empty: {LuaSourceCache.DefaultPucRioVersionId}.\n"

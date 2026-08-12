@@ -376,17 +376,20 @@ namespace ZLua
                 // iOS/tvOS/watchOS: system(3) is unavailable; enable Lua's IOS profile (+ fallback).
                 EnsureAppleMobileLuaOsProfile(CommonDirs.LocalLuaSrcPath);
 
-                // Lua 5.1/5.2: luai_num* macros are gated on LUA_CORE; Il2Cpp lumps break that.
+                // Lua 5.1/5.2: luai_num* / number tricks / luai_hashnum gated on LUA_CORE / ltable_c;
+                // Il2Cpp lumps many .c into one TU so the first header include wins (include guard).
                 // Lua 5.1 only: lua_tmpnam gated on loslib_c (5.2+ defines it inside loslib.c).
                 int family = EngineVersionUtil.EncodeLuaApiFamily(luaInfo);
                 if (family < 503)
                 {
                     EnsureLuaiNumMacrosForIl2CppLump(CommonDirs.LocalLuaSrcPath);
+                    EnsureLuaiHashnumMacrosForIl2CppLump(CommonDirs.LocalLuaSrcPath);
                 }
 
                 if (family < 502)
                 {
                     EnsureLuaTmpnamMacrosForIl2CppLump(CommonDirs.LocalLuaSrcPath);
+                    EnsureLoadlibAnsiApisForWin32(CommonDirs.LocalLuaSrcPath);
                 }
             }
 
@@ -534,6 +537,80 @@ namespace ZLua
         }
 
         /// <summary>
+        /// Lua 5.2 defines <c>luai_hashnum</c> either via <c>LUA_IEEE754TRICK</c> (set only under
+        /// <c>LUA_CORE</c> in <c>luaconf.h</c>) or a frexp fallback gated on <c>ltable_c</c> in
+        /// <c>llimits.h</c>. Il2Cpp lump + include guards mean those per-TU macros may be unset when
+        /// headers are first parsed, so <c>ltable.c</c> later sees an undefined <c>luai_hashnum</c>
+        /// (MSVC C4013 / C4700). Always enable the number→int trick block and the frexp fallback.
+        /// </summary>
+        private static void EnsureLuaiHashnumMacrosForIl2CppLump(string luaSrcDir)
+        {
+            string luaconf = Path.Combine(luaSrcDir, "luaconf.h");
+            string llimits = Path.Combine(luaSrcDir, "llimits.h");
+            if (!File.Exists(luaconf) || !File.Exists(llimits))
+            {
+                throw new InvalidOperationException(
+                    $"[ZLua] luaconf.h/llimits.h not found under {luaSrcDir}; cannot fix luai_hashnum for Il2Cpp lump.");
+            }
+
+            // luaconf.h: ungate LUA_CORE around MS_ASMTRICK / LUA_IEEE754TRICK (feeds llimits.h).
+            {
+                string text = File.ReadAllText(luaconf, Encoding.UTF8);
+                if (!text.Contains("ZLua: Il2Cpp lump-safe — number→int tricks"))
+                {
+                    const string pattern =
+                        @"#if\s+defined\s*\(\s*LUA_CORE\s*\)([^\r\n]*\r?\n\r?\n#if\s+defined\s*\(\s*LUA_NUMBER_DOUBLE\s*\))";
+                    const string replacement =
+                        "#if 1 /* ZLua: Il2Cpp lump-safe — number→int tricks (do not rely on LUA_CORE) */$1";
+                    string next = Regex.Replace(text, pattern, replacement, RegexOptions.CultureInvariant);
+                    if (string.Equals(next, text, StringComparison.Ordinal))
+                    {
+                        if (text.Contains("LUA_IEEE754TRICK") || text.Contains("MS_ASMTRICK"))
+                        {
+                            throw new InvalidOperationException(
+                                $"[ZLua] Failed to ungate LUA_IEEE754TRICK/MS_ASMTRICK in {luaconf}. "
+                                + "Expected '#if defined(LUA_CORE)' before '#if defined(LUA_NUMBER_DOUBLE)'.");
+                        }
+                    }
+                    else
+                    {
+                        File.WriteAllText(luaconf, next, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                        Debug.Log($"[ZLua] Ungated number→int tricks for Il2Cpp lump in {luaconf}");
+                    }
+                }
+            }
+
+            // llimits.h: frexp fallback must not require ltable_c (MS_ASMTRICK path has no luai_hashnum).
+            {
+                string text = File.ReadAllText(llimits, Encoding.UTF8);
+                if (text.Contains("ZLua: Il2Cpp lump-safe — always define luai_hashnum"))
+                {
+                    return;
+                }
+
+                const string pattern =
+                    @"#if\s+defined\s*\(\s*ltable_c\s*\)\s*&&\s*!defined\s*\(\s*luai_hashnum\s*\)";
+                const string replacement =
+                    "#if !defined(luai_hashnum) /* ZLua: Il2Cpp lump-safe — always define luai_hashnum (do not rely on ltable_c) */";
+                string next = Regex.Replace(text, pattern, replacement, RegexOptions.CultureInvariant);
+                if (string.Equals(next, text, StringComparison.Ordinal))
+                {
+                    if (text.Contains("luai_hashnum") && text.Contains("ltable_c"))
+                    {
+                        throw new InvalidOperationException(
+                            $"[ZLua] Failed to ungate luai_hashnum in {llimits}. "
+                            + "Expected '#if defined(ltable_c) && !defined(luai_hashnum)'.");
+                    }
+
+                    return;
+                }
+
+                File.WriteAllText(llimits, next, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                Debug.Log($"[ZLua] Ungated luai_hashnum frexp fallback for Il2Cpp lump in {llimits}");
+            }
+        }
+
+        /// <summary>
         /// Lua 5.1 gates <c>lua_tmpnam</c> / <c>LUA_TMPNAMBUFSIZE</c> on <c>loslib_c</c> in
         /// <c>luaconf.h</c>. Same Il2Cpp lump/include-guard issue as <c>LUA_CORE</c>/<c>luai_num*</c>.
         /// Always define those macros (5.2+ already keeps them in <c>loslib.c</c>).
@@ -574,6 +651,57 @@ namespace ZLua
 
             File.WriteAllText(luaconf, next, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             Debug.Log($"[ZLua] Ungated lua_tmpnam macros for Il2Cpp lump in {luaconf}");
+        }
+
+        /// <summary>
+        /// Lua 5.1 <c>loadlib.c</c> calls bare <c>GetModuleFileName</c> / <c>FormatMessage</c> /
+        /// <c>LoadLibrary</c> with <c>char*</c> buffers. Unity/Il2Cpp defines <c>UNICODE</c>, so those
+        /// macros resolve to the <c>*W</c> APIs and write UTF-16 into ANSI buffers — <c>strrchr</c>
+        /// then hits the first code-unit's trailing <c>NUL</c>. Lua 5.2+ already uses <c>*A</c>.
+        /// </summary>
+        private static void EnsureLoadlibAnsiApisForWin32(string luaSrcDir)
+        {
+            string loadlib = Path.Combine(luaSrcDir, "loadlib.c");
+            if (!File.Exists(loadlib))
+            {
+                throw new InvalidOperationException(
+                    $"[ZLua] loadlib.c not found under {luaSrcDir}; cannot fix Win32 ANSI APIs.");
+            }
+
+            string text = File.ReadAllText(loadlib, Encoding.UTF8);
+            if (text.Contains("ZLua: Il2Cpp/Unity defines UNICODE"))
+            {
+                return;
+            }
+
+            if (!text.Contains("GetModuleFileName(NULL"))
+            {
+                // Already GetModuleFileNameA, or no DLL backend in this tree.
+                return;
+            }
+
+            string next = text;
+            next = next.Replace(
+                "DWORD n = GetModuleFileName(NULL, buff, nsize);",
+                "/* ZLua: Il2Cpp/Unity defines UNICODE; bare GetModuleFileName → W and writes\n"
+                + "     UTF-16 into char buff so strrchr stops at the first ASCII code unit's NUL. */\n"
+                + "  DWORD n = GetModuleFileNameA(NULL, buff, nsize);");
+            next = next.Replace(
+                "if (FormatMessage(FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_FROM_SYSTEM,",
+                "if (FormatMessageA(FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_FROM_SYSTEM,");
+            next = next.Replace(
+                "HINSTANCE lib = LoadLibrary(path);",
+                "HINSTANCE lib = LoadLibraryA(path);");
+
+            if (string.Equals(next, text, StringComparison.Ordinal)
+                || !next.Contains("GetModuleFileNameA(NULL"))
+            {
+                throw new InvalidOperationException(
+                    $"[ZLua] Failed to rewrite Win32 ANSI APIs in {loadlib}.");
+            }
+
+            File.WriteAllText(loadlib, next, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Debug.Log($"[ZLua] Forced loadlib Win32 *A APIs for UNICODE builds in {loadlib}");
         }
 
         /// <summary>
