@@ -1,3 +1,9 @@
 <linker>
+  <assembly fullname="ZLua.Common" preserve="all"/>
   <assembly fullname="ZLua.Il2Cpp" preserve="all"/>
+  <assembly fullname="UnityEngine.CoreModule">
+    <type fullname="UnityEngine.Debug">
+      <method name="Log"/>
+    </type>
+  </assembly>
 </linker>
