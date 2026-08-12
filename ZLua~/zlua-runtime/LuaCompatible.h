@@ -55,6 +55,33 @@ inline int zlua_lua_isinteger(lua_State* L, int idx)
 #endif
 #endif
 
+/*
+ * Read a Lua number as int64/uint64.
+ * Lua 5.1/5.2: lua_tointeger uses lua_number2integer; with LUA_IEEE754TRICK that
+ * macro only materializes a 32-bit lane even when lua_Integer is 64-bit (Win64/LP64).
+ * Values outside int32 then become 0 / garbage. Use tonumber cast instead.
+ * Lua 5.3+ has a real integer subtype; lua_tointeger is correct there.
+ */
+inline int64_t zlua_to_int64(lua_State* L, int idx)
+{
+#if ZLUA_USE_LUAJIT || (ZLUA_LUA_API_FAMILY < 503)
+    return (int64_t)lua_tonumber(L, idx);
+#else
+    return (int64_t)lua_tointeger(L, idx);
+#endif
+}
+
+inline uint64_t zlua_to_uint64(lua_State* L, int idx)
+{
+#if ZLUA_USE_LUAJIT || (ZLUA_LUA_API_FAMILY < 503)
+    return (uint64_t)lua_tonumber(L, idx);
+#else
+    if (lua_isinteger(L, idx))
+        return (uint64_t)lua_tointeger(L, idx);
+    return (uint64_t)lua_tonumber(L, idx);
+#endif
+}
+
 /* Lua 5.2+: lua_absindex. */
 #if ZLUA_USE_LUAJIT || (ZLUA_LUA_API_FAMILY < 502)
 #if !defined(lua_absindex)

@@ -58,15 +58,13 @@ uint32_t PrimitiveMarshal::PopUInt32(lua_State* L, int idx)
 int64_t PrimitiveMarshal::PopInt64(lua_State* L, int idx)
 {
     ExpectLuaType(L, idx, LUA_TNUMBER, "number");
-    return (int64_t)lua_tointeger(L, idx);
+    return zlua_to_int64(L, idx);
 }
 
 uint64_t PrimitiveMarshal::PopUInt64(lua_State* L, int idx)
 {
     ExpectLuaType(L, idx, LUA_TNUMBER, "number");
-    if (lua_isinteger(L, idx))
-        return (uint64_t)lua_tointeger(L, idx);
-    return (uint64_t)lua_tonumber(L, idx);
+    return zlua_to_uint64(L, idx);
 }
 
 float PrimitiveMarshal::PopFloat(lua_State* L, int idx)
@@ -84,13 +82,13 @@ double PrimitiveMarshal::PopDouble(lua_State* L, int idx)
 intptr_t PrimitiveMarshal::PopIntPtr(lua_State* L, int idx)
 {
     ExpectLuaType(L, idx, LUA_TNUMBER, "number");
-    return (intptr_t)lua_tointeger(L, idx);
+    return (intptr_t)zlua_to_int64(L, idx);
 }
 
 uintptr_t PrimitiveMarshal::PopUIntPtr(lua_State* L, int idx)
 {
     ExpectLuaType(L, idx, LUA_TNUMBER, "number");
-    return (uintptr_t)lua_tointeger(L, idx);
+    return (uintptr_t)zlua_to_uint64(L, idx);
 }
 
 void* PrimitiveMarshal::PopPointer(lua_State* L, int idx)

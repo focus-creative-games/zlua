@@ -1,4 +1,4 @@
-#include "PropertyBridge.h"
+﻿#include "PropertyBridge.h"
 #include "PropertyBridgeTemplates.h"
 
 #include "../marshal/IntrinsicTypes.h"
@@ -79,12 +79,12 @@ uint32_t PropPopUInt32(lua_State* L, int idx)
 
 int64_t PropPopInt64(lua_State* L, int idx)
 {
-    return (int64_t)lua_tointeger(L, idx);
+    return zlua_to_int64(L, idx);
 }
 
 uint64_t PropPopUInt64(lua_State* L, int idx)
 {
-    return (uint64_t)lua_tointeger(L, idx);
+    return zlua_to_uint64(L, idx);
 }
 
 float PropPopFloat(lua_State* L, int idx)

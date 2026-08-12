@@ -93,7 +93,7 @@ Il2CppObject* ObjectMarshal::Pop(lua_State* L, int objIndex, Il2CppClass* klass)
     {
         if (lua_isinteger(L, objIndex))
         {
-            int64_t wide = (int64_t)lua_tointeger(L, objIndex);
+            int64_t wide = zlua_to_int64(L, objIndex);
             if (wide >= (int64_t)INT32_MIN && wide <= (int64_t)INT32_MAX)
             {
                 Il2CppClass* numberClass = il2cpp_defaults.int32_class;
