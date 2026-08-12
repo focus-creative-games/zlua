@@ -1,118 +1,92 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: zlua-regen <zlua@code-philosophy.com>
-Date: Wed, 12 Aug 2026 17:45:00 +0800
-Subject: [PATCH] FastMT raw-first gettable for lua-5.3.0
+Date: Tue, 28 Jul 2026 16:00:00 +0800
+Subject: [PATCH] FastMT + Win32 ANSI loadlib for lua-5.1.0
 
 diff --git a/src/lapi.c b/patched/src/lapi.c
 --- a/src/lapi.c
 +++ b/src/lapi.c
-@@ -84,6 +84,16 @@ static TValue *index2addr (lua_State *L, int idx) {
+@@ -76,6 +76,16 @@ static TValue *index2adr (lua_State *L, int idx) {
  }
  
  
-+
 +#if ZLUA_FAST_METATABLE
 +/*
-+** Expose index2addr to zlua_fastmt.c without duplicating the implementation.
++** Expose index2adr to zlua_fastmt.c without duplicating the implementation.
 +*/
 +TValue *zlua_index2value (lua_State *L, int idx) {
-+  return index2addr(L, idx);
++  return index2adr(L, idx);
 +}
 +#endif
 +
- /*
- ** to be called by 'lua_checkstack' in protected mode, to grow stack
- ** capturing memory errors
++
+ static Table *getcurrenv (lua_State *L) {
+   if (L->ci == L->base_ci)  /* no enclosing function? */
+     return hvalue(gt(L));  /* use global table as environment */
 diff --git a/src/lgc.c b/patched/src/lgc.c
 --- a/src/lgc.c
 +++ b/src/lgc.c
-@@ -438,6 +438,12 @@ static lu_mem traversetable (global_State *g, Table *h) {
-   const char *weakkey, *weakvalue;
-   const TValue *mode = gfasttm(g, h->metatable, TM_MODE);
-   markobject(g, h->metatable);
+@@ -162,6 +162,12 @@ static int traversetable (global_State *g, Table *h) {
+   const TValue *mode;
+   if (h->metatable)
+     markobject(g, h->metatable);
 +#if ZLUA_FAST_METATABLE
 +  if (h->zlua_mt_kind != 0) {
 +    markvalue(g, &h->zlua_index);
 +    markvalue(g, &h->zlua_newindex);
 +  }
 +#endif
-   if (mode && ttisstring(mode) &&  /* is there a weak mode? */
-       ((weakkey = strchr(svalue(mode), 'k')),
-        (weakvalue = strchr(svalue(mode), 'v')),
-diff --git a/src/llimits.h b/patched/src/llimits.h
---- a/src/llimits.h
-+++ b/src/llimits.h
-@@ -222,6 +222,43 @@ typedef unsigned long Instruction;
+   mode = gfasttm(g, h->metatable, TM_MODE);
+   if (mode && ttisstring(mode)) {  /* is there a weak mode? */
+     weakkey = (strchr(svalue(mode), 'k') != NULL);
+diff --git a/src/loadlib.c b/patched/src/loadlib.c
+--- a/src/loadlib.c
++++ b/src/loadlib.c
+@@ -102,7 +102,9 @@ static void setprogdir (lua_State *L) {
+   char buff[MAX_PATH + 1];
+   char *lb;
+   DWORD nsize = sizeof(buff)/sizeof(char);
+-  DWORD n = GetModuleFileName(NULL, buff, nsize);
++  /* ZLua: Il2Cpp/Unity defines UNICODE; bare GetModuleFileName 鈫?W and writes
++     UTF-16 into char buff so strrchr stops at the first ASCII code unit's NUL. */
++  DWORD n = GetModuleFileNameA(NULL, buff, nsize);
+   if (n == 0 || n == nsize || (lb = strrchr(buff, '\\')) == NULL)
+     luaL_error(L, "unable to get ModuleFileName");
+   else {
+@@ -116,7 +118,7 @@ static void setprogdir (lua_State *L) {
+ static void pusherror (lua_State *L) {
+   int error = GetLastError();
+   char buffer[128];
+-  if (FormatMessage(FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_FROM_SYSTEM,
++  if (FormatMessageA(FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_FROM_SYSTEM,
+       NULL, error, 0, buffer, sizeof(buffer), NULL))
+     lua_pushstring(L, buffer);
+   else
+@@ -129,7 +131,7 @@ static void ll_unloadlib (void *lib) {
  
  
- 
-+
-+/*
-+** The luai_num* macros define the primitive operations over numbers.
-+** Lua 5.3.0 originally defined these only in luaconf.h under LUA_CORE;
-+** Unity Il2Cpp may include luaconf.h before LUA_CORE is set (include-guard),
-+** so provide 5.3.6-style fallbacks here (same as PUC-Rio 5.3.6 llimits.h).
-+** Do not #include <math.h> here - it poisons C++ Il2Cpp TUs. Files that
-+** expand l_mathop(fmod/pow/floor) must include math.h themselves (lobject.c).
-+*/
-+#if !defined(luai_numidiv)
-+#define luai_numidiv(L,a,b)     ((void)L, l_floor(luai_numdiv(L,a,b)))
-+#endif
-+
-+#if !defined(luai_numdiv)
-+#define luai_numdiv(L,a,b)      ((a)/(b))
-+#endif
-+
-+#if !defined(luai_nummod)
-+#define luai_nummod(L,a,b,m)  \
-+  { (m) = l_mathop(fmod)(a,b); if ((m)*(b) < 0) (m) += (b); }
-+#endif
-+
-+#if !defined(luai_numpow)
-+#define luai_numpow(L,a,b)      ((void)L, l_mathop(pow)(a,b))
-+#endif
-+
-+#if !defined(luai_numadd)
-+#define luai_numadd(L,a,b)      ((a)+(b))
-+#define luai_numsub(L,a,b)      ((a)-(b))
-+#define luai_nummul(L,a,b)      ((a)*(b))
-+#define luai_numunm(L,a)        (-(a))
-+#define luai_numeq(a,b)         ((a)==(b))
-+#define luai_numlt(a,b)         ((a)<(b))
-+#define luai_numle(a,b)         ((a)<=(b))
-+#define luai_numisnan(a)        (!luai_numeq((a), (a)))
-+#endif
-+
- /*
- ** macro to control inclusion of some hard tests on stack reallocation
- */
-diff --git a/src/lobject.c b/patched/src/lobject.c
---- a/src/lobject.c
-+++ b/src/lobject.c
-@@ -10,6 +10,7 @@
- #include "lprefix.h"
- 
- 
-+#include <math.h>
- #include <stdarg.h>
- #include <stdio.h>
- #include <stdlib.h>
+ static void *ll_load (lua_State *L, const char *path) {
+-  HINSTANCE lib = LoadLibrary(path);
++  HINSTANCE lib = LoadLibraryA(path);
+   if (lib == NULL) pusherror(L);
+   return lib;
+ }
 diff --git a/src/lobject.h b/patched/src/lobject.h
 --- a/src/lobject.h
 +++ b/src/lobject.h
-@@ -489,12 +489,19 @@ typedef struct Table {
+@@ -339,12 +339,19 @@ typedef struct Table {
    CommonHeader;
-   lu_byte flags;  /* 1<<p means tagmethod(p) is not present */
-   lu_byte lsizenode;  /* log2 of size of 'node' array */
+   lu_byte flags;  /* 1<<p means tagmethod(p) is not present */ 
+   lu_byte lsizenode;  /* log2 of size of `node' array */
 +#if ZLUA_FAST_METATABLE
 +  lu_byte zlua_mt_kind;  /* 0 = normal; non-0 = ZLua sealed IMT/SMT */
 +#endif
-   unsigned int sizearray;  /* size of 'array' array */
+   struct Table *metatable;
    TValue *array;  /* array part */
    Node *node;
    Node *lastfree;  /* any free position is before this position */
-   struct Table *metatable;
    GCObject *gclist;
+   int sizearray;  /* size of `array' array */
 +#if ZLUA_FAST_METATABLE
 +  TValue zlua_index;     /* cached __index (table) */
 +  TValue zlua_newindex;  /* cached __newindex (table) */
@@ -123,64 +97,80 @@ diff --git a/src/lobject.h b/patched/src/lobject.h
 diff --git a/src/ltable.c b/patched/src/ltable.c
 --- a/src/ltable.c
 +++ b/src/ltable.c
-@@ -408,6 +408,11 @@ Table *luaH_new (lua_State *L) {
-   t->array = NULL;
+@@ -365,6 +365,11 @@ Table *luaH_new (lua_State *L, int narray, int nhash) {
    t->sizearray = 0;
-   setnodevector(L, t, 0);
+   t->lsizenode = 0;
+   t->node = cast(Node *, dummynode);
 +#if ZLUA_FAST_METATABLE
 +  t->zlua_mt_kind = 0;
 +  setnilvalue(&t->zlua_index);
 +  setnilvalue(&t->zlua_newindex);
 +#endif
+   setarrayvector(L, t, narray);
+   setnodevector(L, t, nhash);
    return t;
- }
- 
 diff --git a/src/luaconf.h b/patched/src/luaconf.h
 --- a/src/luaconf.h
 +++ b/src/luaconf.h
-@@ -727,6 +727,17 @@
- ** without modifying the main part of the file.
+@@ -515,7 +515,7 @@
+ /*
+ @@ The luai_num* macros define the primitive operations over numbers.
  */
+-#if defined(LUA_CORE)
++#if 1 /* ZLua: Il2Cpp lump-safe - always define luai_num* (do not rely on LUA_CORE) */
+ #include <math.h>
+ #define luai_numadd(a,b)	((a)+(b))
+ #define luai_numsub(a,b)	((a)-(b))
+@@ -614,7 +614,7 @@ union luai_Cast { double l_d; long l_l; };
+ ** insecure) or if you want the original tmpnam anyway.  By default, Lua
+ ** uses tmpnam except when POSIX is available, where it uses mkstemp.
+ */
+-#if defined(loslib_c) || defined(luaall_c)
++#if 1 /* ZLua: Il2Cpp lump-safe - always define lua_tmpnam (do not rely on loslib_c) */
  
-+/*
-+@@ ZLUA_FAST_METATABLE controls ZLua member-index optimization.
-+** 0: legacy C __index/__newindex.
-+** 1: sealed mt + member/setter tables + VM gettable/settable fast path.
-+** Default 1: raw-first gettable FastMT (same ordering as 5.1/5.2).
-+*/
+ #if defined(LUA_USE_MKSTEMP)
+ #include <unistd.h>
+@@ -732,5 +732,24 @@ union luai_Cast { double l_d; long l_l; };
+ 
+ 
+ 
++
++/* ZLua: Apple mobile - system(3) is unavailable on iOS/tvOS/watchOS. */
++#if defined(__APPLE__)
++#include <TargetConditionals.h>
++#if TARGET_OS_IPHONE
++#if !defined(LUA_USE_IOS)
++#define LUA_USE_IOS
++#endif
++/* Fallback for older Lua that call system() directly (pre-LUA_USE_IOS). */
++#include <stdlib.h>
++#undef system
++#define system(s) ((s) == NULL ? 1 : -1)
++#endif
+ #endif
+ 
++#endif
++
++/* ZLua: FastMT enabled for Lua 5.1 (gettable/settable path; see FAST-METATABLE.md). */
 +#if !defined(ZLUA_FAST_METATABLE)
 +#define ZLUA_FAST_METATABLE 1
 +#endif
-+
-+
- 
- 
- 
 diff --git a/src/lvm.c b/patched/src/lvm.c
 --- a/src/lvm.c
 +++ b/src/lvm.c
-@@ -9,6 +9,7 @@
- 
- #include "lprefix.h"
- 
-+#include <math.h>
- 
- #include <limits.h>
- #include <stdio.h>
-@@ -28,6 +29,7 @@
+@@ -25,6 +25,7 @@
  #include "ltable.h"
  #include "ltm.h"
  #include "lvm.h"
 +#include "zlua_fastmt.h"
  
  
- /*
-@@ -174,9 +176,52 @@ void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
+ 
+@@ -120,9 +121,51 @@ void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
          return;
        }
-       /* else will try metamethod */
+       /* else will try the tag method */
 +#if ZLUA_FAST_METATABLE
-+      /* After raw miss: sealed SMT (often setmetatable(T,T)) serves memberTable. */
 +      if (h->metatable != NULL && h->metatable->zlua_mt_kind != 0) {
 +        Table *mt = h->metatable;
 +        Table *idx = hvalue(&mt->zlua_index);
@@ -206,9 +196,9 @@ diff --git a/src/lvm.c b/patched/src/lvm.c
 +#endif
      }
      else if (ttisnil(tm = luaT_gettmbyobj(L, t, TM_INDEX)))
-       luaG_typeerror(L, t, "index");  /* no metamethod */
+       luaG_typeerror(L, t, "index");
 +#if ZLUA_FAST_METATABLE
-+    else if (ttisfulluserdata(t)) {
++    else if (ttisuserdata(t)) {
 +      Table *mt = uvalue(t)->metatable;
 +      if (mt != NULL && mt->zlua_mt_kind != 0) {
 +        Table *idx = hvalue(&mt->zlua_index);
@@ -225,28 +215,28 @@ diff --git a/src/lvm.c b/patched/src/lvm.c
 +      }
 +    }
 +#endif
-     if (ttisfunction(tm)) {  /* metamethod is a function */
-       luaT_callTM(L, tm, t, key, val, 1);
+     if (ttisfunction(tm)) {
+       callTMres(L, val, tm, t, key);
        return;
-@@ -194,6 +239,36 @@ void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
- void luaV_settable (lua_State *L, const TValue *t, TValue *key, StkId val) {
-   int loop;  /* counter to avoid infinite loops */
+@@ -137,6 +180,36 @@ void luaV_settable (lua_State *L, const TValue *t, TValue *key, StkId val) {
+   int loop;
    for (loop = 0; loop < MAXTAGLOOP; loop++) {
+     const TValue *tm;
 +#if ZLUA_FAST_METATABLE
 +    {
 +      Table *mt = NULL;
-+      if (ttisfulluserdata(t))
++      if (ttisuserdata(t))
 +        mt = uvalue(t)->metatable;
 +      else if (ttistable(t))
 +        mt = hvalue(t)->metatable;
 +      if (mt != NULL && mt->zlua_mt_kind != 0) {
-+        /* Sealed ZLua mt: allow in-place update of existing table keys, else setters. */
++        /* Sealed ZLua mt: never chase __newindex table as a write target. */
 +        if (ttistable(t)) {
 +          Table *h = hvalue(t);
-+          TValue *oldval = cast(TValue *, luaH_get(h, key));
++          TValue *oldval = luaH_set(L, h, key);
 +          if (!ttisnil(oldval)) {
 +            setobj2t(L, oldval, val);
-+            luaC_barrierback(L, h, val);
++            luaC_barriert(L, h, val);
 +            return;
 +          }
 +        }
@@ -262,20 +252,18 @@ diff --git a/src/lvm.c b/patched/src/lvm.c
 +      }
 +    }
 +#endif
-     const TValue *tm;
-     if (ttistable(t)) {  /* 't' is a table? */
+     if (ttistable(t)) {  /* `t' is a table? */
        Table *h = hvalue(t);
+       TValue *oldval = luaH_set(L, h, key); /* do a primitive set */
 diff --git a/patched/src/zlua_fastmt.c b/patched/src/zlua_fastmt.c
 new file mode 100644
 --- /dev/null
 +++ b/src/zlua_fastmt.c
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,79 @@
 +/*
-+** ZLua sealed-metatable support for PUC-Rio Lua 5.3.0 VM.
++** ZLua sealed-metatable support for PUC-Rio Lua 5.1 VM.
 +*/
 +#define LUA_CORE
-+
-+#include "lprefix.h"
 +
 +#include "lua.h"
 +#include "lauxlib.h"
@@ -292,6 +280,7 @@ new file mode 100644
 +
 +#if ZLUA_FAST_METATABLE
 +
++/* Defined in lapi.c -thin wrapper around static index2adr. */
 +TValue *zlua_index2value (lua_State *L, int idx);
 +
 +LUA_API void zlua_mt_seal (lua_State *L, int mtIndex) {
@@ -301,7 +290,7 @@ new file mode 100644
 +  TValue *o;
 +  lua_lock(L);
 +  o = zlua_index2value(L, mtIndex);
-+  api_check(ttistable(o), "table expected");
++  api_check(L, ttistable(o));
 +  mt = hvalue(o);
 +  idx = luaH_getstr(mt, G(L)->tmname[TM_INDEX]);
 +  nidx = luaH_getstr(mt, G(L)->tmname[TM_NEWINDEX]);
@@ -315,8 +304,8 @@ new file mode 100644
 +  }
 +  setobj(L, &mt->zlua_index, idx);
 +  setobj(L, &mt->zlua_newindex, nidx);
-+  luaC_barrierback(L, mt, idx);
-+  luaC_barrierback(L, mt, nidx);
++  luaC_barriert(L, mt, idx);
++  luaC_barriert(L, mt, nidx);
 +  mt->zlua_mt_kind = 1;
 +  lua_unlock(L);
 +}
@@ -325,12 +314,13 @@ new file mode 100644
 +LUA_API void zlua_vm_call_getter (lua_State *L, const TValue *f,
 +                                  const TValue *obj, StkId res) {
 +  ptrdiff_t result = savestack(L, res);
-+  StkId func = L->top;
++  StkId func;
++  luaD_checkstack(L, 2);
++  func = L->top;
 +  setobj2s(L, func, f);
 +  setobj2s(L, func + 1, obj);
 +  L->top += 2;
-+  /* 5.3.0: luaD_call(..., allowyield); no luaD_callnoyield */
-+  luaD_call(L, func, 1, isLua(L->ci));
++  luaD_call(L, func, 1);
 +  res = restorestack(L, result);
 +  setobjs2s(L, res, --L->top);
 +}
@@ -338,12 +328,14 @@ new file mode 100644
 +
 +LUA_API void zlua_vm_call_setter (lua_State *L, const TValue *f,
 +                                  const TValue *obj, StkId val) {
-+  StkId func = L->top;
++  StkId func;
++  luaD_checkstack(L, 3);
++  func = L->top;
 +  setobj2s(L, func, f);
 +  setobj2s(L, func + 1, obj);
 +  setobj2s(L, func + 2, val);
 +  L->top += 3;
-+  luaD_call(L, func, 0, isLua(L->ci));
++  luaD_call(L, func, 0);
 +}
 +
 +#endif /* ZLUA_FAST_METATABLE */
@@ -351,10 +343,10 @@ diff --git a/patched/src/zlua_fastmt.h b/patched/src/zlua_fastmt.h
 new file mode 100644
 --- /dev/null
 +++ b/src/zlua_fastmt.h
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,36 @@
 +/*
-+** ZLua sealed-metatable helpers for Lua 5.3.0 (gettable/settable VM).
-+** Only active when ZLUA_FAST_METATABLE != 0 (defined in luaconf.h).
++** ZLua sealed-metatable helpers (FastMT) for PUC-Rio Lua 5.1.
++** Active when ZLUA_FAST_METATABLE != 0 (luaconf.h).
 +*/
 +#ifndef zlua_fastmt_h
 +#define zlua_fastmt_h
@@ -365,21 +357,25 @@ new file mode 100644
 +
 +#if ZLUA_FAST_METATABLE
 +
-+LUA_API int zlua_index_getter (lua_State *L);
-+LUA_API int zlua_index_setter (lua_State *L);
++/* Tagged field/property accessors; VM compares CClosure->f to these. */
++LUA_API int zlua_index_getter (lua_State *L);  /* (obj) -> value */
++LUA_API int zlua_index_setter (lua_State *L);  /* (obj, value) -> 0 */
 +
++/* After __index/__newindex tables are set on mt, cache them and mark sealed. */
 +LUA_API void zlua_mt_seal (lua_State *L, int mtIndex);
 +
++/* VM helpers: call tagged closures without going through __index. */
 +LUA_API void zlua_vm_call_getter (lua_State *L, const TValue *f,
 +                                  const TValue *obj, StkId res);
 +LUA_API void zlua_vm_call_setter (lua_State *L, const TValue *f,
 +                                  const TValue *obj, StkId val);
 +
++/* Lua 5.1: no ttisCclosure; C closures are LUA_TFUNCTION with isC != 0. */
 +#define zlua_is_getter(o) \
-+  (ttisCclosure(o) && clCvalue(o)->f == zlua_index_getter)
++  (ttisfunction(o) && clvalue(o)->c.isC && clvalue(o)->c.f == zlua_index_getter)
 +
 +#define zlua_is_setter(o) \
-+  (ttisCclosure(o) && clCvalue(o)->f == zlua_index_setter)
++  (ttisfunction(o) && clvalue(o)->c.isC && clvalue(o)->c.f == zlua_index_setter)
 +
 +#endif /* ZLUA_FAST_METATABLE */
 +

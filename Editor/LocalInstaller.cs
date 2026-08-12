@@ -324,11 +324,11 @@ namespace ZLua
             string luaPatchKey;
             if (!LuaVersionUtil.UsesLuaVmPatches(luaInfo))
             {
-                // Lua 5.1 / 5.2: no FastMT VM patch; install clean upstream sources.
                 // LuaJIT: headers-only into libil2cpp/lua (see InstallLuaJitHeadersOnly).
+                // PUC-Rio 5.1+ always UsesLuaVmPatches; this branch is non-PUC / JIT only.
                 Debug.Log(
                     $"[ZLua] Skipping Lua VM patch for {luaInfo.Id} "
-                    + "(FastMT / series patches apply only to PUC-Rio 5.3+).");
+                    + "(series patches apply to PUC-Rio 5.x only; not LuaJIT).");
                 luaPatchKey = "none";
             }
             else
@@ -397,6 +397,10 @@ namespace ZLua
             {
                 EnsureFastMetatableDisabled(CommonDirs.LocalLuaSrcPath);
             }
+            else
+            {
+                EnsureFastMetatableEnabled(CommonDirs.LocalLuaSrcPath);
+            }
 
             DirectoryUtil.RemoveDir(stagingRoot, true);
             return luaPatchKey;
@@ -462,6 +466,24 @@ namespace ZLua
         }
 
         /// <summary>
+        /// Series Lua patches and Installer both inject Il2Cpp lump-safe markers; patches use ASCII
+        /// hyphen while Installer historically used an em dash — treat both as already applied.
+        /// </summary>
+        private static bool HasZLuaIl2CppLumpMarker(string text, string needleAfterPrefix)
+        {
+            if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(needleAfterPrefix))
+            {
+                return false;
+            }
+
+            // Accept: "ZLua: Il2Cpp lump-safe - ..." or "— ..." or shortened "ZLua: Il2Cpp lump-safe */"
+            string pattern = @"ZLua:\s*Il2Cpp lump-safe(?:\s*[\-\u2014]\s*"
+                + Regex.Escape(needleAfterPrefix).Replace(@"\ ", @"\s+")
+                + ")?";
+            return Regex.IsMatch(text, pattern, RegexOptions.CultureInvariant);
+        }
+
+        /// <summary>
         /// Lua 5.1/5.2 gate <c>luai_num*</c> on per-TU macros (<c>LUA_CORE</c>,
         /// <c>lobject_c</c>/<c>lvm_c</c>). Il2Cpp may lump many <c>.c</c> into one TU; the first
         /// include of <c>luaconf.h</c> without those macros locks the include guard, so later
@@ -495,7 +517,7 @@ namespace ZLua
                     changed = true;
                 }
                 else if (next.Contains("luai_numadd")
-                         && !next.Contains("ZLua: Il2Cpp lump-safe — always define luai_num*")
+                         && !HasZLuaIl2CppLumpMarker(next, "always define luai_num")
                          && Regex.IsMatch(next, @"#if\s+defined\s*\(\s*LUA_CORE\s*\)"))
                 {
                     throw new InvalidOperationException(
@@ -518,7 +540,7 @@ namespace ZLua
                         next = replaced;
                         changed = true;
                     }
-                    else if (!next.Contains("ZLua: Il2Cpp lump-safe — always define luai_nummod/pow"))
+                    else if (!HasZLuaIl2CppLumpMarker(next, "always define luai_nummod/pow"))
                     {
                         throw new InvalidOperationException(
                             $"[ZLua] Failed to ungate luai_nummod/pow in {luaconf}. "
@@ -556,7 +578,7 @@ namespace ZLua
             // luaconf.h: ungate LUA_CORE around MS_ASMTRICK / LUA_IEEE754TRICK (feeds llimits.h).
             {
                 string text = File.ReadAllText(luaconf, Encoding.UTF8);
-                if (!text.Contains("ZLua: Il2Cpp lump-safe — number→int tricks"))
+                if (!HasZLuaIl2CppLumpMarker(text, "number"))
                 {
                     const string pattern =
                         @"#if\s+defined\s*\(\s*LUA_CORE\s*\)([^\r\n]*\r?\n\r?\n#if\s+defined\s*\(\s*LUA_NUMBER_DOUBLE\s*\))";
@@ -583,7 +605,8 @@ namespace ZLua
             // llimits.h: frexp fallback must not require ltable_c (MS_ASMTRICK path has no luai_hashnum).
             {
                 string text = File.ReadAllText(llimits, Encoding.UTF8);
-                if (text.Contains("ZLua: Il2Cpp lump-safe — always define luai_hashnum"))
+                if (HasZLuaIl2CppLumpMarker(text, "always define luai_hashnum")
+                    || text.IndexOf("ZLua: Il2Cpp lump-safe", StringComparison.Ordinal) >= 0)
                 {
                     return;
                 }
@@ -626,7 +649,7 @@ namespace ZLua
             }
 
             string text = File.ReadAllText(luaconf, Encoding.UTF8);
-            if (text.Contains("ZLua: Il2Cpp lump-safe — always define lua_tmpnam"))
+            if (HasZLuaIl2CppLumpMarker(text, "always define lua_tmpnam"))
             {
                 return;
             }
@@ -790,6 +813,53 @@ namespace ZLua
 
             File.WriteAllText(luaconf, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             Debug.Log($"[ZLua] Ensured ZLUA_FAST_METATABLE=0 in {luaconf}");
+        }
+
+        /// <summary>
+        /// Ensure <c>ZLUA_FAST_METATABLE 1</c> when the series supports FastMT
+        /// (5.1 gettable path or 5.3.2+ finishget path). Does not apply VM source patches;
+        /// those come from series patches (all PUC-Rio 5.x) — see <see cref="LuaVersionUtil.UsesLuaVmPatches"/>.
+        /// </summary>
+        private static void EnsureFastMetatableEnabled(string luaSrcDir)
+        {
+            string luaconf = Path.Combine(luaSrcDir, "luaconf.h");
+            if (!File.Exists(luaconf))
+            {
+                throw new InvalidOperationException(
+                    $"[ZLua] luaconf.h not found under {luaSrcDir}; cannot set ZLUA_FAST_METATABLE=1.");
+            }
+
+            string text = File.ReadAllText(luaconf, Encoding.UTF8);
+            const string marker = "ZLUA_FAST_METATABLE";
+            if (Regex.IsMatch(text, @"#\s*define\s+ZLUA_FAST_METATABLE\s+\d+"))
+            {
+                string next = Regex.Replace(
+                    text,
+                    @"#\s*define\s+ZLUA_FAST_METATABLE\s+\d+",
+                    "#define ZLUA_FAST_METATABLE 1");
+                if (string.Equals(next, text, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                File.WriteAllText(luaconf, next, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                Debug.Log($"[ZLua] Ensured ZLUA_FAST_METATABLE=1 in {luaconf}");
+                return;
+            }
+
+            if (text.Contains(marker))
+            {
+                return;
+            }
+
+            text = text.TrimEnd()
+                   + "\n\n"
+                   + "/* ZLua: FastMT enabled for this Lua series (see FAST-METATABLE.md). */\n"
+                   + "#if !defined(ZLUA_FAST_METATABLE)\n"
+                   + "#define ZLUA_FAST_METATABLE 1\n"
+                   + "#endif\n";
+            File.WriteAllText(luaconf, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Debug.Log($"[ZLua] Ensured ZLUA_FAST_METATABLE=1 in {luaconf}");
         }
 
         private static void WarnIfEditorPluginMissing(LuaVersionInfo luaInfo)

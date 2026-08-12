@@ -126,8 +126,7 @@ namespace ZLua.Utils
         }
 
         /// <summary>
-        /// PUC-Rio FastMT / VM patches exist only for Lua 5.3+.
-        /// Lua 5.1 / 5.2: Install copies clean upstream sources (no patch).
+        /// PUC-Rio FastMT / VM patches: all official 5.x series (5.1+).
         /// LuaJIT: Install copies public headers only (no patch); see LocalInstaller.
         /// </summary>
         public static bool UsesLuaVmPatches(LuaVersionInfo info)
@@ -150,17 +149,18 @@ namespace ZLua.Utils
                 return major > 5;
             }
 
-            return minor >= 3;
+            // 5.1/5.2: gettable/settable FastMT. 5.3.0/5.3.1: same. ≥5.3.2: finishget/finishset.
+            return minor >= 1;
         }
 
         /// <summary>
-        /// FastMT (finishget path) is supported only for PUC-Rio <c>≥ 5.3.2</c> (and 5.4+ / 5.5+).
-        /// <c>5.3.0</c> / <c>5.3.1</c>, 5.1, 5.2, and LuaJIT must keep <c>ZLUA_FAST_METATABLE 0</c>
-        /// (spec 11-MULTI-VERSION §5.4).
+        /// FastMT is supported for all PUC-Rio 5.x micros with a series VM patch
+        /// (5.1/5.2/5.3.0/5.3.1: gettable/settable; ≥5.3.2: finishget/finishset).
+        /// LuaJIT must keep <c>ZLUA_FAST_METATABLE 0</c>.
         /// </summary>
         public static bool SupportsFastMetatable(LuaVersionInfo info)
         {
-            if (!UsesLuaVmPatches(info))
+            if (info == null || info.IsLuaJit)
             {
                 return false;
             }
@@ -172,25 +172,13 @@ namespace ZLua.Utils
             }
 
             int major = int.Parse(m.Groups[1].Value);
-            int minor = int.Parse(m.Groups[2].Value);
-            int patch = int.Parse(m.Groups[3].Value);
             if (major != 5)
             {
                 return major > 5;
             }
 
-            if (minor > 3)
-            {
-                return true;
-            }
-
-            if (minor < 3)
-            {
-                return false;
-            }
-
-            // 5.3.x: finishget exists from 5.3.2.
-            return patch >= 2;
+            // All PUC-Rio 5.x micros that Install patches (5.1+) enable FastMT.
+            return true;
         }
 
         /// <summary>

@@ -169,9 +169,42 @@ struct DefaultTypedMarshal<uint64_t>
     }
 };
 
-// 64-bit LP64 (Apple/Android/Linux): intptr_t is long, distinct from int64_t (long long).
+// MSVC / Emscripten: `long` is a distinct 32-bit type (not the same as int / int32_t).
+// Android/Linux LP64: `long` == int64_t. Apple LP64: `long` == intptr_t (specialized below).
+#if defined(_WIN32) || defined(__EMSCRIPTEN__)
+template <>
+struct DefaultTypedMarshal<long>
+{
+    static void Push(lua_State* L, long v)
+    {
+        PrimitiveMarshal::PushInt32(L, static_cast<int32_t>(v));
+    }
+
+    static long Pop(lua_State* L, int idx)
+    {
+        return static_cast<long>(PrimitiveMarshal::PopInt32(L, idx));
+    }
+};
+
+template <>
+struct DefaultTypedMarshal<unsigned long>
+{
+    static void Push(lua_State* L, unsigned long v)
+    {
+        PrimitiveMarshal::PushUInt32(L, static_cast<uint32_t>(v));
+    }
+
+    static unsigned long Pop(lua_State* L, int idx)
+    {
+        return static_cast<unsigned long>(PrimitiveMarshal::PopUInt32(L, idx));
+    }
+};
+#endif
+
+// 64-bit Apple LP64: intptr_t is long, int64_t is long long — need distinct specializations.
+// Android/Linux LP64: intptr_t and int64_t are both long — already covered by int64_t/uint64_t.
 // Windows LLP64 and 32-bit: intptr_t aliases int64_t / int32_t — already specialized above.
-#if INTPTR_MAX == INT64_MAX && !defined(_WIN32)
+#if defined(__APPLE__) && (INTPTR_MAX == INT64_MAX)
 template <>
 struct DefaultTypedMarshal<intptr_t>
 {

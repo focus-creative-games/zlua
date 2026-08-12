@@ -43,6 +43,8 @@ namespace ZLua.BuildProcessors
             "MarshalBindings.cpp",
             "ExtensionBindings.h",
             "ExtensionBindings.cpp",
+            "CompositeSpecializedBindings.h",
+            "CompositeSpecializedBindings.cpp",
         };
 
         public int callbackOrder => 1;
