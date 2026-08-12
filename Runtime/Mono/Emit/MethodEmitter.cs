@@ -49,6 +49,7 @@ namespace ZLua.Emit
                 }
 
                 // Do not throw EmitException under reverse P/Invoke (Tuanjie Mono SIGSEGV).
+                // CanEmitClosed is cheap (no Expression.Compile).
                 if (CanEmitClosed(methods[i]))
                 {
                     emitable.Add(methods[i]);
@@ -78,12 +79,71 @@ namespace ZLua.Emit
             }
             else
             {
-                closure = emitable.Count == 1
-                    ? CompileDirect(emitable[0], isStatic, isByVal)
-                    : CompileOverloadDispatch(emitable, isStatic, isByVal, info.Name);
+                // Defer Expression.Compile / overload dispatch build until first Lua call.
+                closure = CreateLazyMethodClosure(new LazyMethodBind
+                {
+                    MethodTableRef = methodTableRef,
+                    Name = info.Name,
+                    Tag = tag,
+                    Emitable = emitable,
+                    IsStatic = isStatic,
+                    IsByVal = isByVal,
+                });
             }
 
             ClosurePin.WriteToTableWithTag(L, methodTableRef, info.Name, closure, tag);
+        }
+
+        private sealed class LazyMethodBind
+        {
+            public int MethodTableRef;
+            public string Name;
+            public MethodClosureTag Tag;
+            public List<MethodInfo> Emitable;
+            public bool IsStatic;
+            public bool IsByVal;
+            public readonly object Gate = new object();
+            public volatile LuaCSFunction Compiled;
+        }
+
+        private static LuaCSFunction CreateLazyMethodClosure(LazyMethodBind bind)
+        {
+            return L =>
+            {
+                LuaCSFunction compiled = bind.Compiled;
+                if (compiled == null)
+                {
+                    lock (bind.Gate)
+                    {
+                        compiled = bind.Compiled;
+                        if (compiled == null)
+                        {
+                            try
+                            {
+                                compiled = bind.Emitable.Count == 1
+                                    ? CompileDirect(bind.Emitable[0], bind.IsStatic, bind.IsByVal)
+                                    : CompileOverloadDispatch(bind.Emitable, bind.IsStatic, bind.IsByVal, bind.Name);
+                                ClosurePin.WriteToTableWithTag(L, bind.MethodTableRef, bind.Name, compiled, bind.Tag);
+                                bind.Compiled = compiled;
+                            }
+                            catch (Exception ex)
+                            {
+                                LuaCallbackBoundary.Enter();
+                                try
+                                {
+                                    return LuaCallbackBoundary.ToLuaError(L, ex);
+                                }
+                                finally
+                                {
+                                    LuaCallbackBoundary.Leave();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return compiled(L);
+            };
         }
 
         internal static int GetOrCreateClosedMethodClosureRef(

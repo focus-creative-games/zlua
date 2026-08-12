@@ -6,6 +6,8 @@ namespace ZLua.Emit
 {
     /// <summary>
     /// Fills registry three-tables and SMT.__call after empty tables are created.
+    /// Method/Field/Property entries are lazy stubs (Expression.Compile on first use);
+    /// <see cref="ConstructorEmitter.BindCall"/> remains eager.
     /// </summary>
     internal static class MemberTableEmitter
     {

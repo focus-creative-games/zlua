@@ -32,13 +32,81 @@ namespace ZLua.Emit
 
             if (getter != null)
             {
-                ClosurePin.WriteToTable(L, getterTableRef, property.Name, CompileGetter(property, getter, isStatic, isByVal));
+                ClosurePin.WriteToTable(
+                    L,
+                    getterTableRef,
+                    property.Name,
+                    CreateLazyAccessor(
+                        getterTableRef,
+                        property.Name,
+                        () => CompileGetter(property, getter, isStatic, isByVal)));
             }
 
             if (setter != null)
             {
-                ClosurePin.WriteToTable(L, setterTableRef, property.Name, CompileSetter(property, setter, isStatic, isByVal));
+                ClosurePin.WriteToTable(
+                    L,
+                    setterTableRef,
+                    property.Name,
+                    CreateLazyAccessor(
+                        setterTableRef,
+                        property.Name,
+                        () => CompileSetter(property, setter, isStatic, isByVal)));
             }
+        }
+
+        private sealed class LazyAccessorBind
+        {
+            public int TableRef;
+            public string Name;
+            public Func<LuaCSFunction> Factory;
+            public readonly object Gate = new object();
+            public volatile LuaCSFunction Compiled;
+        }
+
+        private static LuaCSFunction CreateLazyAccessor(int tableRef, string name, Func<LuaCSFunction> factory)
+        {
+            var bind = new LazyAccessorBind
+            {
+                TableRef = tableRef,
+                Name = name,
+                Factory = factory,
+            };
+
+            return L =>
+            {
+                LuaCSFunction compiled = bind.Compiled;
+                if (compiled == null)
+                {
+                    lock (bind.Gate)
+                    {
+                        compiled = bind.Compiled;
+                        if (compiled == null)
+                        {
+                            try
+                            {
+                                compiled = bind.Factory();
+                                ClosurePin.WriteToTable(L, bind.TableRef, bind.Name, compiled);
+                                bind.Compiled = compiled;
+                            }
+                            catch (Exception ex)
+                            {
+                                LuaCallbackBoundary.Enter();
+                                try
+                                {
+                                    return LuaCallbackBoundary.ToLuaError(L, ex);
+                                }
+                                finally
+                                {
+                                    LuaCallbackBoundary.Leave();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return compiled(L);
+            };
         }
 
         private static LuaCSFunction CompileGetter(PropertyInfo property, MethodInfo getter, bool isStatic, bool isByVal)
