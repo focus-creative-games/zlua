@@ -1,9 +1,20 @@
 <linker>
+  <!-- Native FromName + InternalCalls (MetadataUtil / LuaInternalCalls). -->
   <assembly fullname="ZLua.Common" preserve="all"/>
   <assembly fullname="ZLua.Il2Cpp" preserve="all"/>
+
+  <!-- LuaEnv::InitDebugLogMethod → UnityEngine.Debug.Log; IntrinsicTypes Vector2/3/4. -->
   <assembly fullname="UnityEngine.CoreModule">
-    <type fullname="UnityEngine.Debug">
-      <method name="Log"/>
-    </type>
+    <type fullname="UnityEngine.Debug" preserve="all"/>
+    <type fullname="UnityEngine.Vector2" preserve="all"/>
+    <type fullname="UnityEngine.Vector3" preserve="all"/>
+    <type fullname="UnityEngine.Vector4" preserve="all"/>
+  </assembly>
+
+  <!-- MetadataUtil::ResolveParamArrayAttributeClass / IsSystemDecimal. -->
+  <assembly fullname="mscorlib">
+    <type fullname="System.ParamArrayAttribute" preserve="all"/>
+    <type fullname="System.Runtime.CompilerServices.ExtensionAttribute" preserve="all"/>
+    <type fullname="System.Decimal" preserve="all"/>
   </assembly>
 </linker>
