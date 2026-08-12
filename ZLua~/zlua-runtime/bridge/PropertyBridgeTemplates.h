@@ -85,6 +85,30 @@ inline void PropertyStaticSetterByValueCtx(lua_State* L, void* target, int value
 }
 
 // ---------------------------------------------------------------------------
+// OutParamCtx: Pop into a stack local then pass by value (Unity Vector2/3/4 set).
+// Avoids return-by-value ABI copies from Pop helpers.
+// ---------------------------------------------------------------------------
+
+template <typename T, void (*Pop)(lua_State*, int, const PropertyMarshalCtx*, T*)>
+inline void PropertyInstanceSetterOutParamCtx(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
+{
+    using FnSet = void (*)(void*, T, const MethodInfo*);
+    T value;
+    Pop(L, valueIdx, ctx, &value);
+    reinterpret_cast<FnSet>(method->methodPointer)(target, value, method);
+}
+
+template <typename T, void (*Pop)(lua_State*, int, const PropertyMarshalCtx*, T*)>
+inline void PropertyStaticSetterOutParamCtx(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
+{
+    (void)target;
+    using FnSet = void (*)(T, const MethodInfo*);
+    T value;
+    Pop(L, valueIdx, ctx, &value);
+    reinterpret_cast<FnSet>(method->methodPointer)(value, method);
+}
+
+// ---------------------------------------------------------------------------
 // InvokerBuf: alloca + invoker_method; Push/Pop operate on raw buffer
 // (ValueType, Nullable, byref Opaque)
 // ---------------------------------------------------------------------------

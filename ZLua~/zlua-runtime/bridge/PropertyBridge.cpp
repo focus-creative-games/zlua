@@ -41,13 +41,77 @@ void PropPushStructByValue(lua_State* L, T v, const PropertyMarshalCtx* ctx)
     StructMarshal::PushValue(L, &v, ctx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));
 }
 
+// Property set hot path: no ExpectLuaType (matches pre-6636bb1 direct lua_to*).
+bool PropPopBool(lua_State* L, int idx)
+{
+    return lua_toboolean(L, idx) != 0;
+}
+
+int8_t PropPopInt8(lua_State* L, int idx)
+{
+    return (int8_t)lua_tointeger(L, idx);
+}
+
+uint8_t PropPopUInt8(lua_State* L, int idx)
+{
+    return (uint8_t)lua_tointeger(L, idx);
+}
+
+int16_t PropPopInt16(lua_State* L, int idx)
+{
+    return (int16_t)lua_tointeger(L, idx);
+}
+
+uint16_t PropPopUInt16(lua_State* L, int idx)
+{
+    return (uint16_t)lua_tointeger(L, idx);
+}
+
+int32_t PropPopInt32(lua_State* L, int idx)
+{
+    return (int32_t)lua_tointeger(L, idx);
+}
+
+uint32_t PropPopUInt32(lua_State* L, int idx)
+{
+    return (uint32_t)lua_tointeger(L, idx);
+}
+
+int64_t PropPopInt64(lua_State* L, int idx)
+{
+    return (int64_t)lua_tointeger(L, idx);
+}
+
+uint64_t PropPopUInt64(lua_State* L, int idx)
+{
+    return (uint64_t)lua_tointeger(L, idx);
+}
+
+float PropPopFloat(lua_State* L, int idx)
+{
+    return (float)lua_tonumber(L, idx);
+}
+
+double PropPopDouble(lua_State* L, int idx)
+{
+    return lua_tonumber(L, idx);
+}
+
+intptr_t PropPopIntPtr(lua_State* L, int idx)
+{
+    return (intptr_t)lua_tointeger(L, idx);
+}
+
+uintptr_t PropPopUIntPtr(lua_State* L, int idx)
+{
+    return (uintptr_t)lua_tointeger(L, idx);
+}
+
 template <typename T>
-T PropPopStructByValue(lua_State* L, int idx, const PropertyMarshalCtx* ctx)
+void PropPopStructOut(lua_State* L, int idx, const PropertyMarshalCtx* ctx, T* out)
 {
     IL2CPP_ASSERT(ctx->meta->size == sizeof(T));
-    T v;
-    StructMarshal::PopValue(L, idx, ctx->valueTypeKlass, &v);
-    return v;
+    StructMarshal::PopValue(L, idx, ctx->valueTypeKlass, out);
 }
 
 void PropPushValueTypeBuf(lua_State* L, void* buf, const PropertyMarshalCtx* ctx)
@@ -72,7 +136,7 @@ void PropPopNullableBuf(lua_State* L, int idx, void* buf, const MethodInfo* meth
     StructMarshal::PopNullableValue(L, idx, ctx->meta->typeKlass, buf);
 }
 
-// Lua→C# byref property get: invoke then push the referred value (not a stack Opaque handle —
+// Lua->C# byref property get: invoke then push the referred value (not a stack Opaque handle;
 // OpaqueParameterScope cannot keep alloca alive after this C function returns).
 void PropPushByRefPropertyValue(lua_State* L, void* retBuf, const PropertyMarshalCtx* ctx)
 {
@@ -99,7 +163,7 @@ static void PropertyInstanceGetterBoolean(lua_State* L, void* target, const Meth
 
 static void PropertyInstanceSetterBoolean(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<bool, &PrimitiveMarshal::PopBool>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<bool, &PropPopBool>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterInt8(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -109,7 +173,7 @@ static void PropertyInstanceGetterInt8(lua_State* L, void* target, const MethodI
 
 static void PropertyInstanceSetterInt8(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<int8_t, &PrimitiveMarshal::PopInt8>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<int8_t, &PropPopInt8>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterUInt8(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -119,7 +183,7 @@ static void PropertyInstanceGetterUInt8(lua_State* L, void* target, const Method
 
 static void PropertyInstanceSetterUInt8(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<uint8_t, &PrimitiveMarshal::PopUInt8>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<uint8_t, &PropPopUInt8>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterInt16(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -129,7 +193,7 @@ static void PropertyInstanceGetterInt16(lua_State* L, void* target, const Method
 
 static void PropertyInstanceSetterInt16(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<int16_t, &PrimitiveMarshal::PopInt16>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<int16_t, &PropPopInt16>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterUInt16(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -139,7 +203,7 @@ static void PropertyInstanceGetterUInt16(lua_State* L, void* target, const Metho
 
 static void PropertyInstanceSetterUInt16(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<uint16_t, &PrimitiveMarshal::PopUInt16>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<uint16_t, &PropPopUInt16>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterInt32(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -149,7 +213,7 @@ static void PropertyInstanceGetterInt32(lua_State* L, void* target, const Method
 
 static void PropertyInstanceSetterInt32(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<int32_t, &PrimitiveMarshal::PopInt32>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<int32_t, &PropPopInt32>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterUInt32(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -159,7 +223,7 @@ static void PropertyInstanceGetterUInt32(lua_State* L, void* target, const Metho
 
 static void PropertyInstanceSetterUInt32(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<uint32_t, &PrimitiveMarshal::PopUInt32>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<uint32_t, &PropPopUInt32>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterInt64(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -169,7 +233,7 @@ static void PropertyInstanceGetterInt64(lua_State* L, void* target, const Method
 
 static void PropertyInstanceSetterInt64(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<int64_t, &PrimitiveMarshal::PopInt64>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<int64_t, &PropPopInt64>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterUInt64(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -179,7 +243,7 @@ static void PropertyInstanceGetterUInt64(lua_State* L, void* target, const Metho
 
 static void PropertyInstanceSetterUInt64(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<uint64_t, &PrimitiveMarshal::PopUInt64>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<uint64_t, &PropPopUInt64>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterFloat(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -189,7 +253,7 @@ static void PropertyInstanceGetterFloat(lua_State* L, void* target, const Method
 
 static void PropertyInstanceSetterFloat(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<float, &PrimitiveMarshal::PopFloat>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<float, &PropPopFloat>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterDouble(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -199,7 +263,7 @@ static void PropertyInstanceGetterDouble(lua_State* L, void* target, const Metho
 
 static void PropertyInstanceSetterDouble(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<double, &PrimitiveMarshal::PopDouble>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<double, &PropPopDouble>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterIntPtr(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -209,7 +273,7 @@ static void PropertyInstanceGetterIntPtr(lua_State* L, void* target, const Metho
 
 static void PropertyInstanceSetterIntPtr(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<intptr_t, &PrimitiveMarshal::PopIntPtr>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<intptr_t, &PropPopIntPtr>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterUIntPtr(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -219,7 +283,7 @@ static void PropertyInstanceGetterUIntPtr(lua_State* L, void* target, const Meth
 
 static void PropertyInstanceSetterUIntPtr(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValue<uintptr_t, &PrimitiveMarshal::PopUIntPtr>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterByValue<uintptr_t, &PropPopUIntPtr>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterPointer(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -269,7 +333,7 @@ static void PropertyStaticGetterBoolean(lua_State* L, void* target, const Method
 
 static void PropertyStaticSetterBoolean(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<bool, &PrimitiveMarshal::PopBool>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<bool, &PropPopBool>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterInt8(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -279,7 +343,7 @@ static void PropertyStaticGetterInt8(lua_State* L, void* target, const MethodInf
 
 static void PropertyStaticSetterInt8(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<int8_t, &PrimitiveMarshal::PopInt8>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<int8_t, &PropPopInt8>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterUInt8(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -289,7 +353,7 @@ static void PropertyStaticGetterUInt8(lua_State* L, void* target, const MethodIn
 
 static void PropertyStaticSetterUInt8(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<uint8_t, &PrimitiveMarshal::PopUInt8>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<uint8_t, &PropPopUInt8>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterInt16(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -299,7 +363,7 @@ static void PropertyStaticGetterInt16(lua_State* L, void* target, const MethodIn
 
 static void PropertyStaticSetterInt16(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<int16_t, &PrimitiveMarshal::PopInt16>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<int16_t, &PropPopInt16>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterUInt16(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -309,7 +373,7 @@ static void PropertyStaticGetterUInt16(lua_State* L, void* target, const MethodI
 
 static void PropertyStaticSetterUInt16(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<uint16_t, &PrimitiveMarshal::PopUInt16>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<uint16_t, &PropPopUInt16>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterInt32(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -319,7 +383,7 @@ static void PropertyStaticGetterInt32(lua_State* L, void* target, const MethodIn
 
 static void PropertyStaticSetterInt32(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<int32_t, &PrimitiveMarshal::PopInt32>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<int32_t, &PropPopInt32>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterUInt32(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -329,7 +393,7 @@ static void PropertyStaticGetterUInt32(lua_State* L, void* target, const MethodI
 
 static void PropertyStaticSetterUInt32(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<uint32_t, &PrimitiveMarshal::PopUInt32>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<uint32_t, &PropPopUInt32>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterInt64(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -339,7 +403,7 @@ static void PropertyStaticGetterInt64(lua_State* L, void* target, const MethodIn
 
 static void PropertyStaticSetterInt64(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<int64_t, &PrimitiveMarshal::PopInt64>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<int64_t, &PropPopInt64>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterUInt64(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -349,7 +413,7 @@ static void PropertyStaticGetterUInt64(lua_State* L, void* target, const MethodI
 
 static void PropertyStaticSetterUInt64(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<uint64_t, &PrimitiveMarshal::PopUInt64>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<uint64_t, &PropPopUInt64>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterFloat(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -359,7 +423,7 @@ static void PropertyStaticGetterFloat(lua_State* L, void* target, const MethodIn
 
 static void PropertyStaticSetterFloat(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<float, &PrimitiveMarshal::PopFloat>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<float, &PropPopFloat>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterDouble(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -369,7 +433,7 @@ static void PropertyStaticGetterDouble(lua_State* L, void* target, const MethodI
 
 static void PropertyStaticSetterDouble(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<double, &PrimitiveMarshal::PopDouble>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<double, &PropPopDouble>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterIntPtr(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -379,7 +443,7 @@ static void PropertyStaticGetterIntPtr(lua_State* L, void* target, const MethodI
 
 static void PropertyStaticSetterIntPtr(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<intptr_t, &PrimitiveMarshal::PopIntPtr>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<intptr_t, &PropPopIntPtr>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterUIntPtr(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -389,7 +453,7 @@ static void PropertyStaticGetterUIntPtr(lua_State* L, void* target, const Method
 
 static void PropertyStaticSetterUIntPtr(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValue<uintptr_t, &PrimitiveMarshal::PopUIntPtr>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterByValue<uintptr_t, &PropPopUIntPtr>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterPointer(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -479,7 +543,7 @@ static void PropertyStaticGetterUnityVector2(lua_State* L, void* target, const M
 
 static void PropertyStaticSetterUnityVector2(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValueCtx<UnityVector2, &PropPopStructByValue<UnityVector2>>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterOutParamCtx<UnityVector2, &PropPopStructOut<UnityVector2>>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterUnityVector2(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -489,7 +553,7 @@ static void PropertyInstanceGetterUnityVector2(lua_State* L, void* target, const
 
 static void PropertyInstanceSetterUnityVector2(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValueCtx<UnityVector2, &PropPopStructByValue<UnityVector2>>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterOutParamCtx<UnityVector2, &PropPopStructOut<UnityVector2>>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterUnityVector3(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -499,7 +563,7 @@ static void PropertyStaticGetterUnityVector3(lua_State* L, void* target, const M
 
 static void PropertyStaticSetterUnityVector3(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValueCtx<UnityVector3, &PropPopStructByValue<UnityVector3>>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterOutParamCtx<UnityVector3, &PropPopStructOut<UnityVector3>>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterUnityVector3(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -509,7 +573,7 @@ static void PropertyInstanceGetterUnityVector3(lua_State* L, void* target, const
 
 static void PropertyInstanceSetterUnityVector3(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValueCtx<UnityVector3, &PropPopStructByValue<UnityVector3>>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterOutParamCtx<UnityVector3, &PropPopStructOut<UnityVector3>>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyStaticGetterUnityVector4(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -519,7 +583,7 @@ static void PropertyStaticGetterUnityVector4(lua_State* L, void* target, const M
 
 static void PropertyStaticSetterUnityVector4(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyStaticSetterByValueCtx<UnityVector4, &PropPopStructByValue<UnityVector4>>(L, target, valueIdx, method, ctx);
+    PropertyStaticSetterOutParamCtx<UnityVector4, &PropPopStructOut<UnityVector4>>(L, target, valueIdx, method, ctx);
 }
 
 static void PropertyInstanceGetterUnityVector4(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
@@ -529,7 +593,7 @@ static void PropertyInstanceGetterUnityVector4(lua_State* L, void* target, const
 
 static void PropertyInstanceSetterUnityVector4(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    PropertyInstanceSetterByValueCtx<UnityVector4, &PropPopStructByValue<UnityVector4>>(L, target, valueIdx, method, ctx);
+    PropertyInstanceSetterOutParamCtx<UnityVector4, &PropPopStructOut<UnityVector4>>(L, target, valueIdx, method, ctx);
 }
 
 AppendOnlyStringHashMap<const PropertyBridgeEntry*> s_nameToBridge;
