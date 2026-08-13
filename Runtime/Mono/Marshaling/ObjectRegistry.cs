@@ -81,6 +81,13 @@ namespace ZLua.Marshaling
                 return _slots[slotIndex];
             }
 
+            public void Clear()
+            {
+                Array.Clear(_slots, 0, _nextSlotIndex);
+                _nextSlotIndex = 0;
+                _freeSlots.Clear();
+            }
+
             private uint AllocateSlot()
             {
                 if (_freeSlots.Count > 0)
@@ -137,6 +144,7 @@ namespace ZLua.Marshaling
         internal static void Shutdown(IntPtr L)
         {
             s_objectViewRefs.Clear();
+            s_objectSlots.Clear();
             if (s_objectCacheRef != LuaConsts.LuaNoRef)
             {
                 LuaDll.luaL_unref(L, LuaConsts.LuaRegistryIndex, s_objectCacheRef);

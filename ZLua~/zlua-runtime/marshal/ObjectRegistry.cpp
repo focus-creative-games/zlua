@@ -180,7 +180,9 @@ static void RemoveFromObjectCache(lua_State* L, Il2CppObject* obj, Il2CppClass* 
     if (obj == nullptr || viewKlass == nullptr)
         return;
 
-    IL2CPP_ASSERT(s_objectCacheRef != LUA_NOREF);
+    /* LuaEnv::Shutdown clears the cache before lua_close; __gc still runs and must no-op. */
+    if (s_objectCacheRef == LUA_NOREF)
+        return;
 
     ObjectViewKey key{obj, viewKlass};
     auto it = s_objectViewRefs.find(key);

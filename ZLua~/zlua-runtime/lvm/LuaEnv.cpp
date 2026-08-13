@@ -10,6 +10,7 @@
 
 #include "../marshal/ObjectRegistry.h"
 #include "../marshal/StructRegistry.h"
+#include "../marshal/MarshalDefs.h"
 #include "../utils/MetadataUtil.h"
 #include "../mt/AssemblyRegistry.h"
 #include "../mt/MetaTableCache.h"
@@ -130,6 +131,22 @@ lua_State* LuaEnv::GetState()
     return s_L;
 }
 
+lua_State* LuaEnv::GetStateForInvoke(Il2CppObject* target)
+{
+    if (s_L == nullptr)
+    {
+        LuaException::Throw("ZLua is not initialized. Call LuaAppDomain.Initialize first.");
+    }
+
+    LuaMethod* luaMethod = reinterpret_cast<LuaMethod*>(target);
+    if (luaMethod->L != s_L)
+    {
+        LuaException::Throw("ZLua domain was Reset; discard old GetFunction delegates and re-bind.");
+    }
+
+    return s_L;
+}
+
 void LuaEnv::InitErrorHandlerRef()
 {
     const int oldTop = lua_gettop(s_L);
@@ -171,12 +188,18 @@ void LuaEnv::DoStringIgnoreResult(const char* chunk)
 void LuaEnv::AddPendingRef(int refIndex)
 {
     IL2CPP_ASSERT(refIndex != LUA_NOREF);
+    if (s_L == nullptr)
+        return;
     s_pendingRefReleases.push_back(refIndex);
 }
 
 void LuaEnv::ProcessPendingRefReleases()
 {
-    IL2CPP_ASSERT(s_L != nullptr);
+    if (s_L == nullptr)
+    {
+        s_pendingRefReleases.clear();
+        return;
+    }
     if (s_pendingRefReleases.empty())
         return;
 

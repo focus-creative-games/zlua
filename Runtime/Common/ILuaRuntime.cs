@@ -11,6 +11,11 @@ namespace ZLua
     {
         void Initialize(Func<string, object> moduleLoader);
 
+        /// <summary>
+        /// Tear down the main <c>lua_State</c> and re-initialize with <paramref name="moduleLoader"/>.
+        /// </summary>
+        void Reset(Func<string, object> moduleLoader);
+
         void ProcessPendingRefReleases();
 
         /// <summary>

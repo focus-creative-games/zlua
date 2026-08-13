@@ -283,6 +283,11 @@ namespace ZLua.DelegateImpl
             Expression tryBody = Expression.Block(
                 invokeStatements.Concat(new[] { returnExpression }));
 
+            // If getLuaState throws (env Reset/disposed), L stays IntPtr.Zero — never lua_settop(0).
+            Expression restoreStack = Expression.IfThen(
+                Expression.NotEqual(luaStateVar, Expression.Constant(IntPtr.Zero)),
+                Expression.Call(LuaSetTop, luaStateVar, oldTopVar));
+
             Expression body = Expression.Block(
                 locals,
                 Expression.TryFinally(
@@ -292,7 +297,7 @@ namespace ZLua.DelegateImpl
                         Expression.Call(EnterManagedPcall),
                         tryBody),
                     Expression.Block(
-                        Expression.Call(LuaSetTop, luaStateVar, oldTopVar),
+                        restoreStack,
                         Expression.Call(LeaveManagedPcall))));
 
             LambdaExpression innerDelegate = Expression.Lambda(

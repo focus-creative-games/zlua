@@ -23,8 +23,18 @@ static void LuaIl2CppAppDomain_InitializeInternal(Il2CppDelegate* moduleLoader)
     LuaAppDomain::InitializeFromManaged(moduleLoader);
 }
 
-static void LuaMethod_AddPendingRef(void* /*L*/, int32_t refIndex)
+static void LuaIl2CppAppDomain_ResetInternal(Il2CppDelegate* moduleLoader)
 {
+    LuaAppDomain::ResetFromManaged(moduleLoader);
+}
+
+static void LuaMethod_AddPendingRef(void* L, int32_t refIndex)
+{
+    lua_State* active = LuaEnv::GetState();
+    if (active == nullptr || active != static_cast<lua_State*>(L))
+    {
+        return;
+    }
     LuaEnv::AddPendingRef(refIndex);
 }
 
@@ -75,6 +85,7 @@ static Il2CppObject* LuaIl2CppAppDomain_GetFunctionInternal(Il2CppReflectionType
 void LuaInternalCalls::RegisterCoreInternalCalls()
 {
     il2cpp::vm::InternalCalls::Add("ZLua.LuaIl2CppAppDomain::InitializeInternal", (Il2CppMethodPointer)LuaIl2CppAppDomain_InitializeInternal);
+    il2cpp::vm::InternalCalls::Add("ZLua.LuaIl2CppAppDomain::ResetInternal", (Il2CppMethodPointer)LuaIl2CppAppDomain_ResetInternal);
     il2cpp::vm::InternalCalls::Add("ZLua.LuaIl2CppAppDomain::ProcessPendingRefReleases", (Il2CppMethodPointer)LuaIl2CppAppDomain_ProcessPendingRefReleases);
     il2cpp::vm::InternalCalls::Add("ZLua.LuaIl2CppAppDomain::GetFunctionInternal", (Il2CppMethodPointer)LuaIl2CppAppDomain_GetFunctionInternal);
     il2cpp::vm::InternalCalls::Add("ZLua.LuaMethod::AddPendingRef", (Il2CppMethodPointer)LuaMethod_AddPendingRef);

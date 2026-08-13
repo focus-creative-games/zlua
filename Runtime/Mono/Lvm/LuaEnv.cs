@@ -41,6 +41,8 @@ namespace ZLua.Lvm
 
         internal static LuaEnv Active => s_activeEnv;
 
+        internal bool IsAlive => !_disposed && _state != IntPtr.Zero;
+
         internal int ErrorHandlerRef => EnsureErrorHandlerRef();
 
         public LuaEnv()
@@ -255,14 +257,15 @@ namespace ZLua.Lvm
         {
             lock (_freePendingRefs)
             {
-                if (_freePendingRefs.Count == 0)
+                if (_freePendingRefs.Count == 0 || !IsAlive)
                 {
+                    _freePendingRefs.Clear();
                     return;
                 }
 
                 foreach (int refIndex in _freePendingRefs)
                 {
-                    LuaDll.luaL_unref(L, LuaConsts.LuaRegistryIndex, refIndex);
+                    LuaDll.luaL_unref(_state, LuaConsts.LuaRegistryIndex, refIndex);
                 }
 
                 _freePendingRefs.Clear();
@@ -326,6 +329,7 @@ namespace ZLua.Lvm
 
                 _moduleRefs.Clear();
 
+                TypeMemberLuaIndexer.Shutdown(_state);
                 MetaTableCache.Shutdown(_state);
                 StructRegistry.Shutdown(_state);
                 ObjectRegistry.Shutdown(_state);

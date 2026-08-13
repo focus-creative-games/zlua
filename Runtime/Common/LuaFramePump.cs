@@ -1,13 +1,16 @@
+using System.Collections;
 using UnityEngine;
 
 namespace ZLua
 {
     /// <summary>
-    /// Flushes queued Lua registry unrefs once per frame on the main thread.
+    /// Main-thread frame pump: pending Lua registry unrefs (LateUpdate) and
+    /// deferred <see cref="LuaAppDomain.Reset"/> (EndOfFrame).
     /// </summary>
     internal sealed class LuaFramePump : MonoBehaviour
     {
         private static LuaFramePump _instance;
+        private Coroutine _endOfFrameRoutine;
 
         internal static void EnsureRegistered()
         {
@@ -45,9 +48,36 @@ namespace ZLua
             }
         }
 
+        private void OnEnable()
+        {
+            if (_endOfFrameRoutine == null)
+            {
+                _endOfFrameRoutine = StartCoroutine(EndOfFrameLoop());
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (_endOfFrameRoutine != null)
+            {
+                StopCoroutine(_endOfFrameRoutine);
+                _endOfFrameRoutine = null;
+            }
+        }
+
         private void LateUpdate()
         {
             LuaAppDomain.ProcessPendingRefReleases();
+        }
+
+        private static IEnumerator EndOfFrameLoop()
+        {
+            var wait = new WaitForEndOfFrame();
+            while (true)
+            {
+                yield return wait;
+                LuaAppDomain.FlushPendingReset();
+            }
         }
     }
 }

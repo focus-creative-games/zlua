@@ -189,7 +189,7 @@ namespace ZLua.CppCodeGen
             writer.WriteLine("{");
             writer.IncreaseIndent();
 
-            writer.WriteLine($"lua_State* L = LuaEnv::GetState();");
+            writer.WriteLine($"lua_State* L = LuaEnv::GetStateForInvoke(target);");
             writer.WriteLine("OpaqueParameterScope opaqueScope;");
             writer.WriteLine("LuaMethod* luaMethod = reinterpret_cast<LuaMethod*>(target);");
             writer.WriteLine("const MethodMarshalCtx* ctx = luaMethod->methodMarshalCtx;");

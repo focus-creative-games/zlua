@@ -11,6 +11,8 @@ class LuaEnv
     static void Shutdown();
 
     static lua_State* GetState();
+    /// Validate that <paramref name="target"/> (LuaMethod) still belongs to the active state.
+    static lua_State* GetStateForInvoke(Il2CppObject* target);
     static int GetErrorHandlerRef();
 
     static int PushErrorHandler();

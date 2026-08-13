@@ -10,11 +10,29 @@ namespace ZLua
     public static class LuaAppDomain
     {
         private static ILuaRuntime s_runtime;
+        private static Func<string, object> s_pendingResetLoader;
 
         public static void Initialize(Func<string, object> moduleLoader)
         {
             EnsureRuntime();
             s_runtime.Initialize(moduleLoader);
+            LuaFramePump.EnsureRegistered();
+        }
+
+        /// <summary>
+        /// Schedule a rebuild of the single main <c>lua_State</c>.
+        /// Teardown / re-init runs at Unity EndOfFrame via <see cref="LuaFramePump"/> (not immediately).
+        /// After it applies, prior <see cref="GetFunction{T}"/> delegates are invalid.
+        /// </summary>
+        public static void Reset(Func<string, object> moduleLoader)
+        {
+            if (moduleLoader == null)
+            {
+                throw new ArgumentNullException(nameof(moduleLoader));
+            }
+
+            EnsureRuntime();
+            s_pendingResetLoader = moduleLoader;
             LuaFramePump.EnsureRegistered();
         }
 
@@ -43,6 +61,22 @@ namespace ZLua
         internal static void ProcessPendingRefReleases()
         {
             s_runtime?.ProcessPendingRefReleases();
+        }
+
+        /// <summary>
+        /// Apply a scheduled <see cref="Reset"/> if any. Called from <see cref="LuaFramePump"/> at EndOfFrame.
+        /// </summary>
+        internal static void FlushPendingReset()
+        {
+            if (s_pendingResetLoader == null || s_runtime == null)
+            {
+                return;
+            }
+
+            Func<string, object> loader = s_pendingResetLoader;
+            s_pendingResetLoader = null;
+            s_runtime.Reset(loader);
+            LuaFramePump.EnsureRegistered();
         }
 
         private static void EnsureRuntime()

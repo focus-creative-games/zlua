@@ -33,11 +33,21 @@ namespace ZLua
         {
             if (_luaEnv != null)
             {
-                _luaEnv.SetModuleLoader(moduleLoader);
-                _luaEnv.EnsureBuiltinZLuaLib();
-                return;
+                throw new InvalidOperationException(
+                    "ZLua is already initialized. Call LuaAppDomain.Reset to rebuild the Lua domain.");
             }
 
+            CreateEnv(moduleLoader);
+        }
+
+        public static void Reset(Func<string, object> moduleLoader)
+        {
+            ShutdownState();
+            CreateEnv(moduleLoader);
+        }
+
+        private static void CreateEnv(Func<string, object> moduleLoader)
+        {
             _luaEnv = new LuaEnv();
             _luaEnv.SetModuleLoader(moduleLoader);
             _luaEnv.LoadBuiltinGlobals();
@@ -53,6 +63,19 @@ namespace ZLua
 #if UNITY_EDITOR
             TryStartEmmyDebuggerFromSettings();
 #endif
+        }
+
+        private static void ShutdownState()
+        {
+            if (_luaEnv == null)
+            {
+                return;
+            }
+
+            ProcessPendingRefReleases();
+            _luaEnv.Dispose();
+            _luaEnv = null;
+            LuaCallbackBoundary.ResetDepth();
         }
 
 #if UNITY_EDITOR
@@ -148,18 +171,6 @@ namespace ZLua
         }
 #endif
 
-        public static void Shutdown()
-        {
-            if (_luaEnv == null)
-            {
-                return;
-            }
-
-            ProcessPendingRefReleases();
-            _luaEnv.Dispose();
-            _luaEnv = null;
-        }
-
         private static void ProcessPendingRefReleases()
         {
             _luaEnv?.ProcessPendingRefReleases();
@@ -206,6 +217,11 @@ namespace ZLua
             public void Initialize(Func<string, object> moduleLoader)
             {
                 LuaMonoAppDomain.Initialize(moduleLoader);
+            }
+
+            public void Reset(Func<string, object> moduleLoader)
+            {
+                LuaMonoAppDomain.Reset(moduleLoader);
             }
 
             public void ProcessPendingRefReleases()

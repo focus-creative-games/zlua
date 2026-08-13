@@ -13,6 +13,9 @@ namespace ZLua
         private static extern void InitializeInternal(Func<string, object> moduleLoader);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void ResetInternal(Func<string, object> moduleLoader);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void ProcessPendingRefReleases();
 
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -21,6 +24,11 @@ namespace ZLua
         public static void Initialize(Func<string, object> moduleLoader)
         {
             InitializeInternal(moduleLoader);
+        }
+
+        public static void Reset(Func<string, object> moduleLoader)
+        {
+            ResetInternal(moduleLoader);
         }
 
         private static Delegate GetFunction(Type delegateType, string luaModule, string luaMethodName)
@@ -43,6 +51,11 @@ namespace ZLua
             public void Initialize(Func<string, object> moduleLoader)
             {
                 LuaIl2CppAppDomain.Initialize(moduleLoader);
+            }
+
+            public void Reset(Func<string, object> moduleLoader)
+            {
+                LuaIl2CppAppDomain.Reset(moduleLoader);
             }
 
             public void ProcessPendingRefReleases()

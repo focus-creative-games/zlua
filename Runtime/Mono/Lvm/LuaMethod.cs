@@ -8,7 +8,19 @@ namespace ZLua
         private bool _disposed;
         private readonly LuaEnv _env;
 
-        public IntPtr LuaState => _env.L;
+        public IntPtr LuaState
+        {
+            get
+            {
+                if (_env == null || !_env.IsAlive)
+                {
+                    throw new InvalidOperationException(
+                        "ZLua domain was Reset; discard old GetFunction delegates and re-bind.");
+                }
+
+                return _env.L;
+            }
+        }
 
         public int RefIndex { get; }
 
@@ -43,8 +55,11 @@ namespace ZLua
                 return;
             }
 
-            _env?.AddPendingRef(RefIndex);
             _disposed = true;
+            if (_env != null && _env.IsAlive)
+            {
+                _env.AddPendingRef(RefIndex);
+            }
         }
     }
 }

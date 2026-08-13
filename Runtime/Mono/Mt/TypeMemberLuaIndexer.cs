@@ -70,6 +70,17 @@ return bind_indexer
         private static int _bindIndexerRef = LuaConsts.LuaNoRef;
         private static bool _loaded;
 
+        internal static void Shutdown(IntPtr luaState)
+        {
+            if (_bindIndexerRef != LuaConsts.LuaNoRef && luaState != IntPtr.Zero)
+            {
+                LuaDll.luaL_unref(luaState, LuaConsts.LuaRegistryIndex, _bindIndexerRef);
+            }
+
+            _bindIndexerRef = LuaConsts.LuaNoRef;
+            _loaded = false;
+        }
+
         internal static void EnsureLoaded(IntPtr luaState)
         {
             if (_loaded)
