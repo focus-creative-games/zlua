@@ -20,7 +20,8 @@ class MetadataUtil
     /// Same semantics as System.Type.GetType(string) / zlua.get_type_from_name.
     static Il2CppClass* ResolveTypeFromName(const char* typeFullName);
     /// Tuanjie delayed-init: Class::Init alone may not populate members.
-    /// Prefer Ensure* + raw klass->methods/fields/properties/events over Class::Get* iterators.
+    /// Prefer Ensure* + raw klass->methods/fields/events. Properties: use Class::GetProperties
+    /// (Tuanjie stores klass->properties as PropertyInfo**).
     static inline void EnsureMethods(Il2CppClass* klass)
     {
         IL2CPP_ASSERT(klass != nullptr);

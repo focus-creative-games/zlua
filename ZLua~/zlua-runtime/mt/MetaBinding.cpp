@@ -357,10 +357,10 @@ static void RegisterFields(lua_State* L, Il2CppClass* klass, NameMetaMap& instan
 
 static void RegisterProperties(lua_State* L, Il2CppClass* klass, NameMetaMap& instanceMap, NameMetaMap& staticMap)
 {
-    MetadataUtil::EnsureProperties(klass);
-    for (uint16_t i = 0; i < klass->property_count; ++i)
+    // Tuanjie: klass->properties is PropertyInfo**; use GetProperties (SetupProperties + walk).
+    void* propertyIter = nullptr;
+    while (const PropertyInfo* property = il2cpp::vm::Class::GetProperties(klass, &propertyIter))
     {
-        const PropertyInfo* property = klass->properties + i;
         if (!MetadataUtil::IsPublicProperty(property) || !MetadataUtil::IsZeroParameterProperty(property))
             continue;
 
