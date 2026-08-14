@@ -4,7 +4,7 @@ using UnityEditor.Callbacks;
 using UnityEngine;
 using ZLua.Utils;
 
-#if UNITY_2023_1_OR_NEWER
+#if UNITY_2023_1_OR_NEWER && (UNITY_IOS || UNITY_TVOS || UNITY_VISIONOS)
 
 namespace ZLua.BuildProcessors
 {

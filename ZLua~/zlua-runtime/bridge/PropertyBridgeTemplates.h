@@ -2,6 +2,7 @@
 
 #include "../ZLuaCommon.h"
 #include "../marshal/MarshalDefs.h"
+#include "../marshal/TypedMarshal.h"
 
 namespace zlua
 {
@@ -146,6 +147,83 @@ inline void PropertyStaticSetterInvokerBuf(lua_State* L, void* target, int value
     void* value = alloca(ctx->meta->size);
     PopBuf(L, valueIdx, value, method, ctx);
     void* params[1] = {value};
+    method->invoker_method(method->methodPointer, method, nullptr, params, nullptr);
+}
+
+// for full generic sharing
+
+template <typename T, void (*PushBuf)(lua_State*, T)>
+inline void PropertyInstanceGetterInvokerPrimitiveBuf(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
+{
+    T ret;
+    method->invoker_method(method->methodPointer, method, target, nullptr, &ret);
+    PushBuf(L, ret);
+}
+
+template <typename T, T (*PopBuf)(lua_State*, int)>
+inline void PropertyInstanceSetterInvokerPrimitiveBuf(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
+{
+    T value = PopBuf(L, valueIdx);
+    void* params[1] = {&value};
+    method->invoker_method(method->methodPointer, method, target, params, nullptr);
+}
+
+template <typename T, void (*PushBuf)(lua_State*, T)>
+inline void PropertyStaticGetterInvokerPrimitiveBuf(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
+{
+    T ret;
+    method->invoker_method(method->methodPointer, method, nullptr, nullptr, &ret);
+    PushBuf(L, ret);
+}
+
+template <typename T, T (*PopBuf)(lua_State*, int)>
+inline void PropertyStaticSetterInvokerPrimitiveBuf(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
+{
+    T value = PopBuf(L, valueIdx);
+    void* params[1] = {&value};
+    method->invoker_method(method->methodPointer, method, nullptr, params, nullptr);
+}
+
+// Ref-like (string / object / array / delegate / ptr / fnptr): invoker + TypedMarshal.
+// Do not call ctx->getter/setter here — those may be the FGS wrappers themselves.
+
+template <typename T>
+inline void PropertyInstanceGetterInvokerRefLike(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
+{
+    (void)ctx;
+    T ret = nullptr;
+    method->invoker_method(method->methodPointer, method, target, nullptr, &ret);
+    TypedMarshal::PushByType(L, &ret, method->return_type);
+}
+
+template <typename T>
+inline void PropertyInstanceSetterInvokerRefLike(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
+{
+    (void)ctx;
+    T value = nullptr;
+    TypedMarshal::PopByType(L, valueIdx, &value, method->parameters[0]);
+    void* params[1] = {&value};
+    method->invoker_method(method->methodPointer, method, target, params, nullptr);
+}
+
+template <typename T>
+inline void PropertyStaticGetterInvokerRefLike(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
+{
+    (void)target;
+    (void)ctx;
+    T ret = nullptr;
+    method->invoker_method(method->methodPointer, method, nullptr, nullptr, &ret);
+    TypedMarshal::PushByType(L, &ret, method->return_type);
+}
+
+template <typename T>
+inline void PropertyStaticSetterInvokerRefLike(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
+{
+    (void)target;
+    (void)ctx;
+    T value = nullptr;
+    TypedMarshal::PopByType(L, valueIdx, &value, method->parameters[0]);
+    void* params[1] = {&value};
     method->invoker_method(method->methodPointer, method, nullptr, params, nullptr);
 }
 

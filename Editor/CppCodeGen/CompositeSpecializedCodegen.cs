@@ -481,6 +481,12 @@ namespace ZLua.CppCodeGen
                 return "p->" + member.CppFieldName + " = StringMarshal::Pop(L, " + idxExpr + ");";
             }
 
+            string primitivePop = CodegenCommon.TryGeneratePrimitivePop(member.CppTypeName, "p->" + member.CppFieldName, idxExpr);
+            if (primitivePop != null)
+            {
+                return primitivePop;
+            }
+
             return "p->" + member.CppFieldName + " = DefaultTypedMarshal<" + member.CppTypeName + ">::Pop(L, " + idxExpr + ");";
         }
 
@@ -489,6 +495,12 @@ namespace ZLua.CppCodeGen
             if (member.FieldType.ElementType == ElementType.String)
             {
                 return "StringMarshal::Push(L, p->" + member.CppFieldName + ");";
+            }
+
+            string primitivePush = CodegenCommon.TryGeneratePrimitivePush(member.CppTypeName, "p->" + member.CppFieldName);
+            if (primitivePush != null)
+            {
+                return primitivePush;
             }
 
             return "DefaultTypedMarshal<" + member.CppTypeName + ">::Push(L, p->" + member.CppFieldName + ");";

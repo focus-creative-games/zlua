@@ -6,18 +6,10 @@ namespace zlua
 {
 namespace extension_bindings
 {
-static const LuaExtensionXmlEntry kEntries[] = {
-    {
-        "ZLua.Tests",
-        "ZLua.Tests.Fixtures.ExtensionXmlTarget",
-        "ZLua.Tests",
-        "ZLua.Tests.Fixtures.ExtensionXmlTargetExt",
-    },
-};
 } // namespace extension_bindings
 
 void RegisterExtensionBindingTables()
 {
-    ExtensionXmlTable::RegisterEntries(extension_bindings::kEntries, sizeof(extension_bindings::kEntries) / sizeof(extension_bindings::kEntries[0]));
+    ExtensionXmlTable::Clear();
 }
 } // namespace zlua

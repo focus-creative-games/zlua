@@ -390,6 +390,8 @@ namespace ZLua
                 {
                     EnsureLuaTmpnamMacrosForIl2CppLump(CommonDirs.LocalLuaSrcPath);
                     EnsureLoadlibAnsiApisForWin32(CommonDirs.LocalLuaSrcPath);
+                    // Android NDK stdio.h declares POSIX getline(); Lua 5.1's macro clashes.
+                    EnsureGetlineRenamedForAndroidNdk(CommonDirs.LocalLuaSrcPath);
                 }
             }
 
@@ -725,6 +727,47 @@ namespace ZLua
 
             File.WriteAllText(loadlib, next, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             Debug.Log($"[ZLua] Forced loadlib Win32 *A APIs for UNICODE builds in {loadlib}");
+        }
+
+        /// <summary>
+        /// Lua 5.1 defines <c>#define getline(f,pc)</c> in <c>ldebug.h</c>. Android NDK's
+        /// <c>stdio.h</c> (API 18+) declares POSIX <c>getline(...)</c>; compiling Lua as part of
+        /// an Il2Cpp lump pulls both in and breaks with "too many arguments to function-like macro".
+        /// Rename to <c>getfuncline</c> (same name as Lua 5.2+).
+        /// </summary>
+        private static void EnsureGetlineRenamedForAndroidNdk(string luaSrcDir)
+        {
+            string ldebugH = Path.Combine(luaSrcDir, "ldebug.h");
+            if (!File.Exists(ldebugH))
+            {
+                return;
+            }
+
+            string probe = File.ReadAllText(ldebugH, Encoding.UTF8);
+            if (!probe.Contains("#define getline") || probe.Contains("#define getfuncline"))
+            {
+                return;
+            }
+
+            string[] names = { "ldebug.h", "ldebug.c", "lvm.c", "print.c" };
+            foreach (string name in names)
+            {
+                string path = Path.Combine(luaSrcDir, name);
+                if (!File.Exists(path))
+                {
+                    continue;
+                }
+
+                string text = File.ReadAllText(path, Encoding.UTF8);
+                string next = Regex.Replace(text, @"\bgetline\b", "getfuncline");
+                if (string.Equals(next, text, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                File.WriteAllText(path, next, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                Debug.Log($"[ZLua] Renamed Lua 5.1 getline → getfuncline in {path} (Android NDK stdio clash)");
+            }
         }
 
         /// <summary>

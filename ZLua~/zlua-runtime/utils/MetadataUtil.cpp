@@ -20,7 +20,6 @@
 
 #include <unordered_set>
 
-
 namespace zlua
 {
 
@@ -38,8 +37,7 @@ static void ResolveParamArrayAttributeClass()
 {
     s_paramArrayAttributeClass = il2cpp::vm::Class::FromName(il2cpp::vm::Image::GetCorlib(), "System", "ParamArrayAttribute");
     IL2CPP_ASSERT(s_paramArrayAttributeClass != nullptr);
-    s_extensionAttributeClass =
-        il2cpp::vm::Class::FromName(il2cpp::vm::Image::GetCorlib(), "System.Runtime.CompilerServices", "ExtensionAttribute");
+    s_extensionAttributeClass = il2cpp::vm::Class::FromName(il2cpp::vm::Image::GetCorlib(), "System.Runtime.CompilerServices", "ExtensionAttribute");
     IL2CPP_ASSERT(s_extensionAttributeClass != nullptr);
 }
 
@@ -614,8 +612,7 @@ bool MetadataUtil::TryReadLuaAlias(const MethodInfo* method, std::string& aliasO
     if (!il2cpp::vm::Method::HasAttribute(method, aliasClass))
         return false;
 
-    Il2CppMetadataCustomAttributeHandle handle =
-        il2cpp::vm::MetadataCache::GetCustomAttributeTypeToken(method->klass->image, il2cpp::vm::Method::GetToken(method));
+    Il2CppMetadataCustomAttributeHandle handle = il2cpp::vm::MetadataCache::GetCustomAttributeTypeToken(method->klass->image, il2cpp::vm::Method::GetToken(method));
     Il2CppObject* attr = il2cpp::vm::Reflection::GetCustomAttribute(handle, aliasClass);
     IL2CPP_ASSERT(attr != nullptr);
     const PropertyInfo* aliasProperty = il2cpp::vm::Class::GetPropertyFromName(attr->klass, "Alias");
@@ -646,14 +643,36 @@ bool MetadataUtil::TryReadLuaExtensionTypes(Il2CppClass* klass, std::vector<Il2C
         return false;
 
     Il2CppReflectionType* typeObj = il2cpp::vm::Reflection::GetTypeObject(&klass->byval_arg);
+
+    Il2CppObject** attrArray = nullptr;
+    int32_t count = 0;
+#if ZLUA_UNITY_VERSION >= 20220000
     Il2CppArray* attrs = il2cpp::vm::Reflection::GetCustomAttrsInfo((Il2CppObject*)typeObj, s_luaExtensionAttributeClass);
     if (attrs == nullptr || attrs->max_length == 0)
         return false;
+    attrArray = il2cpp_array_addr(attrs, Il2CppObject*, 0);
+    count = (int32_t)attrs->max_length;
+#else
+    CustomAttributesCache* cache = il2cpp::vm::Reflection::GetCustomAttrsInfo((Il2CppObject*)typeObj);
+    if (cache == nullptr || cache->count == 0)
+        return false;
+    std::vector<Il2CppObject*> luaExtensionAttrs;
+    for (int i = 0; i < cache->count; i++)
+    {
+        Il2CppObject* attr = cache->attributes[i];
+        if (attr != nullptr && il2cpp::vm::Class::IsAssignableFrom(s_luaExtensionAttributeClass, attr->klass))
+        {
+            luaExtensionAttrs.push_back(attr);
+        }
+    }
+    attrArray = luaExtensionAttrs.data();
+    count = (int32_t)luaExtensionAttrs.size();
+#endif
 
     std::unordered_set<Il2CppClass*> seen;
-    for (il2cpp_array_size_t a = 0; a < attrs->max_length; ++a)
+    for (int32_t a = 0; a < count; ++a)
     {
-        Il2CppObject* attr = il2cpp_array_get(attrs, Il2CppObject*, a);
+        Il2CppObject* attr = attrArray[a];
         if (attr == nullptr)
             continue;
 
@@ -672,15 +691,13 @@ bool MetadataUtil::TryReadLuaExtensionTypes(Il2CppClass* klass, std::vector<Il2C
             Il2CppReflectionType* rt = il2cpp_array_get(types, Il2CppReflectionType*, i);
             if (rt == nullptr)
             {
-                il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetInvalidOperationException(
-                    "[ZLua] [LuaExtension] contains a null extension type"));
+                il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetInvalidOperationException("[ZLua] [LuaExtension] contains a null extension type"));
             }
 
             Il2CppClass* extKlass = il2cpp::vm::Class::FromSystemType(rt);
             if (extKlass == nullptr)
             {
-                il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetInvalidOperationException(
-                    "[ZLua] [LuaExtension] extension type could not be resolved"));
+                il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetInvalidOperationException("[ZLua] [LuaExtension] extension type could not be resolved"));
             }
 
             if (seen.insert(extKlass).second)
@@ -942,8 +959,7 @@ static LuaMarshalType ReadDeclaredMarshalTypeFromMethod(const MethodInfo* method
     if (marshalAsClass == nullptr || !il2cpp::vm::Method::HasAttribute(method, marshalAsClass))
         return LuaMarshalType::Default;
 
-    Il2CppMetadataCustomAttributeHandle handle =
-        il2cpp::vm::MetadataCache::GetCustomAttributeTypeToken(method->klass->image, il2cpp::vm::Method::GetToken(method));
+    Il2CppMetadataCustomAttributeHandle handle = il2cpp::vm::MetadataCache::GetCustomAttributeTypeToken(method->klass->image, il2cpp::vm::Method::GetToken(method));
     Il2CppObject* attr = il2cpp::vm::Reflection::GetCustomAttribute(handle, marshalAsClass);
     LuaMarshalType marshalType = LuaMarshalType::Default;
     if (!TryReadLuaMarshalTypeFromAttributeObject(attr, marshalType))
@@ -1178,11 +1194,11 @@ uint32_t MetadataUtil::GetParameterToken(const MethodInfo* method, int paramInde
     }
     else
     {
-#if ZLUA_UNITY_VERSION < 20220000
+#if ZLUA_SUPPORT_METHOD_RETURN_TYPE_CUSTOM_ATTRIBUTE
+        return il2cpp::vm::MetadataCache::GetReturnParameterToken(methodHandle);
+#else
         // Unity 2021.3 MetadataCache has no GetReturnParameterToken.
         return 0;
-#else
-        return il2cpp::vm::MetadataCache::GetReturnParameterToken(methodHandle);
 #endif
     }
 }

@@ -290,7 +290,7 @@ new file mode 100644
 +  TValue *o;
 +  lua_lock(L);
 +  o = zlua_index2value(L, mtIndex);
-+  api_check(ttistable(o), "table expected");
++  api_check(L, ttistable(o), "table expected");
 +  mt = hvalue(o);
 +  idx = luaH_getstr(mt, G(L)->tmname[TM_INDEX]);
 +  nidx = luaH_getstr(mt, G(L)->tmname[TM_NEWINDEX]);

@@ -18,6 +18,8 @@
 #include "vm/Class.h"
 #include "vm/Field.h"
 #include "vm/Property.h"
+#include "vm/Method.h"
+#include "metadata/GenericMethod.h"
 
 namespace zlua
 {
@@ -99,12 +101,12 @@ double PropPopDouble(lua_State* L, int idx)
 
 intptr_t PropPopIntPtr(lua_State* L, int idx)
 {
-    return (intptr_t)lua_tointeger(L, idx);
+    return PrimitiveMarshal::PopIntPtr(L, idx);
 }
 
 uintptr_t PropPopUIntPtr(lua_State* L, int idx)
 {
-    return (uintptr_t)lua_tointeger(L, idx);
+    return PrimitiveMarshal::PopUIntPtr(L, idx);
 }
 
 template <typename T>
@@ -596,6 +598,76 @@ static void PropertyInstanceSetterUnityVector4(lua_State* L, void* target, int v
     PropertyInstanceSetterOutParamCtx<UnityVector4, &PropPopStructOut<UnityVector4>>(L, target, valueIdx, method, ctx);
 }
 
+// ---------------------------------------------------------------------------
+// Full generic sharing accessors (invoker_method; not direct methodPointer)
+// ---------------------------------------------------------------------------
+
+#define ZLUA_FGS_PRIMITIVE_ACCESSORS(Name, T, PushFn, PopFn)                                                                 \
+    static void FullGenericSharingPropertyStaticGetter##Name(lua_State* L, void* target, const MethodInfo* method,            \
+                                                             const PropertyMarshalCtx* ctx)                                  \
+    {                                                                                                                        \
+        PropertyStaticGetterInvokerPrimitiveBuf<T, PushFn>(L, target, method, ctx);                                          \
+    }                                                                                                                        \
+    static void FullGenericSharingPropertyStaticSetter##Name(lua_State* L, void* target, int valueIdx,                        \
+                                                             const MethodInfo* method, const PropertyMarshalCtx* ctx)        \
+    {                                                                                                                        \
+        PropertyStaticSetterInvokerPrimitiveBuf<T, PopFn>(L, target, valueIdx, method, ctx);                                 \
+    }                                                                                                                        \
+    static void FullGenericSharingPropertyInstanceGetter##Name(lua_State* L, void* target, const MethodInfo* method,          \
+                                                               const PropertyMarshalCtx* ctx)                                \
+    {                                                                                                                        \
+        PropertyInstanceGetterInvokerPrimitiveBuf<T, PushFn>(L, target, method, ctx);                                        \
+    }                                                                                                                        \
+    static void FullGenericSharingPropertyInstanceSetter##Name(lua_State* L, void* target, int valueIdx,                      \
+                                                               const MethodInfo* method, const PropertyMarshalCtx* ctx)      \
+    {                                                                                                                        \
+        PropertyInstanceSetterInvokerPrimitiveBuf<T, PopFn>(L, target, valueIdx, method, ctx);                               \
+    }
+
+ZLUA_FGS_PRIMITIVE_ACCESSORS(Boolean, bool, &PrimitiveMarshal::PushBool, &PrimitiveMarshal::PopBool)
+ZLUA_FGS_PRIMITIVE_ACCESSORS(Int8, int8_t, &PrimitiveMarshal::PushInt8, &PrimitiveMarshal::PopInt8)
+ZLUA_FGS_PRIMITIVE_ACCESSORS(UInt8, uint8_t, &PrimitiveMarshal::PushUInt8, &PrimitiveMarshal::PopUInt8)
+ZLUA_FGS_PRIMITIVE_ACCESSORS(Int16, int16_t, &PrimitiveMarshal::PushInt16, &PrimitiveMarshal::PopInt16)
+ZLUA_FGS_PRIMITIVE_ACCESSORS(UInt16, uint16_t, &PrimitiveMarshal::PushUInt16, &PrimitiveMarshal::PopUInt16)
+ZLUA_FGS_PRIMITIVE_ACCESSORS(Int32, int32_t, &PrimitiveMarshal::PushInt32, &PrimitiveMarshal::PopInt32)
+ZLUA_FGS_PRIMITIVE_ACCESSORS(UInt32, uint32_t, &PrimitiveMarshal::PushUInt32, &PrimitiveMarshal::PopUInt32)
+ZLUA_FGS_PRIMITIVE_ACCESSORS(Int64, int64_t, &PrimitiveMarshal::PushInt64, &PrimitiveMarshal::PopInt64)
+ZLUA_FGS_PRIMITIVE_ACCESSORS(UInt64, uint64_t, &PrimitiveMarshal::PushUInt64, &PrimitiveMarshal::PopUInt64)
+ZLUA_FGS_PRIMITIVE_ACCESSORS(Float, float, &PrimitiveMarshal::PushFloat, &PrimitiveMarshal::PopFloat)
+ZLUA_FGS_PRIMITIVE_ACCESSORS(Double, double, &PrimitiveMarshal::PushDouble, &PrimitiveMarshal::PopDouble)
+ZLUA_FGS_PRIMITIVE_ACCESSORS(IntPtr, intptr_t, &PrimitiveMarshal::PushIntPtr, &PrimitiveMarshal::PopIntPtr)
+ZLUA_FGS_PRIMITIVE_ACCESSORS(UIntPtr, uintptr_t, &PrimitiveMarshal::PushUIntPtr, &PrimitiveMarshal::PopUIntPtr)
+
+#undef ZLUA_FGS_PRIMITIVE_ACCESSORS
+
+#define ZLUA_FGS_REFLIKE_ACCESSORS(Name, T)                                                                                  \
+    static void FullGenericSharingPropertyStaticGetter##Name(lua_State* L, void* target, const MethodInfo* method,            \
+                                                             const PropertyMarshalCtx* ctx)                                  \
+    {                                                                                                                        \
+        PropertyStaticGetterInvokerRefLike<T>(L, target, method, ctx);                                                       \
+    }                                                                                                                        \
+    static void FullGenericSharingPropertyStaticSetter##Name(lua_State* L, void* target, int valueIdx,                        \
+                                                             const MethodInfo* method, const PropertyMarshalCtx* ctx)        \
+    {                                                                                                                        \
+        PropertyStaticSetterInvokerRefLike<T>(L, target, valueIdx, method, ctx);                                             \
+    }                                                                                                                        \
+    static void FullGenericSharingPropertyInstanceGetter##Name(lua_State* L, void* target, const MethodInfo* method,          \
+                                                               const PropertyMarshalCtx* ctx)                                \
+    {                                                                                                                        \
+        PropertyInstanceGetterInvokerRefLike<T>(L, target, method, ctx);                                                     \
+    }                                                                                                                        \
+    static void FullGenericSharingPropertyInstanceSetter##Name(lua_State* L, void* target, int valueIdx,                      \
+                                                               const MethodInfo* method, const PropertyMarshalCtx* ctx)      \
+    {                                                                                                                        \
+        PropertyInstanceSetterInvokerRefLike<T>(L, target, valueIdx, method, ctx);                                           \
+    }
+
+ZLUA_FGS_REFLIKE_ACCESSORS(String, Il2CppString*)
+ZLUA_FGS_REFLIKE_ACCESSORS(Object, Il2CppObject*)
+ZLUA_FGS_REFLIKE_ACCESSORS(Pointer, void*)
+
+#undef ZLUA_FGS_REFLIKE_ACCESSORS
+
 AppendOnlyStringHashMap<const PropertyBridgeEntry*> s_nameToBridge;
 
 void PropertyBridge::Initialize()
@@ -682,211 +754,160 @@ PropertyAccessor PropertyBridge::ResolvePropertyAccessor(const PropertyInfo* pro
         }
         return accessor;
     }
+
+#if ZLUA_UNITY_VERSION < 20220000
+    const bool getterHasFullGenericSharing =
+        property->get != nullptr && il2cpp::vm::Method::HasFullGenericSharingSignature(property->get);
+    const bool setterHasFullGenericSharing =
+        property->set != nullptr && il2cpp::vm::Method::HasFullGenericSharingSignature(property->set);
+#else
+    const bool getterHasFullGenericSharing = false;
+    const bool setterHasFullGenericSharing = false;
+#endif
+
+#define ZLUA_SELECT_PROP_ACCESSOR(FgsG, FgsS, NormG, NormS)                                                                  \
+    do                                                                                                                       \
+    {                                                                                                                        \
+        accessor.getter = getterHasFullGenericSharing ? (FgsG) : (NormG);                                                    \
+        accessor.setter = setterHasFullGenericSharing ? (FgsS) : (NormS);                                                    \
+    } while (0)
+
 restart:
     switch (type->type)
     {
     case IL2CPP_TYPE_BOOLEAN:
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterBoolean;
-            accessor.setter = PropertyStaticSetterBoolean;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterBoolean, FullGenericSharingPropertyStaticSetterBoolean,
+                                      PropertyStaticGetterBoolean, PropertyStaticSetterBoolean);
         else
-        {
-            accessor.getter = PropertyInstanceGetterBoolean;
-            accessor.setter = PropertyInstanceSetterBoolean;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterBoolean, FullGenericSharingPropertyInstanceSetterBoolean,
+                                      PropertyInstanceGetterBoolean, PropertyInstanceSetterBoolean);
         break;
     case IL2CPP_TYPE_I1:
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterInt8;
-            accessor.setter = PropertyStaticSetterInt8;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterInt8, FullGenericSharingPropertyStaticSetterInt8,
+                                      PropertyStaticGetterInt8, PropertyStaticSetterInt8);
         else
-        {
-            accessor.getter = PropertyInstanceGetterInt8;
-            accessor.setter = PropertyInstanceSetterInt8;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterInt8, FullGenericSharingPropertyInstanceSetterInt8,
+                                      PropertyInstanceGetterInt8, PropertyInstanceSetterInt8);
         break;
     case IL2CPP_TYPE_U1:
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterUInt8;
-            accessor.setter = PropertyStaticSetterUInt8;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterUInt8, FullGenericSharingPropertyStaticSetterUInt8,
+                                      PropertyStaticGetterUInt8, PropertyStaticSetterUInt8);
         else
-        {
-            accessor.getter = PropertyInstanceGetterUInt8;
-            accessor.setter = PropertyInstanceSetterUInt8;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterUInt8, FullGenericSharingPropertyInstanceSetterUInt8,
+                                      PropertyInstanceGetterUInt8, PropertyInstanceSetterUInt8);
         break;
     case IL2CPP_TYPE_I2:
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterInt16;
-            accessor.setter = PropertyStaticSetterInt16;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterInt16, FullGenericSharingPropertyStaticSetterInt16,
+                                      PropertyStaticGetterInt16, PropertyStaticSetterInt16);
         else
-        {
-            accessor.getter = PropertyInstanceGetterInt16;
-            accessor.setter = PropertyInstanceSetterInt16;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterInt16, FullGenericSharingPropertyInstanceSetterInt16,
+                                      PropertyInstanceGetterInt16, PropertyInstanceSetterInt16);
         break;
     case IL2CPP_TYPE_U2:
     case IL2CPP_TYPE_CHAR:
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterUInt16;
-            accessor.setter = PropertyStaticSetterUInt16;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterUInt16, FullGenericSharingPropertyStaticSetterUInt16,
+                                      PropertyStaticGetterUInt16, PropertyStaticSetterUInt16);
         else
-        {
-            accessor.getter = PropertyInstanceGetterUInt16;
-            accessor.setter = PropertyInstanceSetterUInt16;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterUInt16, FullGenericSharingPropertyInstanceSetterUInt16,
+                                      PropertyInstanceGetterUInt16, PropertyInstanceSetterUInt16);
         break;
     case IL2CPP_TYPE_I4:
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterInt32;
-            accessor.setter = PropertyStaticSetterInt32;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterInt32, FullGenericSharingPropertyStaticSetterInt32,
+                                      PropertyStaticGetterInt32, PropertyStaticSetterInt32);
         else
-        {
-            accessor.getter = PropertyInstanceGetterInt32;
-            accessor.setter = PropertyInstanceSetterInt32;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterInt32, FullGenericSharingPropertyInstanceSetterInt32,
+                                      PropertyInstanceGetterInt32, PropertyInstanceSetterInt32);
         break;
     case IL2CPP_TYPE_U4:
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterUInt32;
-            accessor.setter = PropertyStaticSetterUInt32;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterUInt32, FullGenericSharingPropertyStaticSetterUInt32,
+                                      PropertyStaticGetterUInt32, PropertyStaticSetterUInt32);
         else
-        {
-            accessor.getter = PropertyInstanceGetterUInt32;
-            accessor.setter = PropertyInstanceSetterUInt32;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterUInt32, FullGenericSharingPropertyInstanceSetterUInt32,
+                                      PropertyInstanceGetterUInt32, PropertyInstanceSetterUInt32);
         break;
     case IL2CPP_TYPE_I8:
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterInt64;
-            accessor.setter = PropertyStaticSetterInt64;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterInt64, FullGenericSharingPropertyStaticSetterInt64,
+                                      PropertyStaticGetterInt64, PropertyStaticSetterInt64);
         else
-        {
-            accessor.getter = PropertyInstanceGetterInt64;
-            accessor.setter = PropertyInstanceSetterInt64;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterInt64, FullGenericSharingPropertyInstanceSetterInt64,
+                                      PropertyInstanceGetterInt64, PropertyInstanceSetterInt64);
         break;
     case IL2CPP_TYPE_U8:
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterUInt64;
-            accessor.setter = PropertyStaticSetterUInt64;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterUInt64, FullGenericSharingPropertyStaticSetterUInt64,
+                                      PropertyStaticGetterUInt64, PropertyStaticSetterUInt64);
         else
-        {
-            accessor.getter = PropertyInstanceGetterUInt64;
-            accessor.setter = PropertyInstanceSetterUInt64;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterUInt64, FullGenericSharingPropertyInstanceSetterUInt64,
+                                      PropertyInstanceGetterUInt64, PropertyInstanceSetterUInt64);
         break;
     case IL2CPP_TYPE_R4:
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterFloat;
-            accessor.setter = PropertyStaticSetterFloat;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterFloat, FullGenericSharingPropertyStaticSetterFloat,
+                                      PropertyStaticGetterFloat, PropertyStaticSetterFloat);
         else
-        {
-            accessor.getter = PropertyInstanceGetterFloat;
-            accessor.setter = PropertyInstanceSetterFloat;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterFloat, FullGenericSharingPropertyInstanceSetterFloat,
+                                      PropertyInstanceGetterFloat, PropertyInstanceSetterFloat);
         break;
     case IL2CPP_TYPE_R8:
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterDouble;
-            accessor.setter = PropertyStaticSetterDouble;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterDouble, FullGenericSharingPropertyStaticSetterDouble,
+                                      PropertyStaticGetterDouble, PropertyStaticSetterDouble);
         else
-        {
-            accessor.getter = PropertyInstanceGetterDouble;
-            accessor.setter = PropertyInstanceSetterDouble;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterDouble, FullGenericSharingPropertyInstanceSetterDouble,
+                                      PropertyInstanceGetterDouble, PropertyInstanceSetterDouble);
         break;
     case IL2CPP_TYPE_I:
-    {
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterIntPtr;
-            accessor.setter = PropertyStaticSetterIntPtr;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterIntPtr, FullGenericSharingPropertyStaticSetterIntPtr,
+                                      PropertyStaticGetterIntPtr, PropertyStaticSetterIntPtr);
         else
-        {
-            accessor.getter = PropertyInstanceGetterIntPtr;
-            accessor.setter = PropertyInstanceSetterIntPtr;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterIntPtr, FullGenericSharingPropertyInstanceSetterIntPtr,
+                                      PropertyInstanceGetterIntPtr, PropertyInstanceSetterIntPtr);
         break;
-    }
     case IL2CPP_TYPE_U:
-    {
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterUIntPtr;
-            accessor.setter = PropertyStaticSetterUIntPtr;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterUIntPtr, FullGenericSharingPropertyStaticSetterUIntPtr,
+                                      PropertyStaticGetterUIntPtr, PropertyStaticSetterUIntPtr);
         else
-        {
-            accessor.getter = PropertyInstanceGetterUIntPtr;
-            accessor.setter = PropertyInstanceSetterUIntPtr;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterUIntPtr, FullGenericSharingPropertyInstanceSetterUIntPtr,
+                                      PropertyInstanceGetterUIntPtr, PropertyInstanceSetterUIntPtr);
         break;
-    }
     case IL2CPP_TYPE_PTR:
     case IL2CPP_TYPE_FNPTR:
-    {
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterPointer;
-            accessor.setter = PropertyStaticSetterPointer;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterPointer, FullGenericSharingPropertyStaticSetterPointer,
+                                      PropertyStaticGetterPointer, PropertyStaticSetterPointer);
         else
-        {
-            accessor.getter = PropertyInstanceGetterPointer;
-            accessor.setter = PropertyInstanceSetterPointer;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterPointer, FullGenericSharingPropertyInstanceSetterPointer,
+                                      PropertyInstanceGetterPointer, PropertyInstanceSetterPointer);
         break;
-    }
     case IL2CPP_TYPE_STRING:
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterString;
-            accessor.setter = PropertyStaticSetterString;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterString, FullGenericSharingPropertyStaticSetterString,
+                                      PropertyStaticGetterString, PropertyStaticSetterString);
         else
-        {
-            accessor.getter = PropertyInstanceGetterString;
-            accessor.setter = PropertyInstanceSetterString;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterString, FullGenericSharingPropertyInstanceSetterString,
+                                      PropertyInstanceGetterString, PropertyInstanceSetterString);
         break;
     case IL2CPP_TYPE_CLASS:
     case IL2CPP_TYPE_OBJECT:
     case IL2CPP_TYPE_ARRAY:
     case IL2CPP_TYPE_SZARRAY:
+        // class / object / delegate / array share the object RefLike FGS path
         if (isStatic)
-        {
-            accessor.getter = PropertyStaticGetterObject;
-            accessor.setter = PropertyStaticSetterObject;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterObject, FullGenericSharingPropertyStaticSetterObject,
+                                      PropertyStaticGetterObject, PropertyStaticSetterObject);
         else
-        {
-            accessor.getter = PropertyInstanceGetterObject;
-            accessor.setter = PropertyInstanceSetterObject;
-        }
+            ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterObject, FullGenericSharingPropertyInstanceSetterObject,
+                                      PropertyInstanceGetterObject, PropertyInstanceSetterObject);
         break;
     case IL2CPP_TYPE_VALUETYPE:
     case IL2CPP_TYPE_GENERICINST:
@@ -902,15 +923,24 @@ restart:
             const PropertyBridgeEntry* bridge = GetPropertyBridgeEntry(klass);
             if (bridge != nullptr)
             {
-                accessor.getter = isStatic ? bridge->staticGetter : bridge->instanceGetter;
-                accessor.setter = isStatic ? bridge->staticSetter : bridge->instanceSetter;
+                // Specialized stubs call methodPointer; FGS accessors fall back to ValueType invoker path.
+                FnPropertyGetter normG = isStatic ? bridge->staticGetter : bridge->instanceGetter;
+                FnPropertySetter normS = isStatic ? bridge->staticSetter : bridge->instanceSetter;
+                FnPropertyGetter fgsG = isStatic ? PropertyStaticGetterValueType : PropertyInstanceGetterValueType;
+                FnPropertySetter fgsS = isStatic ? PropertyStaticSetterValueType : PropertyInstanceSetterValueType;
+                ZLUA_SELECT_PROP_ACCESSOR(fgsG, fgsS, normG, normS);
                 break;
             }
             if (TryGetIntrinsicPropertyAccessor(klass, isStatic, accessor))
             {
-                return accessor;
+                FnPropertyGetter normG = accessor.getter;
+                FnPropertySetter normS = accessor.setter;
+                FnPropertyGetter fgsG = isStatic ? PropertyStaticGetterValueType : PropertyInstanceGetterValueType;
+                FnPropertySetter fgsS = isStatic ? PropertyStaticSetterValueType : PropertyInstanceSetterValueType;
+                ZLUA_SELECT_PROP_ACCESSOR(fgsG, fgsS, normG, normS);
+                break;
             }
-            // fallback if is nullable value type.
+            // Nullable / ValueType already use invoker_method — no separate FGS variants.
             if (klass->nullabletype)
             {
                 if (isStatic)
@@ -925,7 +955,6 @@ restart:
                 }
                 break;
             }
-            // fallback if is value type.
             if (isStatic)
             {
                 accessor.getter = PropertyStaticGetterValueType;
@@ -940,21 +969,19 @@ restart:
         else
         {
             if (isStatic)
-            {
-                accessor.getter = PropertyStaticGetterObject;
-                accessor.setter = PropertyStaticSetterObject;
-            }
+                ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyStaticGetterObject, FullGenericSharingPropertyStaticSetterObject,
+                                          PropertyStaticGetterObject, PropertyStaticSetterObject);
             else
-            {
-                accessor.getter = PropertyInstanceGetterObject;
-                accessor.setter = PropertyInstanceSetterObject;
-            }
+                ZLUA_SELECT_PROP_ACCESSOR(FullGenericSharingPropertyInstanceGetterObject, FullGenericSharingPropertyInstanceSetterObject,
+                                          PropertyInstanceGetterObject, PropertyInstanceSetterObject);
         }
         break;
     }
     default:
         break;
     }
+
+#undef ZLUA_SELECT_PROP_ACCESSOR
     return accessor;
 }
 

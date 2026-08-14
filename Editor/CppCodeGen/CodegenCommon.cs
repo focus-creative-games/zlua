@@ -18,6 +18,7 @@ namespace ZLua.CppCodeGen
             writer.WriteLine("#include \"../lvm/LuaEnv.h\"");
             writer.WriteLine("#include \"../marshal/MarshalDefs.h\"");
             writer.WriteLine("#include \"../marshal/TypedMarshal.h\"");
+            writer.WriteLine("#include \"../marshal/PrimitiveMarshal.h\"");
             writer.WriteLine("#include \"../marshal/ArrayMarshal.h\"");
             writer.WriteLine("#include \"../marshal/ObjectMarshal.h\"");
             writer.WriteLine("#include \"../marshal/StringMarshal.h\"");
@@ -34,6 +35,36 @@ namespace ZLua.CppCodeGen
         {
             return paramType.IsByRef;
             // || paramType.ElementType == ElementType.Ptr || paramType.ElementType == ElementType.FnPtr;
+        }
+
+        /// <summary>
+        /// IntPtr/UIntPtr must not go through DefaultTypedMarshal&lt;intptr_t&gt; —
+        /// intptr_t aliases differ by ABI and cause duplicate/missing specializations.
+        /// </summary>
+        public static string TryGeneratePrimitivePush(string paramTypeName, string paramName)
+        {
+            switch (paramTypeName)
+            {
+            case "intptr_t":
+                return $"PrimitiveMarshal::PushIntPtr(L, {paramName});";
+            case "uintptr_t":
+                return $"PrimitiveMarshal::PushUIntPtr(L, {paramName});";
+            default:
+                return null;
+            }
+        }
+
+        public static string TryGeneratePrimitivePop(string paramTypeName, string paramName, string luaValueIndex)
+        {
+            switch (paramTypeName)
+            {
+            case "intptr_t":
+                return $"{paramName} = PrimitiveMarshal::PopIntPtr(L, {luaValueIndex});";
+            case "uintptr_t":
+                return $"{paramName} = PrimitiveMarshal::PopUIntPtr(L, {luaValueIndex});";
+            default:
+                return null;
+            }
         }
 
         public static string GeneratePushStatement(MethodDef methodDef, string metaExpr, string paramName, TypeSig paramType, LuaMarshalAsInfo marshalAsInfo)
@@ -93,6 +124,11 @@ namespace ZLua.CppCodeGen
                         return $"StructMarshal::PushNullableValue(L, {addressExpr}, {typeKlassExpr}, {metatableRefExpr});";
                     }
                     return $"StructMarshal::PushValue(L, {addressExpr}, {typeKlassExpr}, {metatableRefExpr});";
+                }
+                string primitivePush = TryGeneratePrimitivePush(paramTypeName, paramName);
+                if (primitivePush != null)
+                {
+                    return primitivePush;
                 }
                 return $"DefaultTypedMarshal<{paramTypeName}>::Push(L, {paramName});";
             }
@@ -191,6 +227,11 @@ namespace ZLua.CppCodeGen
                 if (isPassAsOpaqueValue)
                 {
                     return $"OpaqueValueMarshal::Pop(L, -1, &{paramName}, {typeExpr});";
+                }
+                string primitivePop = TryGeneratePrimitivePop(paramTypeName, paramName, luaValueIndex);
+                if (primitivePop != null)
+                {
+                    return primitivePop;
                 }
                 return $"{paramName} = DefaultTypedMarshal<{paramTypeName}>::Pop(L, {luaValueIndex});";
             }

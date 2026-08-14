@@ -8,7 +8,7 @@ using UnityEditor.Callbacks;
 using UnityEngine;
 using ZLua.Utils;
 
-#if UNITY_2020 || UNITY_2021
+#if (UNITY_2020 || UNITY_2021) && (UNITY_IOS || UNITY_TVOS)
 using UnityEditor.iOS.Xcode;
 
 namespace ZLua.BuildProcessors
