@@ -198,10 +198,22 @@ namespace ZLua.CppCodeGen
             writer.WriteLine($"LuaUtil::PushRef(L, luaMethod->funcRef);");
             writer.WriteLine("(void)method;");
 
+            bool usedCtx = false;
+            MethodDef invokeDef = binding.invokeMethod.MethodDef;
             foreach (var param in binding.invokeMethod.ParamInfos)
             {
-                writer.WriteLine(
-                    $"ctx->paramsMeta[{param.indexExcludedThis}]->cs2luaWriter(L, &{param.name}, ctx->paramsMeta[{param.indexExcludedThis}]);");
+                LuaMarshalAsInfo marshalAs = MarshalMetaUtil.GetLuaMarshalAsInfo(param.paramDef, ignoreMarshalAsFromParam: false);
+                string metaExpr = $"ctx->paramsMeta[{param.indexExcludedThis}]";
+                if (CodegenCommon.CanEmitDirectDefaultPrimitiveMarshal(param.type, marshalAs))
+                {
+                    writer.WriteLine(CodegenCommon.GeneratePushStatement(invokeDef, metaExpr, param.name, param.type, marshalAs));
+                }
+                else
+                {
+                    usedCtx = true;
+                    writer.WriteLine(
+                        $"{metaExpr}->cs2luaWriter(L, &{param.name}, {metaExpr});");
+                }
             }
 
             writer.WriteLine($"LuaUtil::PCall(L, {binding.invokeMethod.ParamInfos.Count}, {(isVoidReturn ? 0 : 1)}, errfunc);");
@@ -210,8 +222,29 @@ namespace ZLua.CppCodeGen
             {
                 string retvalName = "_retval";
                 writer.WriteLine($"{returnTypeName} {retvalName}{{}};");
-                writer.WriteLine($"ctx->retMeta->lua2csWriter(L, -1, &{retvalName}, ctx->retMeta);");
+                LuaMarshalAsInfo retMarshalAs =
+                    MarshalMetaUtil.GetLuaMarshalAsInfo(binding.invokeMethod.ReturnInfo.paramDef, ignoreMarshalAsFromParam: false);
+                if (CodegenCommon.CanEmitDirectDefaultPrimitiveMarshal(returnType, retMarshalAs))
+                {
+                    writer.WriteLine(
+                        CodegenCommon.GeneratePopStatement(invokeDef, "-1", "ctx->retMeta", retvalName, returnType, retMarshalAs));
+                }
+                else
+                {
+                    usedCtx = true;
+                    writer.WriteLine($"ctx->retMeta->lua2csWriter(L, -1, &{retvalName}, ctx->retMeta);");
+                }
+
+                if (!usedCtx)
+                {
+                    writer.WriteLine("(void)ctx;");
+                }
+
                 writer.WriteLine($"return {retvalName};");
+            }
+            else if (!usedCtx)
+            {
+                writer.WriteLine("(void)ctx;");
             }
 
             writer.DecreaseIndent();

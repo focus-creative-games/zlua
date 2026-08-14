@@ -38,13 +38,36 @@ namespace ZLua.CppCodeGen
         }
 
         /// <summary>
-        /// IntPtr/UIntPtr must not go through DefaultTypedMarshal&lt;intptr_t&gt; —
-        /// intptr_t aliases differ by ABI and cause duplicate/missing specializations.
+        /// IntPtr/UIntPtr and other fixed-width primitives must not go through
+        /// DefaultTypedMarshal&lt;T&gt; when a direct PrimitiveMarshal call is available
+        /// (ABI aliases / hot-path specificity).
         /// </summary>
         public static string TryGeneratePrimitivePush(string paramTypeName, string paramName)
         {
             switch (paramTypeName)
             {
+            case "bool":
+                return $"PrimitiveMarshal::PushBool(L, {paramName});";
+            case "int8_t":
+                return $"PrimitiveMarshal::PushInt8(L, {paramName});";
+            case "uint8_t":
+                return $"PrimitiveMarshal::PushUInt8(L, {paramName});";
+            case "int16_t":
+                return $"PrimitiveMarshal::PushInt16(L, {paramName});";
+            case "uint16_t":
+                return $"PrimitiveMarshal::PushUInt16(L, {paramName});";
+            case "int32_t":
+                return $"PrimitiveMarshal::PushInt32(L, {paramName});";
+            case "uint32_t":
+                return $"PrimitiveMarshal::PushUInt32(L, {paramName});";
+            case "int64_t":
+                return $"PrimitiveMarshal::PushInt64(L, {paramName});";
+            case "uint64_t":
+                return $"PrimitiveMarshal::PushUInt64(L, {paramName});";
+            case "float":
+                return $"PrimitiveMarshal::PushFloat(L, {paramName});";
+            case "double":
+                return $"PrimitiveMarshal::PushDouble(L, {paramName});";
             case "intptr_t":
                 return $"PrimitiveMarshal::PushIntPtr(L, {paramName});";
             case "uintptr_t":
@@ -58,6 +81,28 @@ namespace ZLua.CppCodeGen
         {
             switch (paramTypeName)
             {
+            case "bool":
+                return $"{paramName} = PrimitiveMarshal::PopBool(L, {luaValueIndex});";
+            case "int8_t":
+                return $"{paramName} = PrimitiveMarshal::PopInt8(L, {luaValueIndex});";
+            case "uint8_t":
+                return $"{paramName} = PrimitiveMarshal::PopUInt8(L, {luaValueIndex});";
+            case "int16_t":
+                return $"{paramName} = PrimitiveMarshal::PopInt16(L, {luaValueIndex});";
+            case "uint16_t":
+                return $"{paramName} = PrimitiveMarshal::PopUInt16(L, {luaValueIndex});";
+            case "int32_t":
+                return $"{paramName} = PrimitiveMarshal::PopInt32(L, {luaValueIndex});";
+            case "uint32_t":
+                return $"{paramName} = PrimitiveMarshal::PopUInt32(L, {luaValueIndex});";
+            case "int64_t":
+                return $"{paramName} = PrimitiveMarshal::PopInt64(L, {luaValueIndex});";
+            case "uint64_t":
+                return $"{paramName} = PrimitiveMarshal::PopUInt64(L, {luaValueIndex});";
+            case "float":
+                return $"{paramName} = PrimitiveMarshal::PopFloat(L, {luaValueIndex});";
+            case "double":
+                return $"{paramName} = PrimitiveMarshal::PopDouble(L, {luaValueIndex});";
             case "intptr_t":
                 return $"{paramName} = PrimitiveMarshal::PopIntPtr(L, {luaValueIndex});";
             case "uintptr_t":
@@ -65,6 +110,59 @@ namespace ZLua.CppCodeGen
             default:
                 return null;
             }
+        }
+
+        /// <summary>
+        /// by-val primitive / IntPtr family / enum underlying — Default marshal only (no LuaMarshalAs override).
+        /// </summary>
+        public static bool IsDefaultPrimitiveLike(TypeSig typeSig)
+        {
+            TypeSig t = typeSig.RemovePinnedAndModifiers();
+            if (t.IsByRef)
+            {
+                return false;
+            }
+
+            switch (t.ElementType)
+            {
+            case ElementType.Boolean:
+            case ElementType.Char:
+            case ElementType.I1:
+            case ElementType.U1:
+            case ElementType.I2:
+            case ElementType.U2:
+            case ElementType.I4:
+            case ElementType.U4:
+            case ElementType.I8:
+            case ElementType.U8:
+            case ElementType.R4:
+            case ElementType.R8:
+            case ElementType.I:
+            case ElementType.U:
+                return true;
+            case ElementType.ValueType:
+            {
+                TypeDef typeDef = t.ToTypeDefOrRef().ResolveTypeDef();
+                return typeDef != null && typeDef.IsEnum;
+            }
+            default:
+                return false;
+            }
+        }
+
+        public static bool CanEmitDirectDefaultPrimitiveMarshal(TypeSig typeSig, LuaMarshalAsInfo marshalAsInfo)
+        {
+            if (!IsDefaultPrimitiveLike(typeSig))
+            {
+                return false;
+            }
+
+            if (marshalAsInfo != null && marshalAsInfo.marshalType != LuaMarshalType.Default)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         public static string GeneratePushStatement(MethodDef methodDef, string metaExpr, string paramName, TypeSig paramType, LuaMarshalAsInfo marshalAsInfo)
