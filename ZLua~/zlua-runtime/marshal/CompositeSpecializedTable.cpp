@@ -1,9 +1,10 @@
 #include "CompositeSpecializedTable.h"
 
-#include "../utils/Collection.h"
 #include "../utils/MetadataUtil.h"
 
 #include "vm/Class.h"
+
+#include <unordered_map>
 
 namespace zlua
 {
@@ -18,7 +19,7 @@ struct SpecializedWriters
     uint16_t stackSlots;
 };
 
-AppendOnlyRawPointerHashMap<Il2CppClass, SpecializedWriters> s_table;
+std::unordered_map<const Il2CppClass*, SpecializedWriters> s_table;
 
 } // namespace
 

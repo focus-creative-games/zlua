@@ -1,0 +1,49 @@
+diff --git a/libil2cpp/metadata/GenericMethod.cpp b/libil2cpp/metadata/GenericMethod.cpp
+index 62c2284..d487f5f 100644
+--- a/libil2cpp/metadata/GenericMethod.cpp
++++ b/libil2cpp/metadata/GenericMethod.cpp
+@@ -141,6 +141,11 @@ namespace metadata
+     static FullySharedGenericMethodInfo entryPointNotFoundMethodInfo;
+     static FullySharedGenericMethodInfo staticEntryPointNotFoundMethodInfo;
+ 
++    bool GenericMethod::IsAnUnresolvedCallStubWasNotFound(Il2CppMethodPointer methodPointer)
++    {
++        return methodPointer == (Il2CppMethodPointer)AnUnresolvedCallStubWasNotFound || methodPointer == (Il2CppMethodPointer)AnUnresolvedCallStubWasNotFoundValueType;
++    }
++
+     bool GenericMethod::IsGenericAmbiguousMethodInfo(const MethodInfo* method)
+     {
+         return method == &ambiguousMethodInfo || method == &staticAmbiguousMethodInfo;
+diff --git a/libil2cpp/metadata/GenericMethod.h b/libil2cpp/metadata/GenericMethod.h
+index a4de1ab..6cf2348 100644
+--- a/libil2cpp/metadata/GenericMethod.h
++++ b/libil2cpp/metadata/GenericMethod.h
+@@ -33,6 +33,7 @@ namespace metadata
+ 
+         static void ClearStatics();
+         static const Il2CppRGCTXData* InflateRGCTX(const MethodInfo* method, Il2CppException** exc);
++        static bool IsAnUnresolvedCallStubWasNotFound(Il2CppMethodPointer methodPointer);
+ 
+         static void AcquireMetadataLocks();
+         static void ReleaseMetadataLocks();
+diff --git a/libil2cpp/vm/Runtime.cpp b/libil2cpp/vm/Runtime.cpp
+index 75bc79c..d3bc3cb 100644
+--- a/libil2cpp/vm/Runtime.cpp
++++ b/libil2cpp/vm/Runtime.cpp
+@@ -76,6 +76,8 @@
+ #include "Baselib.h"
+ #include "Cpp/ReentrantLock.h"
+ 
++#include "zlua/lvm/LuaAppDomain.h"
++
+ Il2CppDefaults il2cpp_defaults;
+ bool g_il2cpp_is_fully_initialized = false;
+ static bool shutting_down = false;
+@@ -468,6 +470,7 @@ namespace vm
+         il2cpp::utils::DebugSymbolReader::LoadDebugSymbols();
+ #endif
+ 
++        zlua::LuaAppDomain::Initialize();
+         return true;
+     }
+ 

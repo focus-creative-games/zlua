@@ -229,6 +229,7 @@ namespace ZLua.Emit
         private static LuaCSFunction CompileDirect(MethodInfo method, bool isStatic, bool isByVal)
         {
             Func<IntPtr, int> core = InterpretedMethodInvoker.NeedsInterpreted(method)
+                || DefaultParameterUtil.HasOptionalDefaults(method)
                 ? InterpretedMethodInvoker.CompileMethod(method, isStatic, isByVal)
                 : BuildDirectCore(method, isStatic, isByVal);
             return Wrap(core);
@@ -540,14 +541,18 @@ namespace ZLua.Emit
             for (int i = 0; i < methods.Count; i++)
             {
                 MethodInfo method = methods[i];
-                int arity = InterpretedMethodInvoker.GetLuaArity(method);
-                if (!byArity.TryGetValue(arity, out List<MethodInfo> list))
+                int maxArity = InterpretedMethodInvoker.GetLuaArity(method);
+                int minArity = DefaultParameterUtil.GetMinLuaArity(method);
+                for (int arity = minArity; arity <= maxArity; arity++)
                 {
-                    list = new List<MethodInfo>();
-                    byArity[arity] = list;
-                }
+                    if (!byArity.TryGetValue(arity, out List<MethodInfo> list))
+                    {
+                        list = new List<MethodInfo>();
+                        byArity[arity] = list;
+                    }
 
-                list.Add(method);
+                    list.Add(method);
+                }
             }
 
             var cores = new Dictionary<int, Func<IntPtr, int>>();
@@ -558,6 +563,7 @@ namespace ZLua.Emit
                 if (group.Count == 1)
                 {
                     cores[kv.Key] = InterpretedMethodInvoker.NeedsInterpreted(first)
+                        || DefaultParameterUtil.HasOptionalDefaults(first)
                         ? InterpretedMethodInvoker.CompileMethod(first, isStatic, isByVal)
                         : BuildDirectCore(first, isStatic, isByVal);
                 }
@@ -626,11 +632,18 @@ namespace ZLua.Emit
 
             MethodInfo[] methodArray = methods.ToArray();
             int argStart = isStatic ? 1 : 2;
+            string typeName = TypeRegistry.GetLuaFullName(methods[0].DeclaringType);
             return L =>
             {
-                if (!LuaArgMatcher.TrySelectMethod(L, argStart, methodArray, out int selected))
+                LuaOverloadMatch match = LuaArgMatcher.SelectMethod(L, argStart, methodArray, out int selected);
+                if (match == LuaOverloadMatch.Ambiguous)
                 {
-                    LuaCallbackBoundary.Throw($"zlua: no matching overload of {name}");
+                    LuaCallbackBoundary.Throw($"zlua: ambiguous method found: {typeName}.{name}");
+                }
+
+                if (match != LuaOverloadMatch.BestMatch)
+                {
+                    LuaCallbackBoundary.Throw($"zlua: no matching overload of {typeName}.{name}");
                 }
 
                 return compiled[selected](L);

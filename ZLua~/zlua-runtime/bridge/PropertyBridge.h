@@ -15,7 +15,7 @@ struct PropertyAccessor
 
 class PropertyBridge
 {
-  public:
+public:
     static void Initialize();
     static PropertyAccessor ResolvePropertyAccessor(const PropertyInfo* property, bool isStatic);
 

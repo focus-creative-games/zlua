@@ -137,7 +137,7 @@ diff --git a/src/lvm.c b/patched/src/lvm.c
  
  
  
-@@ -120,9 +121,52 @@ void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
+@@ -120,9 +121,80 @@ void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
          return;
        }
        /* else will try the tag method */
@@ -162,8 +162,22 @@ diff --git a/src/lvm.c b/patched/src/lvm.c
 +            return;
 +          }
 +        }
-+        setnilvalue(val);
-+        return;
++        /* Reserved keys (__byval_instance_mt, __nameof, ...) stay nil when absent. */
++        if (ttisstring(key)) {
++          TString *ks = tsvalue(key);
++          const char *s = getstr(ks);
++          if (s[0] == '_' && s[1] == '_') {
++            setnilvalue(val);
++            return;
++          }
++        }
++        {
++          const TValue *tn = luaH_getstr(mt, luaS_newliteral(L, "__zlua_typename"));
++          const char *typeName = (tn != NULL && !ttisnil(tn) && ttisstring(tn))
++                                     ? getstr(tsvalue(tn)) : "?";
++          const char *memberName = ttisstring(key) ? getstr(tsvalue(key)) : "?";
++          luaG_runerror(L, "zlua: member not found: %s.%s", typeName, memberName);
++        }
 +      }
 +#endif
      }
@@ -182,15 +196,29 @@ diff --git a/src/lvm.c b/patched/src/lvm.c
 +            setobj2s(L, val, slotv);
 +          return;
 +        }
-+        setnilvalue(val);
-+        return;
++        /* Reserved keys (__byval_instance_mt, __nameof, ...) stay nil when absent. */
++        if (ttisstring(key)) {
++          TString *ks = tsvalue(key);
++          const char *s = getstr(ks);
++          if (s[0] == '_' && s[1] == '_') {
++            setnilvalue(val);
++            return;
++          }
++        }
++        {
++          const TValue *tn = luaH_getstr(mt, luaS_newliteral(L, "__zlua_typename"));
++          const char *typeName = (tn != NULL && !ttisnil(tn) && ttisstring(tn))
++                                     ? getstr(tsvalue(tn)) : "?";
++          const char *memberName = ttisstring(key) ? getstr(tsvalue(key)) : "?";
++          luaG_runerror(L, "zlua: member not found: %s.%s", typeName, memberName);
++        }
 +      }
 +    }
 +#endif
      if (ttisfunction(tm)) {
        callTM(L, tm, t, key, val, 1);
        return;
-@@ -137,6 +181,37 @@ void luaV_settable (lua_State *L, const TValue *t, TValue *key, StkId val) {
+@@ -137,6 +181,48 @@ void luaV_settable (lua_State *L, const TValue *t, TValue *key, StkId val) {
    int loop;
    for (loop = 0; loop < MAXTAGLOOP; loop++) {
      const TValue *tm;
@@ -220,8 +248,19 @@ diff --git a/src/lvm.c b/patched/src/lvm.c
 +            zlua_vm_call_setter(L, slotv, t, val);
 +            return;
 +          }
++          {
++            /* idx lookup only on failure: distinguish read-only vs missing member. */
++            Table *idx = hvalue(&mt->zlua_index);
++            const TValue *idxv = luaH_get(idx, key);
++            const TValue *tn = luaH_getstr(mt, luaS_newliteral(L, "__zlua_typename"));
++            const char *typeName = (tn != NULL && !ttisnil(tn) && ttisstring(tn))
++                                       ? getstr(tsvalue(tn)) : "?";
++            const char *memberName = ttisstring(key) ? getstr(tsvalue(key)) : "?";
++            if (!ttisnil(idxv))
++              luaG_runerror(L, "zlua: property is read-only: %s.%s", typeName, memberName);
++            luaG_runerror(L, "zlua: member not writable: %s.%s", typeName, memberName);
++          }
 +        }
-+        luaG_runerror(L, "zlua: member not found or read-only");
 +      }
 +    }
 +#endif

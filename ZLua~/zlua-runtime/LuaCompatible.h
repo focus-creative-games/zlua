@@ -148,6 +148,55 @@ inline const char* zlua_luaL_tolstring(lua_State* L, int idx, size_t* len)
 #define luaL_tolstring(L, i, len) zlua_luaL_tolstring((L), (i), (len))
 #endif
 
+/*
+ * Lua 5.2+ / LuaJIT: luaL_traceback.
+ * Official Lua 5.1 lacks it — polyfill via debug.traceback (openlibs provides debug).
+ * level is the same as luaL_traceback / luaL_where (1 = first Lua caller of the current C function).
+ */
+#if !ZLUA_USE_LUAJIT && (ZLUA_LUA_API_FAMILY < 502)
+#if !defined(luaL_traceback)
+inline void zlua_luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level)
+{
+    if (L != L1)
+    {
+        lua_pushstring(L, msg != nullptr ? msg : "");
+        return;
+    }
+
+    const int top = lua_gettop(L);
+    lua_getglobal(L, "debug");
+    if (lua_type(L, -1) != LUA_TTABLE)
+    {
+        lua_settop(L, top);
+        lua_pushstring(L, msg != nullptr ? msg : "");
+        return;
+    }
+
+    lua_getfield(L, -1, "traceback");
+    lua_remove(L, -2);
+    if (lua_type(L, -1) != LUA_TFUNCTION)
+    {
+        lua_settop(L, top);
+        lua_pushstring(L, msg != nullptr ? msg : "");
+        return;
+    }
+
+    if (msg != nullptr)
+        lua_pushstring(L, msg);
+    else
+        lua_pushnil(L);
+    /* lua_pcall(debug.traceback) inserts one frame; bump level to match native luaL_traceback. */
+    lua_pushinteger(L, level + 1);
+    if (lua_pcall(L, 2, 1, 0) != LUA_OK)
+    {
+        lua_settop(L, top);
+        lua_pushstring(L, msg != nullptr ? msg : "");
+    }
+}
+#define luaL_traceback(L, L1, msg, level) zlua_luaL_traceback((L), (L1), (msg), (level))
+#endif
+#endif
+
 namespace zlua
 {
 

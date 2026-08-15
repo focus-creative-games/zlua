@@ -64,7 +64,7 @@ namespace ZLua.Mt
                     Assembly assembly = ResolveAssembly(assemblyName);
                     if (assembly == null)
                     {
-                        return 0;
+                        LuaCallbackBoundary.Throw($"zlua: assembly not found: {assemblyName}");
                     }
 
                     LuaDll.lua_createtable(L, 0, 16);
@@ -111,13 +111,13 @@ namespace ZLua.Mt
                     Assembly assembly = ResolveAssembly(assemblyName);
                     if (assembly == null)
                     {
-                        return 0;
+                        LuaCallbackBoundary.Throw($"zlua: assembly not found: {assemblyName}");
                     }
 
                     Type type = FindTypeInAssembly(assembly, typeName);
                     if (type == null)
                     {
-                        return 0;
+                        LuaCallbackBoundary.Throw($"zlua: type not found: {typeName}");
                     }
 
                     TypeRegistry.PushInternedTypeTable(L, type);

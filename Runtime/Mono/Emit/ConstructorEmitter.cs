@@ -104,7 +104,9 @@ namespace ZLua.Emit
         {
             for (int i = 0; i < ctors.Count; i++)
             {
-                if (InterpretedMethodInvoker.GetLuaArity(ctors[i]) == arity)
+                int min = DefaultParameterUtil.GetMinLuaArity(ctors[i]);
+                int max = InterpretedMethodInvoker.GetLuaArity(ctors[i]);
+                if (arity >= min && arity <= max)
                 {
                     return true;
                 }
@@ -207,6 +209,7 @@ namespace ZLua.Emit
         private static LuaCSFunction CompileDirect(ConstructorInfo ctor, Type type)
         {
             Func<IntPtr, int> core = InterpretedMethodInvoker.NeedsInterpreted(ctor)
+                || DefaultParameterUtil.HasOptionalDefaults(ctor)
                 ? InterpretedMethodInvoker.CompileConstructor(ctor, type)
                 : BuildDirectCore(ctor, type);
             return Wrap(core);
@@ -271,14 +274,18 @@ namespace ZLua.Emit
             for (int i = 0; i < ctors.Count; i++)
             {
                 ConstructorInfo ctor = ctors[i];
-                int arity = InterpretedMethodInvoker.GetLuaArity(ctor);
-                if (!byArity.TryGetValue(arity, out List<ConstructorInfo> list))
+                int maxArity = InterpretedMethodInvoker.GetLuaArity(ctor);
+                int minArity = DefaultParameterUtil.GetMinLuaArity(ctor);
+                for (int arity = minArity; arity <= maxArity; arity++)
                 {
-                    list = new List<ConstructorInfo>();
-                    byArity[arity] = list;
-                }
+                    if (!byArity.TryGetValue(arity, out List<ConstructorInfo> list))
+                    {
+                        list = new List<ConstructorInfo>();
+                        byArity[arity] = list;
+                    }
 
-                list.Add(ctor);
+                    list.Add(ctor);
+                }
             }
 
             var cores = new Dictionary<int, Func<IntPtr, int>>();
@@ -288,6 +295,7 @@ namespace ZLua.Emit
                 {
                     ConstructorInfo only = kv.Value[0];
                     cores[kv.Key] = InterpretedMethodInvoker.NeedsInterpreted(only)
+                        || DefaultParameterUtil.HasOptionalDefaults(only)
                         ? InterpretedMethodInvoker.CompileConstructor(only, type)
                         : BuildDirectCore(only, type);
                 }
@@ -356,18 +364,26 @@ namespace ZLua.Emit
             {
                 ctorArray[i] = ctors[i];
                 cores[i] = InterpretedMethodInvoker.NeedsInterpreted(ctors[i])
+                    || DefaultParameterUtil.HasOptionalDefaults(ctors[i])
                     ? InterpretedMethodInvoker.CompileConstructor(ctors[i], type)
                     : BuildDirectCore(ctors[i], type);
             }
 
+            string typeName = TypeRegistry.GetLuaFullName(type);
             return L =>
             {
-                if (!LuaArgMatcher.TrySelect(L, argStart: 2, ctorArray, out int selected)
+                LuaOverloadMatch match = LuaArgMatcher.Select(L, argStart: 2, ctorArray, out int selected);
+                if (match == LuaOverloadMatch.Ambiguous)
+                {
+                    LuaCallbackBoundary.Throw($"zlua: ambiguous constructor found: {typeName}");
+                }
+
+                if (match != LuaOverloadMatch.BestMatch
                     || selected < 0
                     || selected >= cores.Length)
                 {
                     LuaCallbackBoundary.Throw(
-                        $"zlua: no matching constructor for {TypeRegistry.GetLuaFullName(type)}");
+                        $"zlua: no matching constructor for {typeName}");
                     return 0;
                 }
 

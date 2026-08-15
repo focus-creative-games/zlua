@@ -6,10 +6,10 @@
 
 namespace zlua
 {
-    class FieldBridge
-    {
-    public:
-        static void* ComputeStaticFieldAddress(const FieldInfo* field);
-        static int32_t ComputeInstanceFieldOffset(const FieldInfo* field);
-    };
-}
+class FieldBridge
+{
+public:
+    static void* ComputeStaticFieldAddress(const FieldInfo* field);
+    static int32_t ComputeInstanceFieldOffset(const FieldInfo* field);
+};
+} // namespace zlua

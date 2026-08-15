@@ -62,7 +62,6 @@ struct FieldMarshalCtx
 {
     // MetaTableKind kind;
     const MarshalMetaInfo* meta;
-    const FieldInfo* field;
 
     union
     {
@@ -97,6 +96,17 @@ typedef int (*FnLua2CsInvoker)(lua_State* L, void* target, int argStart, const M
 
 typedef void* (*FnResolveMethodThis)(lua_State*, int);
 
+/// Side data for methods with trailing C# default parameters. Absent methods keep MethodMarshalCtx.defaults == nullptr.
+/// Dense trailing region only: slots[i] corresponds to CLR param (firstDefaultParamIndex + i).
+struct MethodDefaultArgs
+{
+    int32_t minLuaArity;
+    uint8_t firstDefaultParamIndex;
+    uint8_t defaultParamCount; // parameters_count - firstDefaultParamIndex
+    void** defaultValueSlots;          // [defaultParamCount] valuetype native buffers
+    Il2CppObject** defaultObjectSlots; // [defaultParamCount]; nullptr if no reference defaults
+};
+
 struct MethodMarshalCtx
 {
     const MethodInfo* method;
@@ -104,15 +114,35 @@ struct MethodMarshalCtx
     FnLua2CsInvoker lua2CsInvoker;
     const MarshalMetaInfo** paramsMeta; // exclude this
     const MarshalMetaInfo* retMeta;
-    int32_t valueSize; // sizeof(void*) for refrence type, klass->instance - sizeof(Il2CppObject) for struct
-    int32_t totalParamsSize;
-    int32_t luaArity; // Σ paramsMeta[i]->stackSlots (extension: from param 1)
+    int32_t luaArity; // max Σ paramsMeta[i]->stackSlots (extension: from param 1)
+    const MethodDefaultArgs* defaults; // nullptr when method has no optional defaults
     bool byVal;
     /* Precomputed: true when method is effectively sealed (non-virtual, method final, klass sealed, or byVal). */
     bool sealed;
     /* C# extension method bound as instance (static-as-instance). Set once at Bind. */
     bool isExtension;
 };
+
+static inline int32_t GetMinLuaArity(const MethodMarshalCtx* ctx)
+{
+    return ctx->defaults != nullptr ? ctx->defaults->minLuaArity : ctx->luaArity;
+}
+
+static inline bool HasOptionalDefaults(const MethodMarshalCtx* ctx)
+{
+    return ctx->defaults != nullptr;
+}
+
+static inline bool ParamHasCachedDefault(const MethodMarshalCtx* ctx, uint8_t paramIndex)
+{
+    return ctx->defaults != nullptr && paramIndex >= ctx->defaults->firstDefaultParamIndex;
+}
+
+static inline uint8_t DefaultSlotIndex(const MethodDefaultArgs* defaults, uint8_t paramIndex)
+{
+    IL2CPP_ASSERT(defaults != nullptr && paramIndex >= defaults->firstDefaultParamIndex);
+    return static_cast<uint8_t>(paramIndex - defaults->firstDefaultParamIndex);
+}
 
 struct MethodGroup
 {

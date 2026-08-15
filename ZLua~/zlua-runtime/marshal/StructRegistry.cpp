@@ -1,16 +1,17 @@
 #include "StructRegistry.h"
 #include "StructMarshal.h"
 
-#include "../utils/Collection.h"
 #include "../utils/MetadataUtil.h"
 
 #include "gc/GarbageCollector.h"
 #include "vm/Class.h"
 
+#include <unordered_set>
+
 namespace zlua
 {
 
-static HashSet<ByValUserDataHeader*> s_byValUserDataSet;
+static std::unordered_set<ByValUserDataHeader*> s_byValUserDataSet;
 
 void StructRegistry::Initialize(lua_State* L)
 {
@@ -23,7 +24,7 @@ void StructRegistry::Shutdown(lua_State* L)
     (void)L;
     for (auto it = s_byValUserDataSet.begin(); it != s_byValUserDataSet.end(); ++it)
     {
-        ByValUserDataHeader* header = it->key;
+        ByValUserDataHeader* header = *it;
         if (header == nullptr)
             continue;
         il2cpp::gc::GarbageCollector::UnregisterRoot(reinterpret_cast<char*>(header->Payload()));

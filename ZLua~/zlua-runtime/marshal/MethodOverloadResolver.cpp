@@ -6,9 +6,12 @@
 #include "../mt/MetaBinding.h"
 #include "../mt/InstanceTarget.h"
 #include "../utils/LuaException.h"
+#include "../utils/MetadataUtil.h"
 
 #include "vm/Class.h"
 #include "il2cpp-class-internals.h"
+
+#include <climits>
 
 namespace zlua
 {
@@ -162,6 +165,14 @@ static ConversionKind GetConversionKind(lua_State* L, int index, const MarshalMe
         {
             return ConversionKind::NullLiteral;
         }
+        else if (luaType == LUA_TFUNCTION)
+        {
+            // Lua function → any Delegate (Action / Action<T> both applicable → Ambiguous).
+            if (MetadataUtil::IsDelegateClass(paramMeta->typeKlass))
+            {
+                return ConversionKind::ImplicitReference;
+            }
+        }
         // Spec §3.3: primitive / string → object (ImplicitBoxing). Not to arbitrary class/interface.
         if (paramMeta->typeKlass == il2cpp_defaults.object_class)
         {
@@ -308,29 +319,50 @@ static ConversionKind GetCompositeConversionKind(lua_State* L, int32_t slot, con
     return GetConversionKind(L, slot, paramMeta);
 }
 
-static ConversionScore ComputeMethodConversionScore(lua_State* L, int32_t argStart, int32_t argCount, const MethodMarshalCtx* method)
+static ConversionScore ComputeMethodConversionScore(lua_State* L, int32_t argStart, int32_t argCount, const MethodMarshalCtx* method, int* outOptionalUsed)
 {
-    (void)argCount;
     ConversionScore bestConversionScore = {ConversionKind::Identity, 0};
+    int optionalUsed = 0;
     int32_t slot = argStart;
+    int32_t slotsLeft = argCount;
     const uint8_t paramStart = method->isExtension ? 1 : 0;
     for (uint8_t j = paramStart; j < method->method->parameters_count; j++)
     {
         const MarshalMetaInfo* paramMeta = method->paramsMeta[j];
-        ConversionKind conversionKind = GetCompositeConversionKind(L, slot, paramMeta);
-        if (conversionKind == ConversionKind::NotConvertible)
+        const int need = paramMeta->stackSlots > 0 ? paramMeta->stackSlots : 1;
+        if (slotsLeft >= need)
         {
-            bestConversionScore.kind = ConversionKind::NotConvertible;
-            bestConversionScore.score = 0;
-            return bestConversionScore;
+            ConversionKind conversionKind = GetCompositeConversionKind(L, slot, paramMeta);
+            if (conversionKind == ConversionKind::NotConvertible)
+            {
+                bestConversionScore.kind = ConversionKind::NotConvertible;
+                bestConversionScore.score = 0;
+                *outOptionalUsed = 0;
+                return bestConversionScore;
+            }
+            if (conversionKind > bestConversionScore.kind)
+            {
+                bestConversionScore.kind = conversionKind;
+            }
+            bestConversionScore.score += static_cast<int>(conversionKind);
+            slot += need;
+            slotsLeft -= need;
+            continue;
         }
-        if (conversionKind > bestConversionScore.kind)
+
+        if (ParamHasCachedDefault(method, j))
         {
-            bestConversionScore.kind = conversionKind;
+            optionalUsed++;
+            continue;
         }
-        bestConversionScore.score += static_cast<int>(conversionKind);
-        slot += paramMeta->stackSlots > 0 ? paramMeta->stackSlots : 1;
+
+        bestConversionScore.kind = ConversionKind::NotConvertible;
+        bestConversionScore.score = 0;
+        *outOptionalUsed = 0;
+        return bestConversionScore;
     }
+
+    *outOptionalUsed = optionalUsed;
     return bestConversionScore;
 }
 
@@ -339,38 +371,39 @@ static MethodOverloadResolutionResult FindBestMatchMethod(lua_State* L, const Me
 {
     const MethodMarshalCtx* bestMethod = nullptr;
     ConversionScore bestConversionScore = {ConversionKind::NotConvertible, 0};
+    int bestOptionalUsed = INT_MAX;
     int bestConversionCount = 0;
 
     for (size_t i = 0; i < methodCount; i++)
     {
         const MethodMarshalCtx* method = methods[i];
-        if (method->luaArity != argCount)
+        if (argCount < GetMinLuaArity(method) || argCount > method->luaArity)
         {
             continue;
         }
-        ConversionScore conversionScore = ComputeMethodConversionScore(L, argStart, argCount, method);
+        int optionalUsed = 0;
+        ConversionScore conversionScore = ComputeMethodConversionScore(L, argStart, argCount, method, &optionalUsed);
         if (conversionScore.kind == ConversionKind::NotConvertible)
         {
             continue;
         }
-        if (conversionScore.kind < bestConversionScore.kind)
+
+        const bool betterKind = conversionScore.kind < bestConversionScore.kind;
+        const bool betterScore = conversionScore.kind == bestConversionScore.kind && conversionScore.score < bestConversionScore.score;
+        const bool betterOptional = conversionScore.kind == bestConversionScore.kind && conversionScore.score == bestConversionScore.score
+                                    && optionalUsed < bestOptionalUsed;
+
+        if (bestMethod == nullptr || betterKind || betterScore || betterOptional)
         {
             bestConversionScore = conversionScore;
+            bestOptionalUsed = optionalUsed;
             bestMethod = method;
             bestConversionCount = 1;
         }
-        else if (conversionScore.kind == bestConversionScore.kind)
+        else if (conversionScore.kind == bestConversionScore.kind && conversionScore.score == bestConversionScore.score
+                 && optionalUsed == bestOptionalUsed)
         {
-            if (conversionScore.score < bestConversionScore.score)
-            {
-                bestConversionScore = conversionScore;
-                bestMethod = method;
-                bestConversionCount = 1;
-            }
-            else if (conversionScore.score == bestConversionScore.score)
-            {
-                bestConversionCount++;
-            }
+            bestConversionCount++;
         }
     }
     if (bestMethod != nullptr)
@@ -400,7 +433,7 @@ MethodOverloadResolutionResult MethodOverloadResolver::Resolve(lua_State* L, con
     if (groups->largeArgCountMethodCount == 1)
     {
         const MethodMarshalCtx* method = groups->largeArgCountMethods[0];
-        if (method->luaArity != argCount)
+        if (argCount < GetMinLuaArity(method) || argCount > method->luaArity)
         {
             return MethodOverloadResolutionResult{MethodOverloadResolutionKind::None, nullptr};
         }

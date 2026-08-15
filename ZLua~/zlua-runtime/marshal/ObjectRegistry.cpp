@@ -7,12 +7,13 @@
 #include "../LuaConsts.h"
 #include "../mt/MetaTableCache.h"
 #include "../mt/TypeRegistry.h"
-#include "../utils/Collection.h"
 #include "../utils/LuaException.h"
 
 #include "gc/GarbageCollector.h"
 #include "utils/Memory.h"
 #include "vm/Class.h"
+
+#include <unordered_map>
 
 namespace zlua
 {
@@ -45,7 +46,7 @@ struct ObjectViewKeyEqual
 };
 
 /* C++ map: (obj, view) -> int key in a single weak-values Lua table (no nested tables). */
-static HashMap<ObjectViewKey, int, ObjectViewKeyHash, ObjectViewKeyEqual> s_objectViewRefs;
+static std::unordered_map<ObjectViewKey, int, ObjectViewKeyHash, ObjectViewKeyEqual> s_objectViewRefs;
 
 class ObjectSlotRegistry
 {
@@ -155,7 +156,7 @@ void ObjectRegistry::Initialize(lua_State* L)
     /* Slots must be empty (Shutdown clears them); never leave a previous state's GC root. */
     s_objectSlots.Clear();
 
-    /* Single weak-values table; C++ HashMap holds integer keys into this table. */
+    /* Single weak-values table; C++ unordered_map holds integer keys into this table. */
     lua_newtable(L);
     lua_newtable(L);
     lua_pushstring(L, LuaConsts::WeakModeValue);

@@ -2,6 +2,8 @@
 
 #include "../ZLuaCommon.h"
 
+#include <string>
+
 namespace zlua
 {
 class LuaUtil
@@ -13,6 +15,8 @@ class LuaUtil
     static int PCallClosureRefAt(lua_State* L, int closureRef, const int* argStackIndices, int argCount, int resultCount);
 
     static void PCall(lua_State* L, int nargs, int nresults, int errfunc);
+    /// Convert the Lua error object at index to a non-empty message string.
+    static std::string FormatErrorObject(lua_State* L, int index);
 
     static int ToLuaRef(lua_State* L)
     {

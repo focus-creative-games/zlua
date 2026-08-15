@@ -8,17 +8,17 @@
 #include "../LuaConsts.h"
 #include "../utils/MetadataUtil.h"
 #include "../utils/LuaException.h"
-#include "../utils/Collection.h"
 #include "../utils/LuaUtil.h"
-
 
 #include "vm/Class.h"
 #include "vm/Runtime.h"
 #include "metadata/GenericMetadata.h"
 
+#include <unordered_map>
+
 namespace zlua
 {
-static HashMap<Il2CppClass*, int> s_internedTypeTableRefs;
+static std::unordered_map<Il2CppClass*, int> s_internedTypeTableRefs;
 
 static void PushTypeTable(lua_State* L, Il2CppClass* klass)
 {
@@ -103,7 +103,7 @@ static void PushTypeTable(lua_State* L, Il2CppClass* klass)
 
 void TypeRegistry::PushInternedTypeTable(lua_State* L, Il2CppClass* klass)
 {
-    HashMap<Il2CppClass*, int>::iterator it = s_internedTypeTableRefs.find(klass);
+    auto it = s_internedTypeTableRefs.find(klass);
     if (it != s_internedTypeTableRefs.end())
     {
         lua_rawgeti(L, LUA_REGISTRYINDEX, it->second);

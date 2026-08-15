@@ -1,8 +1,7 @@
 #pragma once
-#include <deque>
-#include <vector>
+#include <unordered_map>
 
-#include "../utils/Collection.h"
+#include "../utils/CsStringHash.h"
 #include "../bridge/PropertyBridge.h"
 #include "../bridge/FieldBridge.h"
 #include "../marshal/TypedMarshal.h"
@@ -23,31 +22,19 @@ enum class MetaKind : uint8_t
     // Event,
 };
 
+/// Compact tagged entry for NameMetaMap. Field/Property payloads live on LuaMetadataAlloc.
 struct MetaInfo
 {
     MetaKind kind;
-
     union
     {
-        struct
-        {
-            int closureRef;
-        } method;
-
-        FieldMarshalCtx field;
-        PropertyMarshalCtx property;
-
-        // struct
-        // {
-        //     const EventInfo* event;
-        //     int getterRef;
-        //     int setterRef;
-        //     int fireRef;
-        // } event;
+        int closureRef; // Method
+        FieldMarshalCtx* field;
+        PropertyMarshalCtx* property;
     };
 };
 
-typedef AppendOnlyStringHashMap<MetaInfo> NameMetaMap;
+typedef std::unordered_map<const char*, MetaInfo, CsStringHash, CsStringEqual> NameMetaMap;
 
 #if ZLUA_FAST_METATABLE
 /* Resolve this / field address strategy for tagged getters/setters (OPTIMIZATION.md). */
@@ -59,6 +46,7 @@ enum class FastInstanceKind : uint8_t
     ReferenceByObj,
 };
 
+/// Slim ctx for lightuserdata upvalues. Field/Property point at the same heap ctx as NameMetaMap.
 struct FastMemberCtx
 {
     FastInstanceKind kind;
@@ -74,10 +62,6 @@ struct TypeBinding
     mutable NameMetaMap staticMap;
     const MethodMarshalCtx* uniqueCtorMethod;
     const MethodGroups* ctorGroups;
-#if ZLUA_FAST_METATABLE
-    /* deque: pointers passed to Lua lightuserdata stay valid across push_back. */
-    std::deque<FastMemberCtx> fastMemberStorage;
-#endif
 };
 
 enum class ClosureKind

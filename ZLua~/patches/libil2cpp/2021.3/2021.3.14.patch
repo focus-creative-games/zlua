@@ -1,0 +1,21 @@
+diff --git a/libil2cpp/vm/Runtime.cpp b/libil2cpp/vm/Runtime.cpp
+index f059787..4e36558 100644
+--- a/libil2cpp/vm/Runtime.cpp
++++ b/libil2cpp/vm/Runtime.cpp
+@@ -61,6 +61,8 @@
+ #include "Baselib.h"
+ #include "Cpp/ReentrantLock.h"
+ 
++#include "zlua/lvm/LuaAppDomain.h"
++
+ #if IL2CPP_MONO_DEBUGGER
+ extern "C" {
+ #include <mono/metadata/profiler-private.h>
+@@ -395,6 +397,7 @@ namespace vm
+         vm::MetadataCache::ExecuteEagerStaticClassConstructors();
+         vm::MetadataCache::ExecuteModuleInitializers();
+ 
++        zlua::LuaAppDomain::Initialize();
+         return true;
+     }
+ 

@@ -3,14 +3,16 @@
 #include "LuaEnv.h"
 #include "LuaLoader.h"
 
-#include "../utils/Collection.h"
 #include "../utils/LuaException.h"
 #include "../utils/LuaStackGuard.h"
 
+#include <string>
+#include <unordered_map>
+
 namespace zlua
 {
-static HashMap<std::string, int> s_ModuleRefs;
-static HashMap<std::string, int> s_ModuleFunctionRefs;
+static std::unordered_map<std::string, int> s_ModuleRefs;
+static std::unordered_map<std::string, int> s_ModuleFunctionRefs;
 
 void LuaGlobalRefs::Clear()
 {

@@ -41,7 +41,7 @@ namespace zlua
 
         Il2CppClass* klass = MetadataUtil::ResolveType(assembly, typeName);
         if (klass == nullptr)
-            return 0;
+            return luaL_error(L, "zlua: type not found: %s", typeName);
 
         TypeRegistry::PushInternedTypeTable(L, klass);
         lua_pushvalue(L, -1);
@@ -60,7 +60,7 @@ namespace zlua
 
         const Il2CppAssembly* assembly = MetadataUtil::ResolveAssembly(assemblyName);
         if (assembly == nullptr)
-            return 0;
+            return luaL_error(L, "zlua: assembly not found: %s", assemblyName);
 
         // create a new table for the assembly
         lua_newtable(L);

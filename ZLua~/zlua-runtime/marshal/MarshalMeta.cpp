@@ -30,9 +30,8 @@
 #include "vm/GlobalMetadata.h"
 #include "vm/Reflection.h"
 
-#include "../utils/Collection.h"
-
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace zlua
@@ -375,7 +374,7 @@ static void FillLuaMarshalAsDataFromAttribute(Il2CppObject* attr, LuaMarshalAsDa
     Il2CppObject* enumValue = il2cpp::vm::Runtime::Invoke(marshalTypeProperty->get, attr, nullptr, &exc);
     IL2CPP_ASSERT(exc == nullptr && enumValue != nullptr && enumValue->klass->enumtype);
 
-    const int32_t rawValue = *reinterpret_cast<int32_t*>(il2cpp::vm::Object::Unbox(enumValue));
+    const int32_t rawValue = *reinterpret_cast<int32_t*>(ZLuaObjectUnbox(enumValue));
     IL2CPP_ASSERT(rawValue >= 0 && rawValue <= static_cast<int32_t>(LuaMarshalType::Table));
     data.marshalType = static_cast<LuaMarshalType>(rawValue);
 
@@ -430,7 +429,7 @@ static Il2CppClass* GetLuaMarshalAsAttributeOwnerClass(Il2CppClass* klass)
 }
 
 // Cache parse results for types that declare [LuaMarshalAs] (keyed by attribute owner klass).
-static AppendOnlyRawPointerHashMap<Il2CppClass, LuaMarshalAsData> s_typeLuaMarshalAsCache;
+static std::unordered_map<const Il2CppClass*, LuaMarshalAsData> s_typeLuaMarshalAsCache;
 
 static bool TryParseLuaMarshalAsDataFromType(Il2CppClass* klass, LuaMarshalAsData& data)
 {
@@ -888,14 +887,37 @@ static MarshalMetaInfo* CreateByRefOpaqueMeta(const Il2CppType* type)
     return meta;
 }
 
+/// Shared Default (no Members / no non-Default LuaMarshalAs) metas keyed by Il2CppType*.
+/// Hot path keeps const MarshalMetaInfo*; no runtime lookup.
+static std::unordered_map<const Il2CppType*, MarshalMetaInfo*> s_defaultMarshalMetaByType;
+
+static MarshalMetaInfo* GetOrCreateDefaultMarshalMeta(const Il2CppType* type)
+{
+    auto it = s_defaultMarshalMetaByType.find(type);
+    if (it != s_defaultMarshalMetaByType.end())
+        return it->second;
+
+    MarshalMetaInfo* meta;
+    if (type->byref)
+    {
+        meta = CreateByRefOpaqueMeta(type);
+    }
+    else
+    {
+        Il2CppClass* klass = il2cpp::vm::Class::FromIl2CppType(type);
+        il2cpp::vm::Class::Init(klass);
+        meta = AllocMarshalMeta(type);
+        ApplySizeAndPassByValueAndKlass(meta, type, klass);
+        ApplyDefaultMarshalWriters(meta, type, klass);
+    }
+
+    s_defaultMarshalMetaByType.insert({type, meta});
+    return meta;
+}
+
 static MarshalMetaInfo* CreateDefaultOnlyMemberMeta(const Il2CppType* type)
 {
-    Il2CppClass* klass = il2cpp::vm::Class::FromIl2CppType(type);
-    il2cpp::vm::Class::Init(klass);
-    MarshalMetaInfo* meta = AllocMarshalMeta(type);
-    ApplySizeAndPassByValueAndKlass(meta, type, klass);
-    ApplyDefaultMarshalWriters(meta, type, klass);
-    return meta;
+    return GetOrCreateDefaultMarshalMeta(type);
 }
 
 static bool IsPublicInstanceField(const FieldInfo* field)
@@ -969,14 +991,13 @@ static void ResolveCompositeMembers(
                 LuaException::ThrowFormat("zlua: invalid optional Members entry on %s.%s", memberOwner->namespaze, memberOwner->name);
         }
 
+        CompositeMember& entry = members[i];
+        entry.optional = optional;
+
         FieldInfo* field = il2cpp::vm::Class::GetFieldFromName(memberOwner, clrName.c_str());
         const PropertyInfo* property = nullptr;
         if (field == nullptr)
             property = il2cpp::vm::Class::GetPropertyFromName(memberOwner, clrName.c_str());
-
-        CompositeMember& entry = members[i];
-        entry.optional = optional;
-        entry.clrName = zlua_strdup(clrName.c_str());
 
         if (field != nullptr)
         {
@@ -986,6 +1007,7 @@ static void ResolveCompositeMembers(
             entry.isField = true;
             entry.field = field;
             entry.fieldOffset = FieldBridge::ComputeInstanceFieldOffset(field);
+            entry.clrName = field->name;
             entry.memberMeta = CreateDefaultOnlyMemberMeta(field->type);
         }
         else if (property != nullptr)
@@ -996,6 +1018,7 @@ static void ResolveCompositeMembers(
             entry.isField = false;
             entry.property = property;
             entry.fieldOffset = 0;
+            entry.clrName = property->name;
             const Il2CppType* propType = property->get != nullptr ? property->get->return_type : property->set->parameters[0];
             entry.memberMeta = CreateDefaultOnlyMemberMeta(propType);
         }
@@ -1023,6 +1046,7 @@ static bool TryApplyDeclaredMarshalWriters(MarshalMetaInfo* meta, const Il2CppTy
         // Meaningful override: string Default is Lua string; UserData forces ByObj userdata.
         if (type->type == IL2CPP_TYPE_STRING)
         {
+            meta->marshalType = LuaMarshalType::UserData;
             meta->lua2csWriter = Lua2CSMarshalObject;
             meta->cs2luaWriter = CS2LuaMarshalObject;
             return true;
@@ -1034,6 +1058,7 @@ static bool TryApplyDeclaredMarshalWriters(MarshalMetaInfo* meta, const Il2CppTy
     {
         if (MetadataUtil::IsByteArrayClass(klass))
         {
+            meta->marshalType = LuaMarshalType::Bytes;
             meta->lua2csWriter = Lua2CSMarshalByteArrayAsBytes;
             meta->cs2luaWriter = CS2LuaMarshalByteArrayAsBytes;
             return true;
@@ -1042,6 +1067,7 @@ static bool TryApplyDeclaredMarshalWriters(MarshalMetaInfo* meta, const Il2CppTy
     }
     case LuaMarshalType::OpaqueValue:
     {
+        meta->marshalType = LuaMarshalType::OpaqueValue;
         meta->lua2csWriter = Lua2CSMarshalOpaque;
         meta->cs2luaWriter = CS2LuaMarshalOpaque;
         return true;
@@ -1114,7 +1140,7 @@ static MarshalMetaInfo* CreateForValueType(const Il2CppType* type, Il2CppClass**
     if (type->byref)
     {
         *outKlass = nullptr;
-        return CreateByRefOpaqueMeta(type);
+        return nullptr; // caller uses GetOrCreateDefaultMarshalMeta for byref
     }
 
     Il2CppClass* klass = il2cpp::vm::Class::FromIl2CppType(type);
@@ -1131,32 +1157,49 @@ MarshalMetaInfo* MarshalMeta::Create(lua_State* L, const MethodInfo* method, int
 {
     (void)L;
     const Il2CppType* type = argIndex >= 0 ? method->parameters[argIndex] : method->return_type;
-    Il2CppClass* klass = nullptr;
-    MarshalMetaInfo* meta = CreateForValueType(type, &klass);
-    if (klass == nullptr)
-        return meta;
+    if (type->byref)
+        return GetOrCreateDefaultMarshalMeta(type);
 
+    Il2CppClass* klass = nullptr;
     LuaMarshalAsData marshalAs;
     uint32_t token = MetadataUtil::GetParameterToken(method, argIndex);
+    // Resolve klass early for marshal-as; CreateForValueType also inits klass.
+    klass = il2cpp::vm::Class::FromIl2CppType(type);
+    il2cpp::vm::Class::Init(klass);
+
     LuaMarshalAsResolveKind resolveKind = TryResolveLuaMarshalAsDataForMethodSlot(
         method->klass->image, token, method, argIndex, klass, marshalAs);
+    if (resolveKind == LuaMarshalAsResolveKind::None)
+        return GetOrCreateDefaultMarshalMeta(type);
+
+    MarshalMetaInfo* meta = CreateForValueType(type, &klass);
+    IL2CPP_ASSERT(meta != nullptr);
     const bool requireWrite = argIndex >= 0;
     const bool requireRead = argIndex < 0;
     ApplyResolvedOrDefaultWriters(meta, type, klass, resolveKind, marshalAs, requireWrite, requireRead, /*allowUnpacked*/ true);
+    // Declared/XML slot: always exclusive. Never intern — Bytes/UserData/Opaque used to keep
+    // marshalType==Default while changing writers; sharing would poison Default for that type.
     return meta;
 }
 
 MarshalMetaInfo* MarshalMeta::Create(lua_State* L, const FieldInfo* field)
 {
     (void)L;
-    Il2CppClass* klass = nullptr;
-    MarshalMetaInfo* meta = CreateForValueType(field->type, &klass);
-    if (klass == nullptr)
-        return meta;
+    const Il2CppType* type = field->type;
+    if (type->byref)
+        return GetOrCreateDefaultMarshalMeta(type);
+
+    Il2CppClass* klass = il2cpp::vm::Class::FromIl2CppType(type);
+    il2cpp::vm::Class::Init(klass);
 
     LuaMarshalAsData marshalAs;
     LuaMarshalAsResolveKind resolveKind = TryResolveLuaMarshalAsDataForField(field, klass, marshalAs);
-    ApplyResolvedOrDefaultWriters(meta, field->type, klass, resolveKind, marshalAs, /*requireWrite*/ true, /*requireRead*/ true, /*allowUnpacked*/ false);
+    if (resolveKind == LuaMarshalAsResolveKind::None)
+        return GetOrCreateDefaultMarshalMeta(type);
+
+    MarshalMetaInfo* meta = CreateForValueType(type, &klass);
+    IL2CPP_ASSERT(meta != nullptr);
+    ApplyResolvedOrDefaultWriters(meta, type, klass, resolveKind, marshalAs, /*requireWrite*/ true, /*requireRead*/ true, /*allowUnpacked*/ false);
     return meta;
 }
 
@@ -1164,13 +1207,19 @@ MarshalMetaInfo* MarshalMeta::Create(lua_State* L, const PropertyInfo* property)
 {
     (void)L;
     const Il2CppType* type = property->get != nullptr ? property->get->return_type : property->set->parameters[0];
-    Il2CppClass* klass = nullptr;
-    MarshalMetaInfo* meta = CreateForValueType(type, &klass);
-    if (klass == nullptr)
-        return meta;
+    if (type->byref)
+        return GetOrCreateDefaultMarshalMeta(type);
+
+    Il2CppClass* klass = il2cpp::vm::Class::FromIl2CppType(type);
+    il2cpp::vm::Class::Init(klass);
 
     LuaMarshalAsData marshalAs;
     LuaMarshalAsResolveKind resolveKind = TryResolveLuaMarshalAsDataForProperty(property, klass, marshalAs);
+    if (resolveKind == LuaMarshalAsResolveKind::None)
+        return GetOrCreateDefaultMarshalMeta(type);
+
+    MarshalMetaInfo* meta = CreateForValueType(type, &klass);
+    IL2CPP_ASSERT(meta != nullptr);
     ApplyResolvedOrDefaultWriters(meta, type, klass, resolveKind, marshalAs, /*requireWrite*/ true, /*requireRead*/ true, /*allowUnpacked*/ false);
     return meta;
 }

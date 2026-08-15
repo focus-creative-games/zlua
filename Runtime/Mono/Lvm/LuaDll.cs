@@ -286,6 +286,56 @@ namespace ZLua
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern void luaL_where(IntPtr luaState, int level);
 
+#if ZLUA_LUA_5_1
+        /// <summary>
+        /// Official Lua 5.1 has no <c>luaL_traceback</c>; approximate via <c>debug.traceback</c>.
+        /// </summary>
+        public static void luaL_traceback(IntPtr L, IntPtr L1, string msg, int level)
+        {
+            if (L != L1)
+            {
+                lua_pushstring(L, msg ?? string.Empty);
+                return;
+            }
+
+            int top = lua_gettop(L);
+            if (lua_getglobal(L, "debug") != LuaDataType.Table)
+            {
+                lua_settop(L, top);
+                lua_pushstring(L, msg ?? string.Empty);
+                return;
+            }
+
+            if (lua_getfield(L, -1, "traceback") != LuaDataType.Function)
+            {
+                lua_settop(L, top);
+                lua_pushstring(L, msg ?? string.Empty);
+                return;
+            }
+
+            lua_remove(L, -2);
+            if (msg != null)
+            {
+                lua_pushstring(L, msg);
+            }
+            else
+            {
+                lua_pushnil(L);
+            }
+
+            // lua_pcall(debug.traceback) inserts one frame; bump to match native luaL_traceback.
+            lua_pushinteger(L, level + 1);
+            if (lua_pcall(L, 2, 1, 0) != 0)
+            {
+                lua_settop(L, top);
+                lua_pushstring(L, msg ?? string.Empty);
+            }
+        }
+#else
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern void luaL_traceback(IntPtr L, IntPtr L1, string msg, int level);
+#endif
+
 #if ZLUA_MONO_LUA51_API
         // 5.1 / LuaJIT export lua_tointeger / lua_tonumber (no *_x).
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
@@ -349,6 +399,51 @@ namespace ZLua
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern IntPtr lua_tolstring(IntPtr luaState, int index, out UIntPtr strLen);
+
+#if ZLUA_LUA_5_1
+        /// <summary>Official Lua 5.1 has no <c>luaL_tolstring</c>.</summary>
+        public static IntPtr luaL_tolstring(IntPtr luaState, int index, out UIntPtr len)
+        {
+            if (lua_type(luaState, index) == LuaDataType.String || lua_type(luaState, index) == LuaDataType.Number)
+            {
+                lua_pushvalue(luaState, index);
+                return lua_tolstring(luaState, -1, out len);
+            }
+
+            if (lua_type(luaState, index) == LuaDataType.Boolean)
+            {
+                lua_pushstring(luaState, lua_toboolean(luaState, index) != 0 ? "true" : "false");
+                return lua_tolstring(luaState, -1, out len);
+            }
+
+            if (lua_type(luaState, index) == LuaDataType.Nil)
+            {
+                lua_pushstring(luaState, "nil");
+                return lua_tolstring(luaState, -1, out len);
+            }
+
+            // Best-effort: tostring via existing value or type name.
+            string fallback = tostring_type_fallback(lua_type(luaState, index));
+            lua_pushstring(luaState, fallback);
+            return lua_tolstring(luaState, -1, out len);
+        }
+
+        private static string tostring_type_fallback(LuaDataType type)
+        {
+            switch (type)
+            {
+                case LuaDataType.Table: return "table";
+                case LuaDataType.Function: return "function";
+                case LuaDataType.UserData:
+                case LuaDataType.LightUserData: return "userdata";
+                case LuaDataType.Thread: return "thread";
+                default: return "unknown";
+            }
+        }
+#else
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern IntPtr luaL_tolstring(IntPtr luaState, int index, out UIntPtr len);
+#endif
 
         [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
         public static extern IntPtr lua_pushlstring(IntPtr luaState, IntPtr data, UIntPtr length);

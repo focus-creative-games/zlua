@@ -6,68 +6,90 @@ using ZLua.Utils;
 
 namespace ZLua.Emit
 {
+    internal enum LuaOverloadMatch
+    {
+        None = 0,
+        BestMatch = 1,
+        Ambiguous = 2,
+    }
+
     /// <summary>
     /// Non-throwing Lua→C# argument shape checks for same-arity overload selection.
     /// </summary>
     internal static class LuaArgMatcher
     {
-        internal static bool TrySelect(
+        internal static LuaOverloadMatch Select(
             IntPtr L,
             int argStart,
             ConstructorInfo[] ctors,
             out int selectedIndex)
         {
-            selectedIndex = -1;
-            int bestScore = -1;
-
-            for (int i = 0; i < ctors.Length; i++)
-            {
-                if (!TryScore(L, argStart, ctors[i], out int score))
-                {
-                    continue;
-                }
-
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    selectedIndex = i;
-                }
-            }
-
-            return selectedIndex >= 0;
+            return SelectCore(L, argStart, ctors, out selectedIndex);
         }
 
-        internal static bool TrySelectMethod(
+        internal static LuaOverloadMatch SelectMethod(
             IntPtr L,
             int argStart,
             MethodInfo[] methods,
             out int selectedIndex)
         {
+            return SelectCore(L, argStart, methods, out selectedIndex);
+        }
+
+        private static LuaOverloadMatch SelectCore(
+            IntPtr L,
+            int argStart,
+            MethodBase[] candidates,
+            out int selectedIndex)
+        {
             selectedIndex = -1;
             int bestScore = -1;
+            int bestOptionalUsed = int.MaxValue;
+            int bestCount = 0;
 
-            for (int i = 0; i < methods.Length; i++)
+            for (int i = 0; i < candidates.Length; i++)
             {
-                if (!TryScore(L, argStart, methods[i], out int score))
+                if (!TryScore(L, argStart, candidates[i], out int score, out int optionalUsed))
                 {
                     continue;
                 }
 
-                if (score > bestScore)
+                if (score > bestScore
+                    || (score == bestScore && optionalUsed < bestOptionalUsed))
                 {
                     bestScore = score;
+                    bestOptionalUsed = optionalUsed;
                     selectedIndex = i;
+                    bestCount = 1;
+                }
+                else if (score == bestScore && optionalUsed == bestOptionalUsed)
+                {
+                    bestCount++;
                 }
             }
 
-            return selectedIndex >= 0;
+            if (bestCount == 0)
+            {
+                selectedIndex = -1;
+                return LuaOverloadMatch.None;
+            }
+
+            if (bestCount > 1)
+            {
+                selectedIndex = -1;
+                return LuaOverloadMatch.Ambiguous;
+            }
+
+            return LuaOverloadMatch.BestMatch;
         }
 
-        private static bool TryScore(IntPtr L, int argStart, MethodBase method, out int score)
+        private static bool TryScore(IntPtr L, int argStart, MethodBase method, out int score, out int optionalUsed)
         {
             score = 0;
+            optionalUsed = 0;
             ParameterInfo[] parameters = method.GetParameters();
             int paramStart = ExtensionMethodUtil.IsExtensionMethod(method) ? 1 : 0;
+            int top = LuaDll.lua_gettop(L);
             int slot = argStart;
             for (int i = paramStart; i < parameters.Length; i++)
             {
@@ -75,14 +97,29 @@ namespace ZLua.Emit
                     parameters[i],
                     method,
                     LuaMarshalDirection.LuaToCSharp);
-                if (!TryMatchParameter(L, slot, parameters[i].ParameterType, binding, out int part))
+                int need = binding.StackSlots > 0 ? binding.StackSlots : 1;
+                int available = top >= slot ? top - slot + 1 : 0;
+                if (available >= need)
                 {
-                    score = -1;
-                    return false;
+                    if (!TryMatchParameter(L, slot, parameters[i].ParameterType, binding, out int part))
+                    {
+                        score = -1;
+                        return false;
+                    }
+
+                    score += part;
+                    slot += need;
+                    continue;
                 }
 
-                score += part;
-                slot += binding.StackSlots;
+                if (DefaultParameterUtil.TryGetDefaultValue(parameters[i], out _))
+                {
+                    optionalUsed++;
+                    continue;
+                }
+
+                score = -1;
+                return false;
             }
 
             return true;
@@ -203,9 +240,19 @@ namespace ZLua.Emit
                 return true;
             }
 
-            if (declaredType.IsEnum
-                || (declaredType.IsPrimitive && declaredType != typeof(IntPtr) && declaredType != typeof(UIntPtr))
-                || declaredType == typeof(decimal))
+            if (declaredType.IsEnum)
+            {
+                if (luaType != LuaDataType.Number)
+                {
+                    return false;
+                }
+
+                // ImplicitEnum — below Identity / ImplicitNumeric for int32-range integers.
+                score = 12;
+                return true;
+            }
+
+            if (declaredType == typeof(decimal))
             {
                 if (luaType != LuaDataType.Number)
                 {
@@ -213,6 +260,34 @@ namespace ZLua.Emit
                 }
 
                 score = 10;
+                return true;
+            }
+
+            if (declaredType.IsPrimitive && declaredType != typeof(IntPtr) && declaredType != typeof(UIntPtr))
+            {
+                if (luaType != LuaDataType.Number)
+                {
+                    return false;
+                }
+
+                // Align with Il2Cpp ConversionKind (METHOD_OVERLOAD §3.6):
+                // I1–U4 + lua integer → Identity; I8/U8 → ImplicitExtendedInteger (worse).
+                // R4/R8 + lua integer → ImplicitNumeric; otherwise Identity.
+                bool isLuaInteger = LuaDll.lua_isinteger(L, index) != 0;
+                if (declaredType == typeof(long) || declaredType == typeof(ulong))
+                {
+                    score = 8; // ImplicitExtendedInteger
+                    return true;
+                }
+
+                if (declaredType == typeof(float) || declaredType == typeof(double))
+                {
+                    score = isLuaInteger ? 14 : 20; // ImplicitNumeric vs Identity
+                    return true;
+                }
+
+                // bool already handled; remaining integral primitives (incl. char/byte/…).
+                score = isLuaInteger ? 20 : 14; // Identity vs ImplicitNumeric
                 return true;
             }
 

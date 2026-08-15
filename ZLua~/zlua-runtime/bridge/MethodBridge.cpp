@@ -1,18 +1,22 @@
 #include "MethodBridge.h"
 
 #include "../generated/MethodBridgeStub.h"
-#include "../utils/Collection.h"
+#include "../utils/CsStringHash.h"
 #include "../utils/MetadataUtil.h"
 
-#include "metadata/GenericMethod.h"
+#include <cstring>
+#include <unordered_map>
+
 #include "vm/Reflection.h"
 #include "vm/MetadataCache.h"
 #include "vm/GlobalMetadata.h"
+#include "vm/Method.h"
+#include "vm/Object.h"
 
 namespace zlua
 {
 
-static AppendOnlyStringHashMap<FnLua2CsInvoker> s_name2Invokers;
+static std::unordered_map<const char*, FnLua2CsInvoker, CsStringHash, CsStringEqual> s_name2Invokers;
 
 void MethodBridge::Initialize()
 {
@@ -27,19 +31,50 @@ void MethodBridge::Initialize()
     }
 }
 
+static void FillDefaultParam(const MethodMarshalCtx* ctx, uint8_t paramIndex, void** outParam, void* allocaStorage, void** passByValueTemp)
+{
+    IL2CPP_ASSERT(ParamHasCachedDefault(ctx, paramIndex));
+    const MethodDefaultArgs* defaults = ctx->defaults;
+    const uint8_t slot = DefaultSlotIndex(defaults, paramIndex);
+    const MarshalMetaInfo* paramMeta = ctx->paramsMeta[paramIndex];
+    if (paramMeta->passByValue)
+    {
+        IL2CPP_ASSERT(defaults->defaultObjectSlots != nullptr);
+        *passByValueTemp = defaults->defaultObjectSlots[slot];
+        *outParam = *passByValueTemp;
+        return;
+    }
+
+    IL2CPP_ASSERT(defaults->defaultValueSlots != nullptr && defaults->defaultValueSlots[slot] != nullptr);
+    std::memcpy(allocaStorage, defaults->defaultValueSlots[slot], static_cast<size_t>(paramMeta->size));
+    *outParam = allocaStorage;
+}
+
 int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStart, const MethodInfo* method, const MethodMarshalCtx* ctx)
 {
     void** params = (void**)alloca(method->parameters_count * sizeof(void*));
+    const int top = lua_gettop(L);
     int slot = argStart;
+
     for (uint8_t i = 0; i < method->parameters_count; i++)
     {
         const MarshalMetaInfo* paramMeta = ctx->paramsMeta[i];
         IL2CPP_ASSERT(!paramMeta->passByValue || paramMeta->size == sizeof(void*));
         void* tempStorage = nullptr;
         void* storage = paramMeta->passByValue ? &tempStorage : alloca(paramMeta->size);
-        paramMeta->lua2csWriter(L, slot, storage, paramMeta);
-        params[i] = paramMeta->passByValue ? tempStorage : storage;
-        slot += paramMeta->stackSlots > 0 ? paramMeta->stackSlots : 1;
+
+        const int need = paramMeta->stackSlots > 0 ? paramMeta->stackSlots : 1;
+        const int available = top >= slot ? top - slot + 1 : 0;
+        if (available >= need)
+        {
+            paramMeta->lua2csWriter(L, slot, storage, paramMeta);
+            params[i] = paramMeta->passByValue ? tempStorage : storage;
+            slot += need;
+        }
+        else
+        {
+            FillDefaultParam(ctx, i, &params[i], storage, &tempStorage);
+        }
     }
 
     if (ctx->retMeta != nullptr)
@@ -83,8 +118,7 @@ static bool DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(const MethodInfo* 
 
 FnLua2CsInvoker MethodBridge::ResolveMethodInvoker(const MethodInfo* method)
 {
-    if (method->methodPointer == nullptr || il2cpp::metadata::GenericMethod::IsAnUnresolvedCallStubWasNotFound(method->methodPointer) ||
-        DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(method))
+    if (method->methodPointer == nullptr || ZLuaIsAnUnresolvedCallStubWasNotFound(method->methodPointer) || DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(method))
     {
         return DefaultInvokeLuaMethod;
     }

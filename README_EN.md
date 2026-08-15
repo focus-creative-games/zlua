@@ -19,7 +19,7 @@ Compared with xLua / toLua / SLua, ZLua's core strengths are:
 | **More efficient** | Il2Cpp measured: about **98%** of test cases faster than xLua; Lua→C# average about **2.62×**; common field / property / call cases about **4×** |
 | **Less GC** | Reference types and structs (including structs with reference fields) are **0 GC** by default; plus OpaqueValue and other strategies |
 | **Tiny bridging** | Efficient **C++** stubs with same-signature merging; generated bridge size is about an order of magnitude smaller than xLua-style wrappers translated to C++; supports **0 bridge functions**, and even without generating any bridges, interop is still faster than other solutions' wrapper paths in most cases |
-| **Wider version support** | Lua **5.1–5.5** and **LuaJIT 2.x**; Unity **2021.3 / 2022.3 / 6000.0 / 6000.3**; **Tuanjie Engine** (all releases) |
+| **Wider version support** | Lua **5.1–5.5** and **LuaJIT 2.x**; Unity **2021.3 / 2022.3 / 6000.0 / 6000.3 / 6000.5**; **Tuanjie Engine** (all releases) |
 | **More active maintenance** | Full-time professional team; faster bug response and feature iteration |
 
 For performance details, see [Performance Comparison](https://doc.zlua.cn/docs/compare/PERFORMANCE).
@@ -42,7 +42,7 @@ For performance details, see [Performance Comparison](https://doc.zlua.cn/docs/c
 |----------|-----------|
 | **Lua (PUC-Rio)** | **5.1.x**, **5.2.x**, **5.3.x**, **5.4.x**, **5.5.x** |
 | **LuaJIT** | **2.x** (Editor Mono; Il2Cpp shipping **iOS / Android only**) |
-| **Unity** | **2021.3.x**, **2022.3.x**, **6000.0.x**, **6000.3.x** |
+| **Unity** | **2021.3.x**, **2022.3.x**, **6000.0.x**, **6000.3.x**, **6000.5.x** |
 | **Tuanjie Engine** | All **x.y.z** releases |
 | **Runtime** | Editor **Mono** + Player **Il2Cpp** |
 | **Platforms (PUC-Rio)** | Platforms supported by Il2Cpp (including WebGL, WeChat Mini Games, HarmonyOS / automotive, etc.) |

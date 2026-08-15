@@ -171,13 +171,13 @@ namespace ZLua.Lvm
                 int execResult = LuaDll.lua_pcall(L, 1, 1, 0);
                 if (execResult != 0)
                 {
-                    string error = LuaDllExtension.tostring(L, -1);
-                    throw new Exception($"Error requiring lua module '{moduleName}': {error}");
+                    string error = LuaDllExtension.FormatErrorObject(L, -1);
+                    throw new LuaScriptException($"Error requiring lua module '{moduleName}': {error}");
                 }
 
                 if (LuaDll.lua_type(L, -1) != LuaDataType.Table)
                 {
-                    throw new Exception($"Lua module '{moduleName}' must return a table.");
+                    throw new LuaScriptException($"Lua module '{moduleName}' must return a table.");
                 }
 
                 LuaDll.lua_pushvalue(L, -1);
@@ -210,7 +210,7 @@ namespace ZLua.Lvm
                 LuaDataType fieldType = LuaDll.lua_getfield(L, -1, methodName);
                 if (fieldType != LuaDataType.Function)
                 {
-                    throw new Exception($"Lua function '{moduleName}.{methodName}' not found.");
+                    throw new LuaScriptException($"Lua function '{moduleName}.{methodName}' not found.");
                 }
 
                 int functionRef = LuaDll.luaL_ref(L, LuaConsts.LuaRegistryIndex);
@@ -232,9 +232,9 @@ namespace ZLua.Lvm
                 int result = LuaDllExtension.dostring(L, chunk);
                 if (result != 0)
                 {
-                    string error = LuaDllExtension.tostring(L, -1);
+                    string error = LuaDllExtension.FormatErrorObject(L, -1);
                     LuaDll.lua_settop(L, oldTop);
-                    throw new Exception(error);
+                    throw new LuaScriptException(error);
                 }
 
                 LuaDll.lua_settop(L, oldTop);

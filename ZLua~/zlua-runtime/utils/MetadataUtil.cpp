@@ -1,5 +1,4 @@
 #include "MetadataUtil.h"
-#include "Collection.h"
 
 #include "../LuaConsts.h"
 
@@ -66,7 +65,7 @@ static void ResolveLuaMethodClass()
 
 static void ResolveByteArrayClass()
 {
-    s_byteArrayClass = il2cpp::metadata::ArrayMetadata::GetBoundedArrayClass(il2cpp_defaults.byte_class, 1, false);
+    s_byteArrayClass = il2cpp::vm::Class::GetBoundedArrayClass(il2cpp_defaults.byte_class, 1, false);
     IL2CPP_ASSERT(s_byteArrayClass != nullptr);
 }
 
@@ -560,7 +559,7 @@ Il2CppClass* MetadataUtil::ResolveTypeFromName(const char* typeFullName)
     if (!parser.Parse())
         return nullptr;
 
-    const Il2CppType* type = il2cpp::vm::Class::il2cpp_type_from_type_info(info, il2cpp::vm::kTypeSearchFlagNone);
+    const Il2CppType* type = ZLuaIl2CppTypeFromTypeInfo(info, il2cpp::vm::kTypeSearchFlagNone);
     if (type == nullptr)
         return nullptr;
 
@@ -761,7 +760,7 @@ static bool TryReadLuaMarshalTypeFromAttributeObject(Il2CppObject* attr, LuaMars
     if (exc != nullptr || enumValue == nullptr || !enumValue->klass->enumtype)
         return false;
 
-    const int32_t rawValue = *reinterpret_cast<int32_t*>(il2cpp::vm::Object::Unbox(enumValue));
+    const int32_t rawValue = *reinterpret_cast<int32_t*>(ZLuaObjectUnbox(enumValue));
     if (rawValue < 0 || rawValue > static_cast<int32_t>(LuaMarshalType::Table))
         return false;
 

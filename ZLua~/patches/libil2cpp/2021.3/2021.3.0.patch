@@ -1,38 +1,91 @@
-diff --git a/libil2cpp/metadata/GenericMethod.cpp b/libil2cpp/metadata/GenericMethod.cpp
-index c75537f..29d494c 100644
---- a/libil2cpp/metadata/GenericMethod.cpp
-+++ b/libil2cpp/metadata/GenericMethod.cpp
-@@ -95,6 +95,13 @@ namespace metadata
+diff --git a/libil2cpp/metadata/GenericMetadata.cpp b/libil2cpp/metadata/GenericMetadata.cpp
+index 73203a2..7d6c07b 100644
+--- a/libil2cpp/metadata/GenericMetadata.cpp
++++ b/libil2cpp/metadata/GenericMetadata.cpp
+@@ -310,6 +310,59 @@ namespace metadata
+         }
+     }
  
-     static SharedGenericMethodInfo ambiguousMethodInfo;
- 
-+    bool GenericMethod::IsAnUnresolvedCallStubWasNotFound(Il2CppMethodPointer methodPointer)
++    bool GenericMetadata::ContainsGenericParameters(const Il2CppClass* klass)
 +    {
-+        // Unity 2021.3 has no AnUnresolvedCallStubWasNotFound stubs; keep API for zlua MethodBridge.
-+        (void)methodPointer;
++        if (!klass->generic_class)
++            return false;
++
++        return ContainsGenericParameters(klass->generic_class->context.class_inst);
++    }
++
++    bool GenericMetadata::ContainsGenericParameters(const MethodInfo* method)
++    {
++        if (!method->is_inflated)
++            return false;
++
++        if (ContainsGenericParameters(method->genericMethod->context.method_inst))
++            return true;
++        if (method->genericMethod->context.class_inst == NULL)
++            return false;
++        return ContainsGenericParameters(method->genericMethod->context.class_inst);
++    }
++
++    bool GenericMetadata::ContainsGenericParameters(const Il2CppGenericInst* inst)
++    {
++        for (uint32_t i = 0; i < inst->type_argc; i++)
++        {
++            if (ContainsGenericParameters(inst->type_argv[i]))
++                return true;
++        }
++
 +        return false;
 +    }
 +
-     bool GenericMethod::IsGenericAmbiguousMethodInfo(const MethodInfo* method)
++    bool GenericMetadata::ContainsGenericParameters(const Il2CppType* type)
++    {
++        switch (type->type)
++        {
++            case IL2CPP_TYPE_VAR:
++            case IL2CPP_TYPE_MVAR:
++                return true;
++            case IL2CPP_TYPE_GENERICINST:
++                return ContainsGenericParameters(type->data.generic_class->context.class_inst);
++            case IL2CPP_TYPE_ARRAY:
++                return ContainsGenericParameters(type->data.array->etype);
++            case IL2CPP_TYPE_SZARRAY:
++            case IL2CPP_TYPE_PTR:
++            case IL2CPP_TYPE_BYREF:
++                return ContainsGenericParameters(type->data.type);
++            default:
++                return false;
++        }
++
++        return false;
++    }
++
+     void GenericMetadata::WalkAllGenericClasses(GenericClassWalkCallback callback, void* context)
      {
-         return method == &ambiguousMethodInfo;
-diff --git a/libil2cpp/metadata/GenericMethod.h b/libil2cpp/metadata/GenericMethod.h
-index 394d3de..bf03c3a 100644
---- a/libil2cpp/metadata/GenericMethod.h
-+++ b/libil2cpp/metadata/GenericMethod.h
-@@ -32,6 +32,7 @@ namespace metadata
+         FastAutoLock lock(&s_GenericClassMutex);
+diff --git a/libil2cpp/metadata/GenericMetadata.h b/libil2cpp/metadata/GenericMetadata.h
+index 04c4ce7..4ea60cf 100644
+--- a/libil2cpp/metadata/GenericMetadata.h
++++ b/libil2cpp/metadata/GenericMetadata.h
+@@ -31,8 +31,12 @@ namespace metadata
+         static const Il2CppGenericInst* GetInflatedGenericIntance(const Il2CppGenericInst* inst, const Il2CppGenericContext* context, bool inflatMethodVars);
  
-         static void ClearStatics();
-         static const Il2CppRGCTXData* InflateRGCTX(const MethodInfo* method);
-+        static bool IsAnUnresolvedCallStubWasNotFound(Il2CppMethodPointer methodPointer);
+         static Il2CppRGCTXData* InflateRGCTXLocked(const Il2CppImage* image, uint32_t token, const Il2CppGenericContext* context, const il2cpp::os::FastAutoLock& lock);
+-        static void RegisterGenericClasses(Il2CppGenericClass* const* genericClasses, int32_t genericClassesCount);
+-
++        static void RegisterGenericClasses(Il2CppGenericClass* const* genericClasses, int32_t genericClassesCount);
++        static bool ContainsGenericParameters(const Il2CppClass* klass);
++        static bool ContainsGenericParameters(const MethodInfo* method);
++        static bool ContainsGenericParameters(const Il2CppGenericInst* inst);
++        static bool ContainsGenericParameters(const Il2CppType* type);
++
+         static const Il2CppType* InflateIfNeeded(const Il2CppType* type, const Il2CppGenericContext* context, bool inflateMethodVars);
  
-     private:
-         static const MethodInfo* GetMethod(const Il2CppGenericMethod* gmethod, bool copyMethodPtr);
+         typedef void(*GenericClassWalkCallback)(Il2CppClass* type, void* context);
 diff --git a/libil2cpp/vm/Runtime.cpp b/libil2cpp/vm/Runtime.cpp
-index cdab243..2158618 100644
+index ef7eef1..7c36aa0 100644
 --- a/libil2cpp/vm/Runtime.cpp
 +++ b/libil2cpp/vm/Runtime.cpp
-@@ -62,6 +62,8 @@
+@@ -61,6 +61,8 @@
  #include "Baselib.h"
  #include "Cpp/ReentrantLock.h"
  
@@ -41,10 +94,11 @@ index cdab243..2158618 100644
  #if IL2CPP_MONO_DEBUGGER
  extern "C" {
  #include <mono/metadata/profiler-private.h>
-@@ -401,6 +403,7 @@ namespace vm
+@@ -395,6 +397,7 @@ namespace vm
          vm::MetadataCache::ExecuteEagerStaticClassConstructors();
          vm::MetadataCache::ExecuteModuleInitializers();
  
 +        zlua::LuaAppDomain::Initialize();
          return true;
      }
+ 

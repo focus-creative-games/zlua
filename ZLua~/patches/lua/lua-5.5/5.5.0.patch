@@ -108,7 +108,7 @@ index c70e2b8..b183d93 100644
  
  
  /*
-@@ -292,6 +293,35 @@ lu_byte luaV_finishget (lua_State *L, const TValue *t, TValue *key,
+@@ -292,6 +293,49 @@ lu_byte luaV_finishget (lua_State *L, const TValue *t, TValue *key,
                                        StkId val, lu_byte tag) {
    int loop;  /* counter to avoid infinite loops */
    const TValue *tm;  /* metamethod */
@@ -136,15 +136,29 @@ index c70e2b8..b183d93 100644
 +        if (!tagisempty(extra_tag))
 +          return extra_tag;
 +      }
-+      setnilvalue(s2v(val));
-+      return LUA_VNIL;
++      /* Reserved keys (__byval_instance_mt, __fullname, ...) stay nil when absent. */
++      if (ttisstring(key)) {
++        TString *ks = tsvalue(key);
++        const char *s = getstr(ks);
++        if (tsslen(ks) >= 2 && s[0] == '_' && s[1] == '_') {
++          setnilvalue(s2v(val));
++          return LUA_VNIL;
++        }
++      }
++      {
++        const TValue *tn = luaH_Hgetshortstr(mt, luaS_newliteral(L, "__zlua_typename"));
++        const char *typeName = (tn != NULL && !isempty(tn) && ttisstring(tn))
++                                   ? getstr(tsvalue(tn)) : "?";
++        const char *memberName = ttisstring(key) ? getstr(tsvalue(key)) : "?";
++        luaG_runerror(L, "zlua: member not found: %s.%s", typeName, memberName);
++      }
 +    }
 +  }
 +#endif
    for (loop = 0; loop < MAXTAGLOOP; loop++) {
      if (tag == LUA_VNOTABLE) {  /* 't' is not a table? */
        lua_assert(!ttistable(t));
-@@ -334,6 +364,25 @@ lu_byte luaV_finishget (lua_State *L, const TValue *t, TValue *key,
+@@ -334,6 +375,37 @@ lu_byte luaV_finishget (lua_State *L, const TValue *t, TValue *key,
  void luaV_finishset (lua_State *L, const TValue *t, TValue *key,
                        TValue *val, int hres) {
    int loop;  /* counter to avoid infinite loops */
@@ -163,7 +177,19 @@ index c70e2b8..b183d93 100644
 +        zlua_vm_call_setter(L, &slotv, t, val);
 +        return;
 +      }
-+      luaG_runerror(L, "zlua: member not found or read-only");
++      {
++        /* idx lookup only on failure: distinguish read-only vs missing member. */
++        Table *idx = hvalue(&mt->zlua_index);
++        TValue idxv;
++        lu_byte idx_tag = luaH_get(idx, key, &idxv);
++        const TValue *tn = luaH_Hgetshortstr(mt, luaS_newliteral(L, "__zlua_typename"));
++        const char *typeName = (tn != NULL && !isempty(tn) && ttisstring(tn))
++                                   ? getstr(tsvalue(tn)) : "?";
++        const char *memberName = ttisstring(key) ? getstr(tsvalue(key)) : "?";
++        if (!tagisempty(idx_tag))
++          luaG_runerror(L, "zlua: property is read-only: %s.%s", typeName, memberName);
++        luaG_runerror(L, "zlua: member not writable: %s.%s", typeName, memberName);
++      }
 +    }
 +  }
 +#endif

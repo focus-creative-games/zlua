@@ -73,9 +73,20 @@ namespace ZLua.DelegateImpl
             nameof(LuaMethod.PushErrorHandlerToStack),
             BindingFlags.NonPublic | BindingFlags.Instance);
 
-        private static readonly MethodInfo ToStringMethod = typeof(LuaDllExtension).GetMethod(
-            nameof(LuaDllExtension.tostring),
+        private static readonly MethodInfo FormatErrorObjectMethod = typeof(LuaDllExtension).GetMethod(
+            nameof(LuaDllExtension.FormatErrorObject),
             new[] { typeof(IntPtr), typeof(int) });
+
+        private static readonly MethodInfo PendingErrorSet = typeof(NestedLuaCallPendingError).GetMethod(
+            nameof(NestedLuaCallPendingError.Set),
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        private static readonly PropertyInfo IsNestedManagedPcall = typeof(LuaPrintBuffer).GetProperty(
+            nameof(LuaPrintBuffer.IsNestedManagedPcall),
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        private static readonly ConstructorInfo LuaScriptExceptionCtor =
+            typeof(LuaScriptException).GetConstructor(new[] { typeof(string) });
 
         private static readonly PropertyInfo LuaStateProperty = typeof(LuaMethod).GetProperty(nameof(LuaMethod.LuaState));
         private static readonly PropertyInfo RefIndexProperty = typeof(LuaMethod).GetProperty(nameof(LuaMethod.RefIndex));
@@ -127,14 +138,6 @@ namespace ZLua.DelegateImpl
 
         private static readonly MethodInfo EnterStandaloneOpaque = typeof(StructOpaqueScope).GetMethod(
             nameof(StructOpaqueScope.EnterStandaloneCSharpToLua),
-            BindingFlags.NonPublic | BindingFlags.Static);
-
-        private static readonly MethodInfo PendingErrorSet = typeof(NestedLuaCallPendingError).GetMethod(
-            nameof(NestedLuaCallPendingError.Set),
-            BindingFlags.NonPublic | BindingFlags.Static);
-
-        private static readonly PropertyInfo IsNestedManagedPcall = typeof(LuaPrintBuffer).GetProperty(
-            nameof(LuaPrintBuffer.IsNestedManagedPcall),
             BindingFlags.NonPublic | BindingFlags.Static);
 
         private static Func<LuaMethod, Delegate> CompileFactory(MethodInfo invokeMethod, Type delegateType)
@@ -239,14 +242,11 @@ namespace ZLua.DelegateImpl
                     Expression.Add(oldTopVar, Expression.Constant(1)))));
 
             // Nested pcall: stash pending error (Unity Mono SIGSEGV if throw during outer lua_pcall).
-            Expression errorMessage = Expression.Call(ToStringMethod, luaStateVar, Expression.Constant(-1));
+            Expression errorMessage = Expression.Call(FormatErrorObjectMethod, luaStateVar, Expression.Constant(-1));
             Expression onPcallFail = Expression.IfThenElse(
                 Expression.Property(null, IsNestedManagedPcall),
                 Expression.Call(PendingErrorSet, errorMessage),
-                Expression.Throw(
-                    Expression.New(
-                        typeof(Exception).GetConstructor(new[] { typeof(string) }),
-                        errorMessage)));
+                Expression.Throw(Expression.New(LuaScriptExceptionCtor, errorMessage)));
 
             invokeStatements.Add(Expression.IfThen(
                 Expression.NotEqual(pcallResultVar, Expression.Constant(0)),

@@ -48,30 +48,26 @@ namespace ZLua.Utils
         public static void EnqueueFromLuaPrint(IntPtr luaState)
         {
             int count = LuaDll.lua_gettop(luaState);
-            StringBuilder sb = new StringBuilder("[ZLua] ");
-
-            LuaDll.luaL_where(luaState, 1);
-            string where = LuaDllExtension.tostring(luaState, -1);
-            LuaDll.lua_pop(luaState, 1);
-            if (!string.IsNullOrEmpty(where))
-            {
-                sb.Append(where.Trim());
-                sb.Append(' ');
-            }
+            StringBuilder msg = new StringBuilder();
 
             for (int i = 1; i <= count; i++)
             {
                 if (i > 1)
                 {
-                    sb.Append('\t');
+                    msg.Append('\t');
                 }
 
-                sb.Append(LuaDllExtension.tostring(luaState, i) ?? "null");
+                msg.Append(LuaDllExtension.tostring(luaState, i) ?? "null");
             }
+
+            // level 1 = first Lua caller of print (same as previous luaL_where).
+            LuaDll.luaL_traceback(luaState, luaState, msg.ToString(), 1);
+            string traceback = LuaDllExtension.tostring(luaState, -1) ?? msg.ToString();
+            LuaDll.lua_pop(luaState, 1);
 
             lock (Sync)
             {
-                PendingLines.Add(sb.ToString());
+                PendingLines.Add("[ZLua] " + traceback);
             }
         }
 
@@ -91,7 +87,7 @@ namespace ZLua.Utils
 
             for (int i = 0; i < lines.Length; i++)
             {
-                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "{0}", lines[i]);
+                Debug.Log(lines[i]);
             }
         }
     }

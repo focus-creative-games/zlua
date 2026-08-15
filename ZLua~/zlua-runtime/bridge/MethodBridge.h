@@ -8,7 +8,7 @@ namespace zlua
 {
 class MethodBridge
 {
-  public:
+public:
     static void Initialize();
     static int DefaultInvokeLuaMethod(lua_State* L, void* target, int argStart, const MethodInfo* method, const MethodMarshalCtx* ctx);
     static FnLua2CsInvoker ResolveMethodInvoker(const MethodInfo* method);
@@ -19,9 +19,12 @@ class MethodBridge
         // Callers (e.g. valuetype ctors) may push temporaries after the Lua args.
         const int top = lua_gettop(L);
         const int available = top >= argStart ? (top - argStart + 1) : 0;
-        if (available < ctx->luaArity)
+        const int32_t minArity = GetMinLuaArity(ctx);
+        if (available < minArity)
         {
-            LuaException::ThrowFormat("zlua: argument mismatch: expected %d argument(s), got %d", ctx->luaArity, available);
+            if (minArity == ctx->luaArity)
+                LuaException::ThrowFormat("zlua: argument mismatch: expected %d argument(s), got %d", minArity, available);
+            LuaException::ThrowFormat("zlua: argument mismatch: expected %d..%d argument(s), got %d", minArity, ctx->luaArity, available);
         }
         const MethodInfo* method = MetadataUtil::ResolveInvokeMethod(ctx->method, target, ctx->sealed);
         return ctx->lua2CsInvoker(L, target, argStart, method, ctx);

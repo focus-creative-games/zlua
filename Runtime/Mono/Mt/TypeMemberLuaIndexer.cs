@@ -13,7 +13,7 @@ namespace ZLua.Mt
         private const string BootstrapChunk = @"
 local rawget = rawget
 
-local function bind_indexer(methodTable, fieldGetterTable, fieldSetterTable, extrasTable, isStatic)
+local function bind_indexer(methodTable, fieldGetterTable, fieldSetterTable, extrasTable, isStatic, typeFullName)
     if type(methodTable) ~= 'table' then
         error('bind_indexer: methodTable must be table, got ' .. type(methodTable))
     end
@@ -25,6 +25,13 @@ local function bind_indexer(methodTable, fieldGetterTable, fieldSetterTable, ext
     end
     if extrasTable ~= nil and type(extrasTable) ~= 'table' then
         error('bind_indexer: extrasTable must be table or nil, got ' .. type(extrasTable))
+    end
+    if type(typeFullName) ~= 'string' or typeFullName == '' then
+        error('bind_indexer: typeFullName must be non-empty string')
+    end
+
+    local function qualified(key)
+        return typeFullName .. '.' .. tostring(key)
     end
 
     local newindexPrefix = isStatic
@@ -46,7 +53,10 @@ local function bind_indexer(methodTable, fieldGetterTable, fieldSetterTable, ext
                 return extra
             end
         end
-        return nil
+        if rawget(fieldSetterTable, key) ~= nil then
+            error('zlua: property has no getter: ' .. qualified(key))
+        end
+        error('zlua: member not found: ' .. qualified(key))
     end
 
     local function newindex(obj, key, value)
@@ -56,9 +66,9 @@ local function bind_indexer(methodTable, fieldGetterTable, fieldSetterTable, ext
             return
         end
         if rawget(fieldGetterTable, key) ~= nil then
-            error('zlua: property is read-only: ' .. tostring(key))
+            error('zlua: property is read-only: ' .. qualified(key))
         end
-        error(newindexPrefix .. tostring(key))
+        error(newindexPrefix .. qualified(key))
     end
 
     return index, newindex
@@ -106,6 +116,7 @@ return bind_indexer
 
         internal static void BindInstanceMetatable(
             IntPtr luaState,
+            Type type,
             int metatableIndex,
             int methodTableIndex,
             int fieldGetterTableIndex,
@@ -113,6 +124,7 @@ return bind_indexer
         {
             BindMetatable(
                 luaState,
+                type,
                 metatableIndex,
                 methodTableIndex,
                 fieldGetterTableIndex,
@@ -123,6 +135,7 @@ return bind_indexer
 
         internal static void BindStaticMetatable(
             IntPtr luaState,
+            Type type,
             int staticMetatableIndex,
             int methodTableIndex,
             int fieldGetterTableIndex,
@@ -130,6 +143,7 @@ return bind_indexer
         {
             BindMetatable(
                 luaState,
+                type,
                 staticMetatableIndex,
                 methodTableIndex,
                 fieldGetterTableIndex,
@@ -140,6 +154,7 @@ return bind_indexer
 
         private static void BindMetatable(
             IntPtr luaState,
+            Type type,
             int metatableIndex,
             int methodTableIndex,
             int fieldGetterTableIndex,
@@ -176,8 +191,9 @@ return bind_indexer
             }
 
             LuaDll.lua_pushboolean(luaState, isStatic ? 1 : 0);
+            LuaDll.lua_pushstring(luaState, TypeRegistry.GetLuaFullName(type));
 
-            if (LuaDll.lua_pcall(luaState, 5, 2, 0) != 0)
+            if (LuaDll.lua_pcall(luaState, 6, 2, 0) != 0)
             {
                 string error = LuaDllExtension.tostring(luaState, -1) ?? "unknown Lua error";
                 LuaDll.lua_pop(luaState, 1);

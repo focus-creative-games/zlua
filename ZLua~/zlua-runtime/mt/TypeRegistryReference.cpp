@@ -5,7 +5,7 @@
 
 #include "../LuaConsts.h"
 #include "../marshal/ObjectMarshal.h"
-#include "../marshal/MethodOverloadResolver.h"  
+#include "../marshal/MethodOverloadResolver.h"
 #include "../bridge/MethodBridge.h"
 #include "../utils/LuaStackGuard.h"
 #include "../utils/LuaException.h"
@@ -30,9 +30,12 @@ int CreateReferenceTypeInstance(lua_State* L)
     if (binding->uniqueCtorMethod != nullptr)
     {
         const MethodMarshalCtx* ctx = binding->uniqueCtorMethod;
-        if (argCount != ctx->luaArity)
+        const int32_t minArity = GetMinLuaArity(ctx);
+        if (argCount < minArity || argCount > ctx->luaArity)
         {
-            LuaException::ThrowFormat("zlua: argument mismatch: constructor expects %d argument(s), but %d were given", ctx->luaArity, argCount);
+            if (minArity == ctx->luaArity)
+                LuaException::ThrowFormat("zlua: argument mismatch: constructor expects %d argument(s), but %d were given", ctx->luaArity, argCount);
+            LuaException::ThrowFormat("zlua: argument mismatch: constructor expects %d..%d argument(s), but %d were given", minArity, ctx->luaArity, argCount);
         }
         targetMethodCtx = ctx;
     }
@@ -42,20 +45,22 @@ int CreateReferenceTypeInstance(lua_State* L)
         MethodOverloadResolutionResult result = MethodOverloadResolver::Resolve(L, groups, argStartIdx, argCount);
         if (result.kind == MethodOverloadResolutionKind::Ambiguous)
         {
-            LuaException::ThrowFormat("zlua: ambiguous constructor found for type: %s.%s", klass->namespaze, klass->name);
+            LuaException::ThrowFormat("zlua: ambiguous constructor found: %s.%s", klass->namespaze, klass->name);
         }
         targetMethodCtx = result.method;
     }
 
-    
     if (targetMethodCtx == nullptr)
     {
         LuaException::ThrowFormat("zlua: no constructor found for type: %s", klass->name);
     }
+    // Construct first, then push the instance. Pushing before InvokeLua2Cs leaves a
+    // temporary after the Lua args; with optional defaults DefaultInvoke would treat
+    // that temporary as a real argument (e.g. Ctor(3) → expected number at index 3).
     Il2CppObject* obj = il2cpp::vm::Object::New(klass);
-    ObjectMarshal::Push(L, obj, klass);
     int ret = MethodBridge::InvokeLua2Cs(L, obj, argStartIdx, targetMethodCtx);
     IL2CPP_ASSERT(ret == 0);
+    ObjectMarshal::Push(L, obj, klass);
     return 1;
     ZLUA_TRY_END();
 }

@@ -8,7 +8,7 @@ struct MethodMarshalCtx;
 
 class DelegateBridge
 {
-  public:
+public:
     static void Initialize();
     static Il2CppMethodPointer Resolve(Il2CppClass* delegateClass);
     static const MethodMarshalCtx* GetOrCreateMethodMarshalCtx(lua_State* L, const MethodInfo* method);

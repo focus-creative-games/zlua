@@ -34,20 +34,7 @@ class MetadataUtil
         il2cpp::vm::Class::SetupFields(klass);
     }
 
-    static inline void EnsureProperties(Il2CppClass* klass)
-    {
-        IL2CPP_ASSERT(klass != nullptr);
-        il2cpp::vm::Class::SetupProperties(klass);
-    }
-
-    static inline void EnsureEvents(Il2CppClass* klass)
-    {
-        IL2CPP_ASSERT(klass != nullptr);
-        il2cpp::vm::Class::SetupEvents(klass);
-    }
-
     static const MethodInfo* FindMethod(Il2CppClass* klass, const char* name, int parameterCount, bool isStatic);
-    static const MethodInfo* FindConstructor(Il2CppClass* klass, int parameterCount);
     /// Match name + parameter signature; ignores static vs instance.
     static const MethodInfo* FindMethodByParameterSignature(Il2CppClass* klass, const char* name, const char* parameterSignature);
     static const MethodInfo* FindMethodByParameterSignature(Il2CppClass* klass, const char* name, const char* parameterSignature, bool isStatic);

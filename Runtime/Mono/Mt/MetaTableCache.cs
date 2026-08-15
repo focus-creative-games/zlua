@@ -99,7 +99,8 @@ namespace ZLua.Mt
             LuaDll.lua_pop(L, 1);
 
             TypeRegistry.PushInternedTypeTable(L, type);
-            LuaDll.lua_getfield(L, -1, mtField);
+            LuaDll.lua_pushstring(L, mtField);
+            LuaDll.lua_rawget(L, -2);
             if (LuaDll.lua_isnil(L, -1))
             {
                 LuaDll.lua_pop(L, 3); // nil + type table + cache table

@@ -12,6 +12,8 @@
 #include "../marshal/StructMarshal.h"
 #include "il2cpp-config.h"
 
+#include <cstring>
+
 namespace zlua
 {
 
@@ -29,9 +31,12 @@ static int CreateValueTypeInstance(lua_State* L)
     if (binding->uniqueCtorMethod != nullptr)
     {
         const MethodMarshalCtx* ctx = binding->uniqueCtorMethod;
-        if (argCount != ctx->luaArity)
+        const int32_t minArity = GetMinLuaArity(ctx);
+        if (argCount < minArity || argCount > ctx->luaArity)
         {
-            LuaException::ThrowFormat("zlua: argument mismatch: constructor expects %d argument(s), but %d were given", ctx->luaArity, argCount);
+            if (minArity == ctx->luaArity)
+                LuaException::ThrowFormat("zlua: argument mismatch: constructor expects %d argument(s), but %d were given", ctx->luaArity, argCount);
+            LuaException::ThrowFormat("zlua: argument mismatch: constructor expects %d..%d argument(s), but %d were given", minArity, ctx->luaArity, argCount);
         }
         targetMethodCtx = ctx;
     }
@@ -41,7 +46,7 @@ static int CreateValueTypeInstance(lua_State* L)
         MethodOverloadResolutionResult result = MethodOverloadResolver::Resolve(L, groups, argStartIdx, argCount);
         if (result.kind == MethodOverloadResolutionKind::Ambiguous)
         {
-            LuaException::ThrowFormat("zlua: ambiguous constructor found for type: %s.%s", klass->namespaze, klass->name);
+            LuaException::ThrowFormat("zlua: ambiguous constructor found: %s.%s", klass->namespaze, klass->name);
         }
         targetMethodCtx = result.method;
     }
@@ -50,10 +55,14 @@ static int CreateValueTypeInstance(lua_State* L)
     {
         LuaException::ThrowFormat("zlua: no constructor found for type: %s", klass->name);
     }
-    void* payload = StructMarshal::PushZeroedValue(L, klass);
+    // Same as reference ctors: do not push the ByVal userdata before reading Lua args
+    // (optional defaults would otherwise consume the temporary as a parameter).
+    const size_t payloadSize = (size_t)MetadataUtil::GetInstanceSizeWithoutHeader(klass);
+    void* payload = alloca(payloadSize);
+    std::memset(payload, 0, payloadSize);
     int ret = MethodBridge::InvokeLua2Cs(L, payload, argStartIdx, targetMethodCtx);
-    // constructor should not return a value
     IL2CPP_ASSERT(ret == 0);
+    StructMarshal::PushValue(L, payload, klass);
     return 1;
     ZLUA_TRY_END();
 }

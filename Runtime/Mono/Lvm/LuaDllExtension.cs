@@ -61,6 +61,51 @@ namespace ZLua
             return Encoding.UTF8.GetString((byte*)strPtr, (int)len);
         }
 
+        /// <summary>
+        /// Convert a Lua error object to a non-empty string (never null/empty for pcall failures).
+        /// </summary>
+        public static unsafe string FormatErrorObject(IntPtr luaState, int index)
+        {
+            int top = LuaDll.lua_gettop(luaState);
+            if (index < 0 && index > LuaConsts.LuaRegistryIndex)
+            {
+                index = top + index + 1;
+            }
+
+            IntPtr strPtr = LuaDll.luaL_tolstring(luaState, index, out UIntPtr len);
+            try
+            {
+                if (strPtr != IntPtr.Zero && len != UIntPtr.Zero)
+                {
+                    return Encoding.UTF8.GetString((byte*)strPtr, (int)len);
+                }
+            }
+            finally
+            {
+                LuaDll.lua_settop(luaState, top);
+            }
+
+            LuaDataType type = LuaDll.lua_type(luaState, index);
+            return "lua pcall failed (error object is " + TypeName(type) + ")";
+        }
+
+        private static string TypeName(LuaDataType type)
+        {
+            switch (type)
+            {
+                case LuaDataType.Nil: return "nil";
+                case LuaDataType.Boolean: return "boolean";
+                case LuaDataType.LightUserData: return "userdata";
+                case LuaDataType.Number: return "number";
+                case LuaDataType.String: return "string";
+                case LuaDataType.Table: return "table";
+                case LuaDataType.Function: return "function";
+                case LuaDataType.UserData: return "userdata";
+                case LuaDataType.Thread: return "thread";
+                default: return "no value";
+            }
+        }
+
         public static int error(IntPtr luaState, string msg)
         {
             LuaDll.lua_pushstring(luaState, msg);

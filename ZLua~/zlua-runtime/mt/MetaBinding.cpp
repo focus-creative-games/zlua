@@ -1,4 +1,5 @@
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "MetaBinding.h"
@@ -15,7 +16,7 @@
 #include "../utils/LuaStackGuard.h"
 #include "../utils/LuaException.h"
 #include "../utils/LuaMetadataAlloc.h"
-#include "../utils/Collection.h"
+#include "../utils/CsStringHash.h"
 #include "../bridge/PropertyBridge.h"
 #include "../bridge/MethodBridge.h"
 #include "../marshal/ObjectMarshal.h"
@@ -32,17 +33,34 @@
 #include "vm/Runtime.h"
 #include "vm/Method.h"
 #include "vm/Type.h"
-#include "metadata/GenericMetadata.h"
+#include "vm/Object.h"
+#include "vm/Parameter.h"
+#include "gc/GarbageCollector.h"
+#include "il2cpp-tabledefs.h"
 
-#include <unordered_set>
+#include <cstring>
+#include "metadata/GenericMetadata.h"
 
 namespace zlua
 {
-using NameMetaMap = AppendOnlyStringHashMap<MetaInfo>;
+using MethodGroupMap = std::unordered_map<const char*, std::vector<const MethodInfo*>, CsStringHash, CsStringEqual>;
 
-static HashMap<Il2CppClass*, TypeBinding*> s_bindings;
+static std::unordered_map<Il2CppClass*, TypeBinding*> s_bindings;
 
-static AppendOnlyStringHashSet<> s_methodAliasKeys;
+static std::unordered_set<const char*, CsStringHash, CsStringEqual> s_methodAliasKeys;
+
+/// Method-scoped marshal payload shared across byObj/byVal (and duplicate CreateMethodMarshalCtx calls).
+struct MethodMarshalShared
+{
+    const MarshalMetaInfo** paramsMeta;
+    const MarshalMetaInfo* retMeta;
+    const MethodDefaultArgs* defaults;
+    FnLua2CsInvoker lua2CsInvoker;
+    int32_t luaArity;
+    bool isExtension;
+};
+
+static std::unordered_map<const MethodInfo*, MethodMarshalShared*> s_methodMarshalShared;
 
 static const char* CopyRuntimeAliasKey(const std::string& key)
 {
@@ -89,9 +107,12 @@ static int InvokeExtensionMethodCore(lua_State* L, const MethodMarshalCtx* ctx)
 {
     const int top = lua_gettop(L);
     const int available = top >= 2 ? (top - 2 + 1) : 0;
-    if (available < ctx->luaArity)
+    const int32_t minArity = GetMinLuaArity(ctx);
+    if (available < minArity)
     {
-        LuaException::ThrowFormat("zlua: argument mismatch: expected %d argument(s), got %d", ctx->luaArity, available);
+        if (minArity == ctx->luaArity)
+            LuaException::ThrowFormat("zlua: argument mismatch: expected %d argument(s), got %d", minArity, available);
+        LuaException::ThrowFormat("zlua: argument mismatch: expected %d..%d argument(s), got %d", minArity, ctx->luaArity, available);
     }
     const MethodInfo* method = MetadataUtil::ResolveInvokeMethod(ctx->method, nullptr, /*sealed*/ true);
     return ctx->lua2CsInvoker(L, nullptr, /*argStart*/ 1, method, ctx);
@@ -105,70 +126,177 @@ static int InvokeExtensionMethodDirect(lua_State* L)
     ZLUA_TRY_END();
 }
 
+static bool TryMaterializeDefaultParam(const MethodInfo* method, int paramIndex, const MarshalMetaInfo* meta, void** outValueSlot, Il2CppObject** outObjectSlot)
+{
+    *outValueSlot = nullptr;
+    *outObjectSlot = nullptr;
+    if ((method->parameters[paramIndex]->attrs & PARAM_ATTRIBUTE_HAS_DEFAULT) == 0)
+        return false;
+
+    bool isExplicitNull = false;
+    Il2CppObject* obj = il2cpp::vm::Parameter::GetDefaultParameterValueObject(method, paramIndex, &isExplicitNull);
+    if (obj == nullptr && !isExplicitNull)
+        return false;
+
+    if (meta->passByValue)
+    {
+        *outObjectSlot = obj;
+        return true;
+    }
+
+    void* buf = LuaMetadataAlloc::MallocZeroed(static_cast<size_t>(meta->size));
+    if (obj != nullptr)
+    {
+        void* unboxed = ZLuaObjectUnbox(obj);
+        std::memcpy(buf, unboxed, static_cast<size_t>(meta->size));
+    }
+    *outValueSlot = buf;
+    return true;
+}
+
 MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const MethodInfo* method, bool isByVal)
 {
-    const bool isExtension = MetadataUtil::IsExtensionMethod(method);
-    bool isStatic = MetadataUtil::IsStaticMethod(method);
-    FnResolveMethodThis resolveThis =
-        isExtension ? nullptr : InstanceTarget::GetResolveMethodThisFunc(method->klass, isStatic, isByVal);
+    // paramsMeta / retMeta / defaults / luaArity / invoker / isExtension 与 byVal 无关，按 MethodInfo* 共享。
+    // byVal / resolveThis / sealed 仍每份 MethodMarshalCtx 独立（struct byobj+byval 双建时只分叉薄壳）。
+    MethodMarshalShared* shared = nullptr;
+    auto sharedIt = s_methodMarshalShared.find(method);
+    if (sharedIt != s_methodMarshalShared.end())
+    {
+        shared = sharedIt->second;
+    }
+    else
+    {
+        shared = LuaMetadataAlloc::MallocAnyZeroed<MethodMarshalShared>();
+        shared->isExtension = MetadataUtil::IsExtensionMethod(method);
+        shared->lua2CsInvoker = MethodBridge::ResolveMethodInvoker(method);
+        shared->defaults = nullptr;
+        shared->retMeta = nullptr;
+        shared->paramsMeta = nullptr;
+        shared->luaArity = 0;
+
+        int32_t luaArity = 0;
+        if (method->parameters_count > 0)
+        {
+            shared->paramsMeta = LuaMetadataAlloc::CallocArray<const MarshalMetaInfo*>(method->parameters_count);
+            for (int i = 0; i < method->parameters_count; i++)
+            {
+                const MarshalMetaInfo* meta = MarshalMeta::Create(L, method, i);
+                shared->paramsMeta[i] = meta;
+                // Extension: luaArity excludes CLR param 0 (this) — matches IMT argStart=2.
+                if (!shared->isExtension || i >= 1)
+                    luaArity += meta->stackSlots > 0 ? meta->stackSlots : 1;
+            }
+        }
+        shared->luaArity = luaArity;
+
+        // Trailing C# defaults → dense MethodDefaultArgs (Il2Cpp perf: no blob parse on call).
+        if (method->parameters_count > 0)
+        {
+            const int paramStart = shared->isExtension ? 1 : 0;
+            bool trailingHasDefault = false;
+            for (int i = method->parameters_count - 1; i >= paramStart; --i)
+            {
+                if ((method->parameters[i]->attrs & PARAM_ATTRIBUTE_HAS_DEFAULT) == 0)
+                    break;
+                bool isExplicitNull = false;
+                const Il2CppType* defaultType = nullptr;
+                const char* data = il2cpp::vm::Method::GetParameterDefaultValue(method, i, &defaultType, &isExplicitNull);
+                if (data == nullptr && !isExplicitNull)
+                    break;
+                trailingHasDefault = true;
+                break;
+            }
+
+            if (trailingHasDefault)
+            {
+                void** tempValues = (void**)alloca(method->parameters_count * sizeof(void*));
+                Il2CppObject** tempObjects = (Il2CppObject**)alloca(method->parameters_count * sizeof(Il2CppObject*));
+                std::memset(tempValues, 0, method->parameters_count * sizeof(void*));
+                std::memset(tempObjects, 0, method->parameters_count * sizeof(Il2CppObject*));
+
+                int omitSlots = 0;
+                int firstDefault = -1;
+                bool anyObjectDefault = false;
+                for (int i = method->parameters_count - 1; i >= paramStart; --i)
+                {
+                    void* valueSlot = nullptr;
+                    Il2CppObject* objectSlot = nullptr;
+                    if (!TryMaterializeDefaultParam(method, i, shared->paramsMeta[i], &valueSlot, &objectSlot))
+                        break;
+
+                    firstDefault = i;
+                    tempValues[i] = valueSlot;
+                    tempObjects[i] = objectSlot;
+                    if (shared->paramsMeta[i]->passByValue)
+                        anyObjectDefault = true;
+                    omitSlots += shared->paramsMeta[i]->stackSlots > 0 ? shared->paramsMeta[i]->stackSlots : 1;
+                }
+
+                IL2CPP_ASSERT(firstDefault >= 0);
+                const uint8_t defaultCount = static_cast<uint8_t>(method->parameters_count - firstDefault);
+                void** valueSlots = LuaMetadataAlloc::CallocArray<void*>(defaultCount);
+                Il2CppObject** objectSlots = nullptr;
+                if (anyObjectDefault)
+                    objectSlots = (Il2CppObject**)il2cpp::gc::GarbageCollector::AllocateFixed(defaultCount * sizeof(Il2CppObject*), nullptr);
+
+                for (uint8_t di = 0; di < defaultCount; ++di)
+                {
+                    const int paramIndex = firstDefault + di;
+                    valueSlots[di] = tempValues[paramIndex];
+                    if (objectSlots != nullptr)
+                        objectSlots[di] = tempObjects[paramIndex];
+                }
+
+                MethodDefaultArgs* defaults = LuaMetadataAlloc::MallocAnyZeroed<MethodDefaultArgs>();
+                defaults->minLuaArity = luaArity - omitSlots;
+                if (defaults->minLuaArity < 0)
+                    defaults->minLuaArity = 0;
+                defaults->firstDefaultParamIndex = static_cast<uint8_t>(firstDefault);
+                defaults->defaultParamCount = defaultCount;
+                defaults->defaultValueSlots = valueSlots;
+                defaults->defaultObjectSlots = objectSlots;
+                shared->defaults = defaults;
+                shared->lua2CsInvoker = MethodBridge::DefaultInvokeLuaMethod;
+            }
+        }
+
+        if (!MetadataUtil::IsVoidType(method->return_type))
+            shared->retMeta = MarshalMeta::Create(L, method, -1);
+
+        bool needsStackCursor = false;
+        for (int i = 0; i < method->parameters_count; i++)
+        {
+            const MarshalMetaInfo* meta = shared->paramsMeta[i];
+            if (meta->marshalType == LuaMarshalType::Table || meta->marshalType == LuaMarshalType::UnpackedValues || meta->stackSlots != 1)
+            {
+                needsStackCursor = true;
+                break;
+            }
+        }
+        if (!needsStackCursor && shared->retMeta != nullptr &&
+            (shared->retMeta->marshalType == LuaMarshalType::Table || shared->retMeta->marshalType == LuaMarshalType::UnpackedValues || shared->retMeta->stackSlots != 1))
+        {
+            needsStackCursor = true;
+        }
+        if (needsStackCursor)
+            shared->lua2CsInvoker = MethodBridge::DefaultInvokeLuaMethod;
+
+        s_methodMarshalShared.insert({method, shared});
+    }
+
+    const bool isStatic = MetadataUtil::IsStaticMethod(method);
+    FnResolveMethodThis resolveThis = shared->isExtension ? nullptr : InstanceTarget::GetResolveMethodThisFunc(method->klass, isStatic, isByVal);
     MethodMarshalCtx* ctx = LuaMetadataAlloc::MallocAnyZeroed<MethodMarshalCtx>();
     ctx->method = method;
     ctx->resolveThis = resolveThis;
-    ctx->lua2CsInvoker = MethodBridge::ResolveMethodInvoker(method);
+    ctx->lua2CsInvoker = shared->lua2CsInvoker;
+    ctx->paramsMeta = shared->paramsMeta;
+    ctx->retMeta = shared->retMeta;
+    ctx->luaArity = shared->luaArity;
+    ctx->defaults = shared->defaults;
     ctx->byVal = isByVal;
-    ctx->isExtension = isExtension;
-    ctx->sealed = isExtension ? true : MetadataUtil::IsMethodSealed(method, isByVal);
-    ctx->valueSize = MetadataUtil::GetValueSize(&method->klass->byval_arg);
-    int32_t luaArity = 0;
-    if (method->parameters_count > 0)
-    {
-        ctx->paramsMeta = LuaMetadataAlloc::CallocArray<const MarshalMetaInfo*>(method->parameters_count);
-        int32_t totalParamsSize = 0;
-        for (int i = 0; i < method->parameters_count; i++)
-        {
-            const MarshalMetaInfo* meta = MarshalMeta::Create(L, method, i);
-            ctx->paramsMeta[i] = meta;
-            totalParamsSize += meta->size;
-            // Extension: luaArity excludes CLR param 0 (this) — matches IMT argStart=2.
-            if (!isExtension || i >= 1)
-                luaArity += meta->stackSlots > 0 ? meta->stackSlots : 1;
-        }
-        ctx->totalParamsSize = totalParamsSize;
-    }
-    else
-    {
-        ctx->paramsMeta = nullptr;
-        ctx->totalParamsSize = 0;
-    }
-    ctx->luaArity = luaArity;
-    if (MetadataUtil::IsVoidType(method->return_type))
-    {
-        ctx->retMeta = nullptr;
-    }
-    else
-    {
-        ctx->retMeta = MarshalMeta::Create(L, method, -1);
-    }
-
-    bool needsStackCursor = false;
-    for (int i = 0; i < method->parameters_count; i++)
-    {
-        const MarshalMetaInfo* meta = ctx->paramsMeta[i];
-        if (meta->marshalType == LuaMarshalType::Table || meta->marshalType == LuaMarshalType::UnpackedValues || meta->stackSlots != 1)
-        {
-            needsStackCursor = true;
-            break;
-        }
-    }
-    if (!needsStackCursor && ctx->retMeta != nullptr &&
-        (ctx->retMeta->marshalType == LuaMarshalType::Table || ctx->retMeta->marshalType == LuaMarshalType::UnpackedValues ||
-         ctx->retMeta->stackSlots != 1))
-    {
-        needsStackCursor = true;
-    }
-    if (needsStackCursor)
-        ctx->lua2CsInvoker = MethodBridge::DefaultInvokeLuaMethod;
-
+    ctx->sealed = shared->isExtension ? true : MetadataUtil::IsMethodSealed(method, isByVal);
+    ctx->isExtension = shared->isExtension;
     return ctx;
 }
 
@@ -220,16 +348,35 @@ const TypeBinding* MetaBinding::GetTypeBindingFromClosure(lua_State* L, int clos
     return binding;
 }
 
+static const char* PeekAnyMethodName(const MethodGroups* groups)
+{
+    for (size_t i = 0; i <= kMaxSmallArgCount; ++i)
+    {
+        const MethodGroup* group = groups->smallArgCountMethodGroups[i];
+        if (group != nullptr && group->methodCount > 0 && group->methods[0] != nullptr && group->methods[0]->method != nullptr)
+            return group->methods[0]->method->name;
+    }
+    if (groups->largeArgCountMethodCount > 0 && groups->largeArgCountMethods[0] != nullptr && groups->largeArgCountMethods[0]->method != nullptr)
+        return groups->largeArgCountMethods[0]->method->name;
+    return nullptr;
+}
+
 static const MethodMarshalCtx* FindBestMethod(lua_State* L, const TypeBinding* binding, const MethodGroups* groups, int argStart)
 {
     MethodOverloadResolutionResult result = MethodOverloadResolver::Resolve(L, groups, argStart, lua_gettop(L) - argStart + 1);
     if (result.kind == MethodOverloadResolutionKind::None)
     {
-        LuaException::ThrowFormat("zlua: no matching overload for type: %s", MetadataUtil::GetSignatureTypeName(binding->klass).c_str());
+        std::string typeName = MetadataUtil::GetSignatureTypeName(binding->klass);
+        const char* methodName = PeekAnyMethodName(groups);
+        if (methodName != nullptr)
+            LuaException::ThrowFormat("zlua: no matching overload of %s.%s", typeName.c_str(), methodName);
+        LuaException::ThrowFormat("zlua: no matching overload for type: %s", typeName.c_str());
     }
     if (result.kind == MethodOverloadResolutionKind::Ambiguous)
     {
-        LuaException::ThrowFormat("zlua: ambiguous method found for type: %s", MetadataUtil::GetSignatureTypeName(binding->klass).c_str());
+        IL2CPP_ASSERT(result.method != nullptr && result.method->method != nullptr);
+        std::string typeName = MetadataUtil::GetSignatureTypeName(binding->klass);
+        LuaException::ThrowFormat("zlua: ambiguous method found: %s.%s", typeName.c_str(), result.method->method->name);
     }
     const MethodMarshalCtx* ctx = result.method;
     IL2CPP_ASSERT(ctx != nullptr);
@@ -312,7 +459,7 @@ bool MetaBinding::TryRegisterMethodAlias(lua_State* L, Il2CppClass* klass, bool 
 
     MetaInfo info = {};
     info.kind = MetaKind::Method;
-    info.method.closureRef = closureRef;
+    info.closureRef = closureRef;
     map[CopyRuntimeAliasKey(aliasName)] = info;
     return true;
 }
@@ -347,10 +494,10 @@ static void RegisterFields(lua_State* L, Il2CppClass* klass, NameMetaMap& instan
 
         MetaInfo info = {};
         info.kind = MetaKind::Field;
-        FieldMarshalCtx& ctx = info.field;
-        ctx.field = field;
-        ctx.meta = MarshalMeta::Create(L, field);
-        SetupFieldAddressOrInstanceOffset(ctx, field, isStatic);
+        FieldMarshalCtx* ctx = LuaMetadataAlloc::MallocAnyZeroed<FieldMarshalCtx>();
+        ctx->meta = MarshalMeta::Create(L, field);
+        SetupFieldAddressOrInstanceOffset(*ctx, field, isStatic);
+        info.field = ctx;
         map[field->name] = info;
     }
 }
@@ -372,34 +519,35 @@ static void RegisterProperties(lua_State* L, Il2CppClass* klass, NameMetaMap& in
         MetaInfo info = {};
         info.kind = MetaKind::Property;
 
-        PropertyMarshalCtx& pmCtx = info.property;
-        pmCtx.property = property;
+        PropertyMarshalCtx* pmCtx = LuaMetadataAlloc::MallocAnyZeroed<PropertyMarshalCtx>();
+        pmCtx->property = property;
         const Il2CppType* type = MetadataUtil::GetPropertyReturnType(property);
-        pmCtx.valueTypeKlass = il2cpp::vm::Class::FromIl2CppType(type, true);
-        pmCtx.meta = MarshalMeta::Create(L, property);
+        pmCtx->valueTypeKlass = il2cpp::vm::Class::FromIl2CppType(type, true);
+        pmCtx->meta = MarshalMeta::Create(L, property);
 
         PropertyAccessor accessor = PropertyBridge::ResolvePropertyAccessor(property, isStatic);
 
         if (property->get != nullptr)
         {
-            pmCtx.getter = accessor.getter;
-            pmCtx.getterSealed = MetadataUtil::IsMethodSealed(property->get, /*byVal*/ false);
+            pmCtx->getter = accessor.getter;
+            pmCtx->getterSealed = MetadataUtil::IsMethodSealed(property->get, /*byVal*/ false);
         }
         else
         {
-            pmCtx.getter = nullptr;
-            pmCtx.getterSealed = true;
+            pmCtx->getter = nullptr;
+            pmCtx->getterSealed = true;
         }
         if (property->set != nullptr)
         {
-            pmCtx.setter = accessor.setter;
-            pmCtx.setterSealed = MetadataUtil::IsMethodSealed(property->set, /*byVal*/ false);
+            pmCtx->setter = accessor.setter;
+            pmCtx->setterSealed = MetadataUtil::IsMethodSealed(property->set, /*byVal*/ false);
         }
         else
         {
-            pmCtx.setter = nullptr;
-            pmCtx.setterSealed = true;
+            pmCtx->setter = nullptr;
+            pmCtx->setterSealed = true;
         }
+        info.property = pmCtx;
         map[property->name] = info;
     }
 }
@@ -407,7 +555,6 @@ static void RegisterProperties(lua_State* L, Il2CppClass* klass, NameMetaMap& in
 static MethodGroups* CreateMethodGroups(lua_State* L, const std::vector<const MethodInfo*>& methods, bool isByVal)
 {
     IL2CPP_ASSERT(methods.size() > 1);
-    MethodGroups* groups = LuaMetadataAlloc::NewAny<MethodGroups>();
 
     std::vector<const MethodMarshalCtx*> methodGroups[kMaxSmallArgCount + 1];
     std::vector<const MethodMarshalCtx*> largeArgCountMethods;
@@ -415,13 +562,37 @@ static MethodGroups* CreateMethodGroups(lua_State* L, const std::vector<const Me
     for (const MethodInfo* method : methods)
     {
         const MethodMarshalCtx* ctx = MetaBinding::CreateMethodMarshalCtx(L, method, isByVal);
-        if (ctx->luaArity > static_cast<int32_t>(kMaxSmallArgCount))
+        bool addedLarge = false;
+        for (int32_t arity = GetMinLuaArity(ctx); arity <= ctx->luaArity; ++arity)
         {
-            largeArgCountMethods.push_back(ctx);
-            continue;
+            if (arity <= static_cast<int32_t>(kMaxSmallArgCount))
+            {
+                methodGroups[arity].push_back(ctx);
+            }
+            else if (!addedLarge)
+            {
+                largeArgCountMethods.push_back(ctx);
+                addedLarge = true;
+            }
         }
-        methodGroups[ctx->luaArity].push_back(ctx);
     }
+
+    size_t methodGroupCount = 0;
+    size_t totalPtrCount = largeArgCountMethods.size();
+    for (size_t i = 0; i <= kMaxSmallArgCount; i++)
+    {
+        if (!methodGroups[i].empty())
+        {
+            methodGroupCount++;
+            totalPtrCount += methodGroups[i].size();
+        }
+    }
+
+    // Single allocation: MethodGroups header + MethodGroup structs + all MethodMarshalCtx* arrays.
+    const size_t blockSize = sizeof(MethodGroups) + methodGroupCount * sizeof(MethodGroup) + totalPtrCount * sizeof(const MethodMarshalCtx*);
+    uint8_t* block = static_cast<uint8_t*>(LuaMetadataAlloc::MallocZeroed(blockSize));
+    MethodGroups* groups = reinterpret_cast<MethodGroups*>(block);
+    uint8_t* cursor = block + sizeof(MethodGroups);
 
     for (size_t i = 0; i <= kMaxSmallArgCount; i++)
     {
@@ -431,27 +602,29 @@ static MethodGroups* CreateMethodGroups(lua_State* L, const std::vector<const Me
             groups->smallArgCountMethodGroups[i] = nullptr;
             continue;
         }
-        MethodGroup* mg = LuaMetadataAlloc::NewAny<MethodGroup>();
-        const MethodMarshalCtx** methodsArr = LuaMetadataAlloc::CallocArray<const MethodMarshalCtx*>(group.size());
+
+        MethodGroup* mg = reinterpret_cast<MethodGroup*>(cursor);
+        cursor += sizeof(MethodGroup);
+        const MethodMarshalCtx** methodsArr = reinterpret_cast<const MethodMarshalCtx**>(cursor);
+        cursor += group.size() * sizeof(const MethodMarshalCtx*);
         for (size_t j = 0; j < group.size(); j++)
-        {
             methodsArr[j] = group[j];
-        }
         mg->methods = methodsArr;
         mg->methodCount = group.size();
         groups->smallArgCountMethodGroups[i] = mg;
     }
+
     if (!largeArgCountMethods.empty())
     {
-        const MethodMarshalCtx** methodsArr = LuaMetadataAlloc::CallocArray<const MethodMarshalCtx*>(largeArgCountMethods.size());
+        const MethodMarshalCtx** methodsArr = reinterpret_cast<const MethodMarshalCtx**>(cursor);
+        cursor += largeArgCountMethods.size() * sizeof(const MethodMarshalCtx*);
         for (size_t j = 0; j < largeArgCountMethods.size(); j++)
-        {
             methodsArr[j] = largeArgCountMethods[j];
-        }
         groups->largeArgCountMethods = methodsArr;
         groups->largeArgCountMethodCount = largeArgCountMethods.size();
     }
 
+    IL2CPP_ASSERT(static_cast<size_t>(cursor - block) == blockSize);
     return groups;
 }
 
@@ -474,8 +647,8 @@ static void SetupCtorMethod(lua_State* L, TypeBinding* binding, const std::vecto
     }
 }
 
-static void RegisterMethodsdWithSignature(lua_State* L, TypeBinding* binding, const char* name, const std::vector<const MethodInfo*>& overloads, bool isStatic,
-                                          bool isByVal, NameMetaMap& map)
+static void RegisterMethodsdWithSignature(lua_State* L, TypeBinding* binding, const char* name, const std::vector<const MethodInfo*>& overloads, bool isStatic, bool isByVal,
+                                          NameMetaMap& map)
 {
     for (const MethodInfo* method : overloads)
     {
@@ -484,13 +657,13 @@ static void RegisterMethodsdWithSignature(lua_State* L, TypeBinding* binding, co
             continue;
         MetaInfo fullNameInfo = {};
         fullNameInfo.kind = MetaKind::Method;
-        fullNameInfo.method.closureRef = MetaBinding::CreateDirectMethodClosureRef(L, method, binding, isStatic, isByVal);
+        fullNameInfo.closureRef = MetaBinding::CreateDirectMethodClosureRef(L, method, binding, isStatic, isByVal);
         map[CopyRuntimeAliasKey(methodSignature)] = fullNameInfo;
     }
 }
 
-static void RegisterMethodGroup(lua_State* L, TypeBinding* binding, const char* name, const std::vector<const MethodInfo*>& overloads, bool isStatic,
-                                bool isByVal, NameMetaMap& map)
+static void RegisterMethodGroup(lua_State* L, TypeBinding* binding, const char* name, const std::vector<const MethodInfo*>& overloads, bool isStatic, bool isByVal,
+                                NameMetaMap& map)
 {
     IL2CPP_ASSERT(overloads.size() > 0 && name != nullptr);
     if (overloads.size() == 1)
@@ -498,7 +671,7 @@ static void RegisterMethodGroup(lua_State* L, TypeBinding* binding, const char* 
         MetaInfo info = {};
         info.kind = MetaKind::Method;
         int closureRef = MetaBinding::CreateDirectMethodClosureRef(L, overloads[0], binding, isStatic, isByVal);
-        info.method.closureRef = closureRef;
+        info.closureRef = closureRef;
         map[name] = info;
     }
     else
@@ -506,15 +679,15 @@ static void RegisterMethodGroup(lua_State* L, TypeBinding* binding, const char* 
         MetaInfo info = {};
         info.kind = MetaKind::Method;
         MethodGroups* groups = CreateMethodGroups(L, overloads, isByVal);
-        info.method.closureRef = CreateMethodDispatchClosureRef(L, binding, groups, isStatic ? InvokeStaticMethodDispatch : InvokeInstanceMethodDispatch);
+        info.closureRef = CreateMethodDispatchClosureRef(L, binding, groups, isStatic ? InvokeStaticMethodDispatch : InvokeInstanceMethodDispatch);
         map[name] = info;
 
         RegisterMethodsdWithSignature(L, binding, name, overloads, isStatic, isByVal, map);
     }
 }
 
-static void RegisterGenericMethodGroup(lua_State* L, TypeBinding* binding, const char* name, const std::vector<const MethodInfo*>& overloads, bool isStatic,
-                                       bool isByVal, NameMetaMap& map)
+static void RegisterGenericMethodGroup(lua_State* L, TypeBinding* binding, const char* name, const std::vector<const MethodInfo*>& overloads, bool isStatic, bool isByVal,
+                                       NameMetaMap& map)
 {
     IL2CPP_ASSERT(overloads.size() > 0 && name != nullptr);
     if (overloads.size() == 1 && map.find(name) == map.end())
@@ -522,14 +695,13 @@ static void RegisterGenericMethodGroup(lua_State* L, TypeBinding* binding, const
         MetaInfo info = {};
         info.kind = MetaKind::Method;
         int closureRef = MetaBinding::CreateDirectMethodClosureRef(L, overloads[0], binding, isStatic, isByVal);
-        info.method.closureRef = closureRef;
+        info.closureRef = closureRef;
         map[name] = info;
     }
     RegisterMethodsdWithSignature(L, binding, name, overloads, isStatic, isByVal, map);
 }
 
-static void AddToMethodGroup(const std::vector<const MethodInfo*>& methods, AppendOnlyStringHashMap<std::vector<const MethodInfo*>>& methodGroups,
-                             AppendOnlyStringHashMap<std::vector<const MethodInfo*>>& genericMethods)
+static void AddToMethodGroup(const std::vector<const MethodInfo*>& methods, MethodGroupMap& methodGroups, MethodGroupMap& genericMethods)
 {
     std::string alias;
     for (const MethodInfo* method : methods)
@@ -663,10 +835,10 @@ static void BuildBinding(lua_State* L, TypeBinding* binding)
 
     SetupCtorMethod(L, binding, ctorMethods, isByVal);
 
-    AppendOnlyStringHashMap<std::vector<const MethodInfo*>> staticGroups;
-    AppendOnlyStringHashMap<std::vector<const MethodInfo*>> instanceGroups;
-    AppendOnlyStringHashMap<std::vector<const MethodInfo*>> instanceGenericMethods;
-    AppendOnlyStringHashMap<std::vector<const MethodInfo*>> staticGenericMethods;
+    MethodGroupMap staticGroups;
+    MethodGroupMap instanceGroups;
+    MethodGroupMap instanceGenericMethods;
+    MethodGroupMap staticGenericMethods;
 
     AddToMethodGroup(staticMethods, staticGroups, staticGenericMethods);
     AddToMethodGroup(instanceMethods, instanceGroups, instanceGenericMethods);
@@ -705,7 +877,7 @@ static void BuildBinding(lua_State* L, TypeBinding* binding)
 
 TypeBinding* MetaBinding::EnsureBinding(lua_State* L, Il2CppClass* klass)
 {
-    HashMap<Il2CppClass*, TypeBinding*>::iterator it = s_bindings.find(klass);
+    auto it = s_bindings.find(klass);
     if (it != s_bindings.end())
         return it->second;
 

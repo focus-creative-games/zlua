@@ -15,6 +15,7 @@
 #include "../mt/AssemblyRegistry.h"
 #include "../mt/MetaTableCache.h"
 #include "../utils/LuaException.h"
+#include "../utils/LuaUtil.h"
 
 #include "vm/Runtime.h"
 #include "vm/String.h"
@@ -55,18 +56,28 @@ static void LogToUnity(const char* message)
 
 static int ZLuaPrint(lua_State* L)
 {
-    int count = lua_gettop(L);
-    std::string line = "[ZLua] ";
+    const int count = lua_gettop(L);
+    std::string msg;
     for (int i = 1; i <= count; ++i)
     {
         if (i > 1)
-            line.push_back('\t');
+            msg.push_back('\t');
         size_t len = 0;
         const char* str = luaL_tolstring(L, i, &len);
         if (str != nullptr)
-            line.append(str, len);
+            msg.append(str, len);
         lua_pop(L, 1);
     }
+
+    // level 1 = first Lua caller of print (same as luaL_where).
+    luaL_traceback(L, L, msg.c_str(), 1);
+    size_t tbLen = 0;
+    const char* tb = lua_tolstring(L, -1, &tbLen);
+    std::string line = "[ZLua] ";
+    if (tb != nullptr)
+        line.append(tb, tbLen);
+    lua_pop(L, 1);
+
     LogToUnity(line.c_str());
     return 0;
 }
@@ -178,9 +189,9 @@ void LuaEnv::DoStringIgnoreResult(const char* chunk)
     const int oldTop = lua_gettop(s_L);
     if (luaL_dostring(s_L, chunk) != LUA_OK)
     {
-        const char* err = lua_tostring(s_L, -1);
+        const std::string err = LuaUtil::FormatErrorObject(s_L, -1);
         lua_settop(s_L, oldTop);
-        LuaException::Throw(err != nullptr ? err : "lua dostring failed");
+        LuaException::Throw(err);
     }
     lua_settop(s_L, oldTop);
 }

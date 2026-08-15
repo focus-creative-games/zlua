@@ -2,15 +2,16 @@
 
 #include "TypeRegistry.h"
 #include "../LuaConsts.h"
-#include "../utils/Collection.h"
+
+#include <unordered_map>
 
 namespace zlua
 {
 
 static int s_byValCacheRef = LUA_NOREF;
 static int s_byObjCacheRef = LUA_NOREF;
-static HashMap<Il2CppClass*, int> s_byValMetatableRefs;
-static HashMap<Il2CppClass*, int> s_byObjMetatableRefs;
+static std::unordered_map<Il2CppClass*, int> s_byValMetatableRefs;
+static std::unordered_map<Il2CppClass*, int> s_byObjMetatableRefs;
 
 void MetaTableCache::Initialize(lua_State* L)
 {
@@ -63,7 +64,8 @@ static void PushCachedMetatable(lua_State* L, Il2CppClass* klass, int cacheRef, 
     lua_pop(L, 1);
 
     TypeRegistry::PushInternedTypeTable(L, klass);
-    lua_getfield(L, -1, mtField);
+    lua_pushstring(L, mtField);
+    lua_rawget(L, -2);
     lua_remove(L, -2);
 
     lua_pushlightuserdata(L, klass);
@@ -73,9 +75,9 @@ static void PushCachedMetatable(lua_State* L, Il2CppClass* klass, int cacheRef, 
     lua_remove(L, -2);
 }
 
-static int GetOrCreateMetatableRef(lua_State* L, Il2CppClass* klass, int cacheRef, const char* mtField, HashMap<Il2CppClass*, int>& refMap)
+static int GetOrCreateMetatableRef(lua_State* L, Il2CppClass* klass, int cacheRef, const char* mtField, std::unordered_map<Il2CppClass*, int>& refMap)
 {
-    HashMap<Il2CppClass*, int>::iterator it = refMap.find(klass);
+    auto it = refMap.find(klass);
     if (it != refMap.end())
         return it->second;
 

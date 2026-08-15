@@ -81,7 +81,7 @@ static int ZLuaUnbox(lua_State* L)
     Il2CppClass* klass = obj->klass;
     if (!MetadataUtil::IsValueTypeClass(klass))
         LuaException::ThrowFormat("zlua.unbox expects value type, got: %s.%s", klass->namespaze, klass->name);
-    void* storage = il2cpp::vm::Object::Unbox(obj);
+    void* storage = ZLuaObjectUnbox(obj);
     TypedMarshal::PushByType(L, storage, &klass->byval_arg);
     return 1;
     ZLUA_TRY_END()
@@ -180,7 +180,7 @@ static int ZLuaMakeGenericType(lua_State* L)
     if (genericDef == nullptr)
         LuaException::Throw("zlua.make_generic_type expects generic type as first arg");
 
-    if (!il2cpp::vm::Class::IsGenericTypeDefinition(genericDef))
+    if (!ZLuaIsGenericTypeDefinition(genericDef))
         LuaException::ThrowFormat("type is not a generic definition: %s", MetadataUtil::GetTypeFullName(genericDef));
 
     const Il2CppMetadataGenericContainerHandle container = il2cpp::vm::Class::GetGenericContainer(genericDef);
@@ -422,14 +422,14 @@ static int ZLuaMakeGenericMethod(lua_State* L)
     auto it = nmm.find(methodSignature.c_str());
     if (it != nmm.end())
     {
-        LuaUtil::PushRef(L, it->second.method.closureRef);
+        LuaUtil::PushRef(L, it->second.closureRef);
         return 1;
     }
 
     int closureRef = MetaBinding::CreateDirectMethodClosureRef(L, method, binding, MetadataUtil::IsStaticMethod(method), ctx->byVal);
     MetaInfo newMeta = {};
     newMeta.kind = MetaKind::Method;
-    newMeta.method.closureRef = closureRef;
+    newMeta.closureRef = closureRef;
     const char* key = zlua_strdup(methodSignature.c_str());
     nmm.insert({key, newMeta});
     LuaUtil::PushRef(L, closureRef);
@@ -476,7 +476,7 @@ static int ZLuaRegisterMethod(lua_State* L)
 
     MetaInfo newMeta = {};
     newMeta.kind = MetaKind::Method;
-    newMeta.method.closureRef = LuaUtil::ToLuaRef(L);
+    newMeta.closureRef = LuaUtil::ToLuaRef(L);
     const char* key = zlua_strdup(aliasName);   
     map.insert({key, newMeta});
     return 0;

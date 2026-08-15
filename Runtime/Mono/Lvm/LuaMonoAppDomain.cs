@@ -200,7 +200,7 @@ namespace ZLua
                 LuaDll.lua_rawgeti(L, LuaConsts.LuaRegistryIndex, sharedRef);
                 if (LuaDll.lua_type(L, -1) != LuaDataType.Function)
                 {
-                    throw new Exception($"Lua function '{luaModule}.{luaMethodName}' not found.");
+                    throw new LuaScriptException($"Lua function '{luaModule}.{luaMethodName}' not found.");
                 }
 
                 int ownedRef = LuaDll.luaL_ref(L, LuaConsts.LuaRegistryIndex);

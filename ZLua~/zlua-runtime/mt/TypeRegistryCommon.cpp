@@ -45,7 +45,7 @@ void TypeRegistryCommon::RegisterNativeInstanceMethod(lua_State* L, TypeBinding*
     lua_pushcfunction(L, fn);
     MetaInfo info = {};
     info.kind = MetaKind::Method;
-    info.method.closureRef = luaL_ref(L, LUA_REGISTRYINDEX);
+    info.closureRef = luaL_ref(L, LUA_REGISTRYINDEX);
     binding->byobjInstanceMap[name] = info;
 }
 
@@ -180,6 +180,8 @@ static void AttachFastInstanceIndexTables(lua_State* L, TypeBinding* binding, co
     lua_pushvalue(L, setterTableIndex);
     lua_setfield(L, mtIndex, LuaConsts::MetaNewIndex);
     lua_pop(L, 2);
+    lua_pushstring(L, MetadataUtil::GetTypeFullName(binding->klass));
+    lua_setfield(L, mtIndex, "__zlua_typename");
     FastMetatable::SealMetatable(L, mtIndex);
 }
 #endif
@@ -211,6 +213,16 @@ static const MetaInfo* LookupMeta(const NameMetaMap* map, const char* key)
     if (it == map->end())
         return nullptr;
     return &it->second;
+}
+
+static const char* BindingTypeName(const TypeBinding* binding)
+{
+    return MetadataUtil::GetTypeFullName(binding->klass);
+}
+
+static int ErrorMemberNotFound(lua_State* L, const TypeBinding* binding, const char* key)
+{
+    return luaL_error(L, "zlua: member not found: %s.%s", BindingTypeName(binding), key != nullptr ? key : "");
 }
 
 using ResolveInstanceFieldFn = void* (*)(lua_State*, int, int32_t);
@@ -247,25 +259,26 @@ static int DispatchInstanceIndex(lua_State* L)
         switch (info->kind)
         {
         case MetaKind::Method:
-            return LuaUtil::PushRef(L, info->method.closureRef);
+            return LuaUtil::PushRef(L, info->closureRef);
         case MetaKind::Field:
         {
-            const MarshalMetaInfo* meta = info->field.meta;
+            const FieldMarshalCtx& field = *info->field;
+            const MarshalMetaInfo* meta = field.meta;
             FnMarshalCs2Lua writer = meta->cs2luaWriter;
             if (writer == nullptr)
-                return luaL_error(L, "zlua: field is read-only: %s", key);
-            void* fieldPtr = ResolveInstanceFieldAddress<kind>(L, 1, info->field);
+                return luaL_error(L, "zlua: field is read-only: %s.%s", BindingTypeName(binding), key);
+            void* fieldPtr = ResolveInstanceFieldAddress<kind>(L, 1, field);
             IL2CPP_ASSERT(fieldPtr != nullptr);
             writer(L, fieldPtr, meta);
             return 1;
         }
         case MetaKind::Property:
         {
-            if (info->property.getter == nullptr)
-                return luaL_error(L, "zlua: property has no getter: %s", key);
+            if (info->property->getter == nullptr)
+                return luaL_error(L, "zlua: property has no getter: %s.%s", BindingTypeName(binding), key);
             void* target = resolveMethodTarget(L, 1);
             IL2CPP_ASSERT(target != nullptr);
-            PropertyBridge::InvokeGetter(L, target, &info->property);
+            PropertyBridge::InvokeGetter(L, target, info->property);
             return 1;
         }
         // case MetaKind::Event:
@@ -275,8 +288,7 @@ static int DispatchInstanceIndex(lua_State* L)
         }
     }
 
-    lua_pushnil(L);
-    return 1;
+    return ErrorMemberNotFound(L, binding, key);
 }
 
 template <ResolveInstanceMethodTargetFn resolveMethodTarget, MetaTableKind kind>
@@ -286,28 +298,29 @@ static int DispatchInstanceNewIndex(lua_State* L)
     const char* key = lua_tostring(L, 2);
     const MetaInfo* info = LookupMeta(kind == MetaTableKind::StructByVal ? &binding->byvalInstanceMap : &binding->byobjInstanceMap, key);
     if (info == nullptr)
-        return luaL_error(L, "zlua: member not found: %s", key != nullptr ? key : "");
+        return ErrorMemberNotFound(L, binding, key);
 
     switch (info->kind)
     {
     case MetaKind::Field:
     {
-        const MarshalMetaInfo* meta = info->field.meta;
+        const FieldMarshalCtx& field = *info->field;
+        const MarshalMetaInfo* meta = field.meta;
         FnMarshalLua2Cs writer = meta->lua2csWriter;
         if (writer == nullptr)
-            return luaL_error(L, "zlua: field is read-only: %s", key);
-        void* fieldPtr = ResolveInstanceFieldAddress<kind>(L, 1, info->field);
+            return luaL_error(L, "zlua: field is read-only: %s.%s", BindingTypeName(binding), key);
+        void* fieldPtr = ResolveInstanceFieldAddress<kind>(L, 1, field);
         IL2CPP_ASSERT(fieldPtr != nullptr);
         writer(L, 3, fieldPtr, meta);
         return 0;
     }
     case MetaKind::Property:
     {
-        if (info->property.setter == nullptr)
-            return luaL_error(L, "zlua: property is read-only: %s", key);
+        if (info->property->setter == nullptr)
+            return luaL_error(L, "zlua: property is read-only: %s.%s", BindingTypeName(binding), key);
         void* target = resolveMethodTarget(L, 1);
         IL2CPP_ASSERT(target != nullptr);
-        PropertyBridge::InvokeSetter(L, target, 3, &info->property);
+        PropertyBridge::InvokeSetter(L, target, 3, info->property);
         return 0;
     }
     // case MetaKind::Event:
@@ -318,7 +331,7 @@ static int DispatchInstanceNewIndex(lua_State* L)
     //     return LuaUtil::PCallClosureRefAt(L, info->event.setterRef, args, 2, 0);
     // }
     default:
-        return luaL_error(L, "zlua: cannot assign to method: %s", key);
+        return luaL_error(L, "zlua: cannot assign to method: %s.%s", BindingTypeName(binding), key);
     }
 }
 
@@ -332,24 +345,25 @@ int StaticIndex(lua_State* L)
         switch (info->kind)
         {
         case MetaKind::Method:
-            return LuaUtil::PushRef(L, info->method.closureRef);
+            return LuaUtil::PushRef(L, info->closureRef);
         case MetaKind::Field:
         {
-            const MarshalMetaInfo* meta = info->field.meta;
+            const FieldMarshalCtx& field = *info->field;
+            const MarshalMetaInfo* meta = field.meta;
             FnMarshalCs2Lua writer = meta->cs2luaWriter;
             if (writer == nullptr)
             {
-                return luaL_error(L, "zlua: field is write-only: %s", key);
+                return luaL_error(L, "zlua: field is write-only: %s.%s", BindingTypeName(binding), key);
             }
-            IL2CPP_ASSERT(info->field.staticAddress != nullptr);
-            writer(L, info->field.staticAddress, meta);
+            IL2CPP_ASSERT(field.staticAddress != nullptr);
+            writer(L, field.staticAddress, meta);
             return 1;
         }
         case MetaKind::Property:
         {
-            if (info->property.getter == nullptr)
-                return luaL_error(L, "zlua: property has no getter: %s", key);
-            PropertyBridge::InvokeGetter(L, nullptr, &info->property);
+            if (info->property->getter == nullptr)
+                return luaL_error(L, "zlua: property has no getter: %s.%s", BindingTypeName(binding), key);
+            PropertyBridge::InvokeGetter(L, nullptr, info->property);
             return 1;
         }
         // case MetaKind::Event:
@@ -361,36 +375,39 @@ int StaticIndex(lua_State* L)
 
     // Extras such as _default / __call live on the static metatable (SMT), not the type table.
     if (lua_getmetatable(L, 1) == 0)
-        return 0;
+        return ErrorMemberNotFound(L, binding, key);
 
     lua_pushvalue(L, 2);
     lua_rawget(L, -2);
+    if (lua_isnil(L, -1))
+        return ErrorMemberNotFound(L, binding, key);
     return 1;
 }
 
-static int DispatchStaticNewIndex(lua_State* L, const NameMetaMap* map)
+static int DispatchStaticNewIndex(lua_State* L, TypeBinding* binding, const NameMetaMap* map)
 {
     const char* key = lua_tostring(L, 2);
     const MetaInfo* info = LookupMeta(map, key);
     if (info == nullptr)
-        return luaL_error(L, "zlua: member not found: %s", key != nullptr ? key : "");
+        return ErrorMemberNotFound(L, binding, key);
 
     switch (info->kind)
     {
     case MetaKind::Field:
     {
-        const MarshalMetaInfo* meta = info->field.meta;
+        const FieldMarshalCtx& field = *info->field;
+        const MarshalMetaInfo* meta = field.meta;
         FnMarshalLua2Cs writer = meta->lua2csWriter;
         if (writer == nullptr)
-            return luaL_error(L, "zlua: member not found or read-only: %s", key);
-        writer(L, 3, info->field.staticAddress, meta);
+            return luaL_error(L, "zlua: field is read-only: %s.%s", BindingTypeName(binding), key);
+        writer(L, 3, field.staticAddress, meta);
         return 0;
     }
     case MetaKind::Property:
     {
-        if (info->property.setter == nullptr)
-            return luaL_error(L, "zlua: member not found or read-only: %s", key);
-        PropertyBridge::InvokeSetter(L, nullptr, 3, &info->property);
+        if (info->property->setter == nullptr)
+            return luaL_error(L, "zlua: property is read-only: %s.%s", BindingTypeName(binding), key);
+        PropertyBridge::InvokeSetter(L, nullptr, 3, info->property);
         return 0;
     }
     // case MetaKind::Event:
@@ -401,7 +418,7 @@ static int DispatchStaticNewIndex(lua_State* L, const NameMetaMap* map)
     //     return LuaUtil::PCallClosureRefAt(L, info->event.setterRef, args, 1, 0);
     // }
     default:
-        return luaL_error(L, "zlua: cannot assign to method: %s", key);
+        return luaL_error(L, "zlua: cannot assign to method: %s.%s", BindingTypeName(binding), key);
     }
 }
 
@@ -438,7 +455,7 @@ int InstanceReferenceNewIndex(lua_State* L)
 int StaticNewIndex(lua_State* L)
 {
     TypeBinding* binding = (TypeBinding*)lua_touserdata(L, lua_upvalueindex(1));
-    return DispatchStaticNewIndex(L, &binding->staticMap);
+    return DispatchStaticNewIndex(L, binding, &binding->staticMap);
 }
 
 void TypeRegistryCommon::AttachByValInstanceMetatable(lua_State* L, Il2CppClass* klass, int typeTableIndex, lua_CFunction tostring, TypeBinding* binding)
@@ -527,6 +544,8 @@ void TypeRegistryCommon::AttachStaticTypeMetatable(lua_State* L, Il2CppClass* kl
     lua_pushvalue(L, setterTableIndex);
     lua_setfield(L, smtIndex, LuaConsts::MetaNewIndex);
     lua_pop(L, 2);
+    lua_pushstring(L, MetadataUtil::GetTypeFullName(binding->klass));
+    lua_setfield(L, smtIndex, "__zlua_typename");
     FastMetatable::SealMetatable(L, smtIndex);
 #else
     lua_pushlightuserdata(L, binding);

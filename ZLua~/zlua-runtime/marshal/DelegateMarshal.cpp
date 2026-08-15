@@ -2,7 +2,6 @@
 
 #include "../bridge/DelegateBridge.h"
 #include "../lvm/LuaEnv.h"
-#include "../utils/Collection.h"
 #include "../utils/LuaException.h"
 #include "../utils/LuaMetadataAlloc.h"
 #include "../utils/LuaStackGuard.h"
@@ -13,6 +12,7 @@
 #include "OpaqueValueMarshal.h"
 
 #include <cstring>
+#include <unordered_map>
 
 #include "vm/Field.h"
 #include "vm/Method.h"
@@ -51,7 +51,7 @@ struct LuaDelegateCtorCache
     Il2CppMethodPointer invokeImpl;
 };
 
-AppendOnlyRawPointerHashMap<Il2CppClass, const LuaDelegateCtorCache*> s_luaDelegateCtorByClass;
+std::unordered_map<const Il2CppClass*, const LuaDelegateCtorCache*> s_luaDelegateCtorByClass;
 
 // Like HybridCLR InterpreterInvoke (Unity 2021+ InvokerMethod with __ret).
 // Not InterpreterDelegateInvoke — ZLua lua→delegate never carries a multicast

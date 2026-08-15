@@ -147,6 +147,14 @@ namespace ZLua.Emit
 
         internal static void ValidateExactArgCount(IntPtr L, int expectedArgs, int argStart)
         {
+            ValidateArgCountRange(L, expectedArgs, expectedArgs, argStart);
+        }
+
+        /// <summary>
+        /// Accepts Lua arg count in [minArgs, maxArgs] (inclusive). Used for C# default parameters.
+        /// </summary>
+        internal static void ValidateArgCountRange(IntPtr L, int minArgs, int maxArgs, int argStart)
+        {
             int top = LuaDll.lua_gettop(L);
             int actual = top - argStart + 1;
             if (actual < 0)
@@ -154,9 +162,15 @@ namespace ZLua.Emit
                 actual = 0;
             }
 
-            if (actual != expectedArgs)
+            if (actual < minArgs || actual > maxArgs)
             {
-                LuaCallbackBoundary.Throw($"zlua argument mismatch: expected {expectedArgs} argument(s), got {actual}");
+                if (minArgs == maxArgs)
+                {
+                    LuaCallbackBoundary.Throw($"zlua argument mismatch: expected {minArgs} argument(s), got {actual}");
+                }
+
+                LuaCallbackBoundary.Throw(
+                    $"zlua argument mismatch: expected {minArgs}..{maxArgs} argument(s), got {actual}");
             }
         }
     }

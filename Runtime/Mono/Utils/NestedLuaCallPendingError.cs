@@ -12,7 +12,9 @@ namespace ZLua.Utils
 
         internal static void Set(string message)
         {
-            s_message = string.IsNullOrEmpty(message) ? "lua pcall failed" : message;
+            s_message = string.IsNullOrEmpty(message)
+                ? "lua pcall failed (empty error object)"
+                : message;
         }
 
         internal static bool HasPending => s_message != null;

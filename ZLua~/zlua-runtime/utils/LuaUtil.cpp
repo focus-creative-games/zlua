@@ -1,4 +1,5 @@
 #include <cmath>
+#include <string>
 
 #include "LuaUtil.h"
 
@@ -48,12 +49,32 @@ int LuaUtil::PushRef(lua_State* L, int refIndex)
 //     return resultCount;
 // }
 
+std::string LuaUtil::FormatErrorObject(lua_State* L, int index)
+{
+    index = lua_absindex(L, index);
+    const int top = lua_gettop(L);
+    size_t len = 0;
+    const char* str = luaL_tolstring(L, index, &len);
+    if (str != nullptr)
+    {
+        std::string message(str, len);
+        lua_settop(L, top);
+        if (!message.empty())
+            return message;
+    }
+    else
+    {
+        lua_settop(L, top);
+    }
+
+    return std::string("lua pcall failed (error object is ") + luaL_typename(L, index) + ")";
+}
+
 void LuaUtil::PCall(lua_State* L, int nargs, int nresults, int errfunc)
 {
     if (lua_pcall(L, nargs, nresults, errfunc) != LUA_OK)
     {
-        const char* err = lua_tostring(L, -1);
-        LuaException::Throw(err != nullptr ? err : "lua pcall failed");
+        LuaException::Throw(FormatErrorObject(L, -1));
     }
 }
 } // namespace zlua
