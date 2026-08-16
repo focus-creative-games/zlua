@@ -45,11 +45,49 @@ namespace ZLua.Utils
                 throw new InvalidOperationException($"Patch working directory not found: {workingDirectory}");
             }
 
-            string patchExe = ResolvePatchExecutable();
-            string args = $"-p{stripComponents} --forward --batch -i \"{patchFile}\"";
-            RunPatch(patchExe, args, workingDirectory, dryRun: true);
-            RunPatch(patchExe, args, workingDirectory, dryRun: false);
-            Debug.Log($"[ZLua] Applied patch: {patchFile}");
+            // macOS /usr/bin/patch rejects CRLF unified diffs against LF sources; normalize to LF.
+            string patchInput = EnsureLfPatchFile(patchFile);
+            try
+            {
+                string patchExe = ResolvePatchExecutable();
+                string args = $"-p{stripComponents} --forward --batch -i \"{patchInput}\"";
+                RunPatch(patchExe, args, workingDirectory, dryRun: true);
+                RunPatch(patchExe, args, workingDirectory, dryRun: false);
+                Debug.Log($"[ZLua] Applied patch: {patchFile}");
+            }
+            finally
+            {
+                if (!string.Equals(patchInput, patchFile, StringComparison.Ordinal)
+                    && File.Exists(patchInput))
+                {
+                    try { File.Delete(patchInput); } catch { /* best-effort */ }
+                }
+            }
+        }
+
+        /// <summary>Returns <paramref name="patchFile"/> if already LF; otherwise a temp LF copy.</summary>
+        private static string EnsureLfPatchFile(string patchFile)
+        {
+            byte[] bytes = File.ReadAllBytes(patchFile);
+            bool hasCr = false;
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (bytes[i] == (byte)'\r')
+                {
+                    hasCr = true;
+                    break;
+                }
+            }
+
+            if (!hasCr)
+            {
+                return patchFile;
+            }
+
+            string text = Encoding.UTF8.GetString(bytes).Replace("\r\n", "\n").Replace("\r", "\n");
+            string temp = Path.Combine(Path.GetTempPath(), "zlua-" + Path.GetFileName(patchFile) + ".lf.patch");
+            File.WriteAllText(temp, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            return temp;
         }
 
         private static void RunPatch(string patchExe, string args, string workingDirectory, bool dryRun)
