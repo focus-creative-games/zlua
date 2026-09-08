@@ -51,5 +51,8 @@ class OpaqueValueMarshal
 
     static void PushValueFromHandle(lua_State* L, int handleIndex);
     static void SetValueToHandle(lua_State* L, int handleIndex, int valueIndex);
+
+    /// Drop opaque parameter stack / invalidate handles. Call from LuaEnv::Shutdown.
+    static void ShutdownState();
 };
 } // namespace zlua

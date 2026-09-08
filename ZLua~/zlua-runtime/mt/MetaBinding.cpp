@@ -908,4 +908,13 @@ TypeBinding* MetaBinding::EnsureBinding(lua_State* L, Il2CppClass* klass)
     return binding;
 }
 
+void MetaBinding::ShutdownState()
+{
+    // Method MetaInfo.closureRef values are luaL_ref numbers for the closing state.
+    // Drop bindings so EnsureBinding rebuilds closures against the next lua_State.
+    for (auto& kv : s_bindings)
+        delete kv.second;
+    s_bindings.clear();
+}
+
 } // namespace zlua

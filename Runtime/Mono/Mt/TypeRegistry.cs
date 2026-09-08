@@ -35,6 +35,15 @@ namespace ZLua.Mt
         private static readonly Dictionary<string, Type> s_corlibTypeCache =
             new Dictionary<string, Type>(StringComparer.Ordinal);
 
+        /// <summary>
+        /// Drop interned type-table registry refs. Required on <c>lua_close</c> / Reset —
+        /// ref numbers are state-local and must not be reused on a new <c>lua_State</c>.
+        /// </summary>
+        internal static void Shutdown()
+        {
+            s_internedTypeTableRefs.Clear();
+        }
+
         internal static void PushInternedTypeTable(IntPtr L, Type type)
         {
             if (type == null)

@@ -22,6 +22,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
+using ZLua.Emit;
 using ZLua.Marshaling;
 using ZLua.Mt;
 using ZLua.Utils;
@@ -353,6 +354,12 @@ namespace ZLua.Lvm
                 MetaTableCache.Shutdown(_state);
                 StructRegistry.Shutdown(_state);
                 ObjectRegistry.Shutdown(_state);
+                // State-local caches / bindings that must not survive lua_close / Reset.
+                TypeRegistry.Shutdown();
+                MethodEmitter.Shutdown();
+                MetaBinding.Shutdown();
+                ClosurePin.Shutdown();
+                StructOpaqueScope.Shutdown();
 
                 if (_errorHandlerRef != LuaConsts.LuaNoRef)
                 {

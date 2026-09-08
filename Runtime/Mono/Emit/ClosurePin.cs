@@ -89,6 +89,31 @@ namespace ZLua.Emit
             LuaDll.lua_pop(L, 1);
         }
 
+        /// <summary>
+        /// Release pinned delegates / tag GCHandles. Call on Reset / <c>lua_close</c>
+        /// (closures die with the old state; keeping pins only leaks managed memory).
+        /// </summary>
+        internal static void Shutdown()
+        {
+            lock (s_tagHandles)
+            {
+                for (int i = 0; i < s_tagHandles.Count; i++)
+                {
+                    if (s_tagHandles[i].IsAllocated)
+                    {
+                        s_tagHandles[i].Free();
+                    }
+                }
+
+                s_tagHandles.Clear();
+            }
+
+            lock (s_pins)
+            {
+                s_pins.Clear();
+            }
+        }
+
         internal static bool TryGetMethodTag(IntPtr L, int index, out MethodClosureTag tag)
         {
             tag = null;

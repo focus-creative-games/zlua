@@ -65,6 +65,19 @@ namespace ZLua
             }
         }
 
+        /// <summary>
+        /// Drop opaque handles and reset nesting depth. Call on Reset / <c>lua_close</c>.
+        /// </summary>
+        internal static void Shutdown()
+        {
+            lock (Sync)
+            {
+                _luaToCSharpDepth = 0;
+            }
+
+            ResetScope();
+        }
+
         internal static IntPtr RegisterStruct(object boxedStruct, Type structType)
         {
             if (boxedStruct == null)

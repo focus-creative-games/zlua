@@ -229,4 +229,10 @@ void OpaqueValueMarshal::SetValueToHandle(lua_State* L, int handleIndex, int val
         TypedMarshal::PopByType(L, valueIndex, data.valueAddress, data.type);
     }
 }
+
+void OpaqueValueMarshal::ShutdownState()
+{
+    s_opaqueParameterDataStack.clear();
+    ++s_handleGeneration;
+}
 } // namespace zlua

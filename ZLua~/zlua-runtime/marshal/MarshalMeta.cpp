@@ -56,6 +56,9 @@
 
 namespace zlua
 {
+/// Bumped on Reset; MarshalMetaInfo::luaMetatableRefEpoch must match for cached luaBy* refs.
+static int s_metatableRefEpoch = 1;
+
 static void Lua2CSMarshalVoid(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
 {
     (void)L;
@@ -360,11 +363,17 @@ static Il2CppClass* GetMetatableKlass(const MarshalMetaInfo* meta)
     return klass;
 }
 
+int MarshalMeta::MetatableRefEpoch()
+{
+    return s_metatableRefEpoch;
+}
+
 int MarshalMeta::EnsureByValMetatableRefSlow(lua_State* L, MarshalMetaInfo* meta)
 {
     Il2CppClass* klass = GetMetatableKlass(meta);
     IL2CPP_ASSERT(klass != nullptr);
     meta->luaByValRefIndex = MetaTableCache::GetOrCreateByValMetatableRef(L, klass);
+    meta->luaMetatableRefEpoch = s_metatableRefEpoch;
     return meta->luaByValRefIndex;
 }
 
@@ -373,6 +382,7 @@ int MarshalMeta::EnsureByObjMetatableRefSlow(lua_State* L, MarshalMetaInfo* meta
     Il2CppClass* klass = GetMetatableKlass(meta);
     IL2CPP_ASSERT(klass != nullptr);
     meta->luaByObjRefIndex = MetaTableCache::GetOrCreateByObjMetatableRef(L, klass);
+    meta->luaMetatableRefEpoch = s_metatableRefEpoch;
     return meta->luaByObjRefIndex;
 }
 
@@ -633,6 +643,7 @@ static MarshalMetaInfo* AllocMarshalMeta(const Il2CppType* type)
     meta->type = type;
     meta->luaByValRefIndex = LUA_NOREF;
     meta->luaByObjRefIndex = LUA_NOREF;
+    meta->luaMetatableRefEpoch = 0;
     meta->marshalType = LuaMarshalType::Default;
     meta->stackSlots = 1;
     meta->memberCount = 0;
@@ -1242,5 +1253,10 @@ MarshalMetaInfo* MarshalMeta::Create(lua_State* L, const PropertyInfo* property)
     IL2CPP_ASSERT(meta != nullptr);
     ApplyResolvedOrDefaultWriters(meta, type, klass, resolveKind, marshalAs, /*requireWrite*/ true, /*requireRead*/ true, /*allowUnpacked*/ false);
     return meta;
+}
+
+void MarshalMeta::InvalidateStateRefs()
+{
+    ++s_metatableRefEpoch;
 }
 } // namespace zlua

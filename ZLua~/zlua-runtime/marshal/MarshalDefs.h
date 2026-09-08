@@ -71,6 +71,8 @@ struct MarshalMetaInfo
     int32_t size;
     int luaByValRefIndex;
     int luaByObjRefIndex;
+    /// Matches MarshalMeta metatable-ref epoch when luaBy*RefIndex are valid for the current lua_State.
+    int luaMetatableRefEpoch;
     bool passByValue;
     LuaMarshalType marshalType;
     uint16_t stackSlots; // Default/Table/... = 1; UnpackedValues = memberCount

@@ -33,6 +33,14 @@ namespace ZLua.Emit
         private static readonly Dictionary<MethodInfo, int> s_closedMethodClosureRefs =
             new Dictionary<MethodInfo, int>();
 
+        /// <summary>
+        /// Drop closed-method closure registry refs (state-local). Call on Reset / <c>lua_close</c>.
+        /// </summary>
+        internal static void Shutdown()
+        {
+            s_closedMethodClosureRefs.Clear();
+        }
+
         internal static void Write(IntPtr L, int methodTableRef, MetaInfo info, Type ownerType, bool isStatic, bool isByVal)
         {
             if (info == null || info.Kind != MetaKind.Method)

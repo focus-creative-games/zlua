@@ -103,5 +103,8 @@ class MetaBinding
     static bool IsDirectMethodClosure(lua_State* L, int closureStackIndex);
     static const MethodMarshalCtx* GetMethodMarshalCtxFromClosure(lua_State* L, int closureStackIndex);
     static const TypeBinding* GetTypeBindingFromClosure(lua_State* L, int closureStackIndex);
+    /// Drop TypeBindings that embed state-local method closure registry refs. Process-level
+    /// MethodMarshalShared / Bridge tables are kept. Call from LuaEnv::Shutdown.
+    static void ShutdownState();
 };
 } // namespace zlua

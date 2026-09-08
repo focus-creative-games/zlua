@@ -31,9 +31,13 @@
 #include "../marshal/ObjectRegistry.h"
 #include "../marshal/StructRegistry.h"
 #include "../marshal/MarshalDefs.h"
+#include "../marshal/MarshalMeta.h"
+#include "../marshal/OpaqueValueMarshal.h"
 #include "../utils/MetadataUtil.h"
 #include "../mt/AssemblyRegistry.h"
+#include "../mt/MetaBinding.h"
 #include "../mt/MetaTableCache.h"
+#include "../mt/TypeRegistry.h"
 #include "../utils/LuaException.h"
 #include "../utils/LuaUtil.h"
 
@@ -145,6 +149,11 @@ void LuaEnv::Shutdown()
     StructRegistry::Shutdown(s_L);
     ObjectRegistry::Shutdown(s_L);
     LuaGlobalRefs::Clear();
+    // State-local registry ref caches / bindings that embed luaL_ref numbers.
+    TypeRegistry::Shutdown();
+    MetaBinding::ShutdownState();
+    MarshalMeta::InvalidateStateRefs();
+    OpaqueValueMarshal::ShutdownState();
 
     if (s_errorHandlerRef != LUA_NOREF)
     {

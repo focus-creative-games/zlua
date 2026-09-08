@@ -31,5 +31,7 @@ class TypeRegistry
   public:
     static void PushInternedTypeTable(lua_State* L, Il2CppClass* klass);
     static Il2CppClass* GetClassFromTypeTable(lua_State* L, int index);
+    /// Drop interned type-table registry refs (state-local). Call from LuaEnv::Shutdown before lua_close.
+    static void Shutdown();
 };
 } // namespace zlua

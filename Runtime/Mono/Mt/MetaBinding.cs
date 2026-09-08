@@ -49,7 +49,7 @@ namespace ZLua.Mt
     }
 
     /// <summary>
-    /// Permanent registry refs to the three indexer tables (filled in Phase 3).
+    /// Registry refs to the three indexer tables (filled when a type table is created for the current lua_State).
     /// </summary>
     internal sealed class MemberTableSet
     {
@@ -112,6 +112,15 @@ namespace ZLua.Mt
         internal static bool TryGetBinding(Type type, out TypeBinding binding)
         {
             return s_bindings.TryGetValue(type, out binding);
+        }
+
+        /// <summary>
+        /// Drop all type bindings (member maps, three-table refs, runtime <c>register_method</c> aliases).
+        /// Aligns with Il2Cpp <c>MetaBinding::ShutdownState</c>; call on Reset / <c>lua_close</c>.
+        /// </summary>
+        internal static void Shutdown()
+        {
+            s_bindings.Clear();
         }
 
         private static void BuildBinding(TypeBinding binding)

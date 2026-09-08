@@ -36,7 +36,7 @@ class MarshalMeta
     static inline int EnsureByValMetatableRef(lua_State* L, const MarshalMetaInfo* meta)
     {
         MarshalMetaInfo* mutableMeta = const_cast<MarshalMetaInfo*>(meta);
-        if (mutableMeta->luaByValRefIndex != LUA_NOREF)
+        if (mutableMeta->luaByValRefIndex != LUA_NOREF && mutableMeta->luaMetatableRefEpoch == MetatableRefEpoch())
             return mutableMeta->luaByValRefIndex;
         return EnsureByValMetatableRefSlow(L, mutableMeta);
     }
@@ -44,12 +44,16 @@ class MarshalMeta
     static inline int EnsureByObjMetatableRef(lua_State* L, const MarshalMetaInfo* meta)
     {
         MarshalMetaInfo* mutableMeta = const_cast<MarshalMetaInfo*>(meta);
-        if (mutableMeta->luaByObjRefIndex != LUA_NOREF)
+        if (mutableMeta->luaByObjRefIndex != LUA_NOREF && mutableMeta->luaMetatableRefEpoch == MetatableRefEpoch())
             return mutableMeta->luaByObjRefIndex;
         return EnsureByObjMetatableRefSlow(L, mutableMeta);
     }
 
+    /// Bump metatable-ref epoch so cached luaBy*RefIndex are treated as stale after Reset.
+    static void InvalidateStateRefs();
+
   private:
+    static int MetatableRefEpoch();
     static int EnsureByValMetatableRefSlow(lua_State* L, MarshalMetaInfo* meta);
     static int EnsureByObjMetatableRefSlow(lua_State* L, MarshalMetaInfo* meta);
 };

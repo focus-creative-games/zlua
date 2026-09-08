@@ -136,6 +136,12 @@ void TypeRegistry::PushInternedTypeTable(lua_State* L, Il2CppClass* klass)
     s_internedTypeTableRefs[klass] = ref;
 }
 
+void TypeRegistry::Shutdown()
+{
+    // lua_close frees registry; only drop the C++ cache of stale ref numbers.
+    s_internedTypeTableRefs.clear();
+}
+
 Il2CppClass* TypeRegistry::GetClassFromTypeTable(lua_State* L, int index)
 {
     if (!lua_istable(L, index))
