@@ -432,7 +432,7 @@ static int InvokeInstanceMethodDispatch(lua_State* L)
 }
 
 static void CollectBindableMethods(Il2CppClass* klass, std::vector<const MethodInfo*>& ctorMethods, std::vector<const MethodInfo*>& staticMethods,
-                                   std::vector<const MethodInfo*>& instanceMethods)
+                                   std::vector<const MethodInfo*>& instanceMethods, std::unordered_set<uint32_t>& virtualSlotsSeen)
 {
     MetadataUtil::EnsureMethods(klass);
     for (uint16_t i = 0; i < klass->method_count; ++i)
@@ -455,7 +455,17 @@ static void CollectBindableMethods(Il2CppClass* klass, std::vector<const MethodI
         }
         else
         {
-            instanceMethods.push_back(method);
+            if (method->slot != kInvalidIl2CppMethodSlot)
+            {
+                if (virtualSlotsSeen.find(method->slot) != virtualSlotsSeen.end())
+                    continue;
+                instanceMethods.push_back(method);
+                virtualSlotsSeen.insert(method->slot);
+            }
+            else
+            {
+                instanceMethods.push_back(method);
+            }
         }
     }
 }
@@ -835,12 +845,13 @@ static void BuildBinding(lua_State* L, TypeBinding* binding)
     std::vector<const MethodInfo*> instanceMethods;
     std::vector<const MethodInfo*> ctorMethods;
     std::vector<const MethodInfo*> parentCtorMethods;
+    std::unordered_set<uint32_t> virtualSlotsSeen;
 
     // only collect constructor methods from the current class
-    CollectBindableMethods(klass, ctorMethods, staticMethods, instanceMethods);
+    CollectBindableMethods(klass, ctorMethods, staticMethods, instanceMethods, virtualSlotsSeen);
     for (Il2CppClass* current = klass->parent; current != nullptr; current = current->parent)
     {
-        CollectBindableMethods(current, parentCtorMethods, staticMethods, instanceMethods);
+        CollectBindableMethods(current, parentCtorMethods, staticMethods, instanceMethods, virtualSlotsSeen);
     }
 
     for (Il2CppClass* current = klass; current != nullptr; current = current->parent)

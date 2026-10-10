@@ -17,6 +17,16 @@ namespace ZLua.Utils
         public string luaPatchKey;
         public string packageContentStamp;
         public string defines;
+
+        /// <summary>True when installed as an overlay on HybridCLR's il2cpp tree.</summary>
+        public bool hybridclrMode;
+
+        /// <summary>
+        /// HybridCLR package version the overlay was built against. A HybridCLR
+        /// reinstall/upgrade changes this and forces a ZLua reinstall, since the
+        /// upgrade replaces the whole libil2cpp tree (dropping ZLua's overlay).
+        /// </summary>
+        public string hybridclrVersion;
     }
 
     public static class InstallFingerprint

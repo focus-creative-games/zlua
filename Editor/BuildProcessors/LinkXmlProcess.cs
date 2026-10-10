@@ -41,19 +41,6 @@ namespace ZLua.BuildProcessors
             return GenerateAdditionalLinkXmlFile(data.target);
         }
 
-#if !UNITY_2021_2_OR_NEWER
-
-        public void OnBeforeRun(BuildReport report, UnityLinkerBuildPipelineData data)
-        {
-
-        }
-
-        public void OnAfterRun(BuildReport report, UnityLinkerBuildPipelineData data)
-        {
-
-        }
-#endif
-
         public static string GenerateAdditionalLinkXmlFile(BuildTarget target)
         {
             if (!Settings.EnableForCurrentBuildTarget)

@@ -97,6 +97,11 @@ int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStar
         }
     }
 
+    // HybridCLR: an interpreted method's methodPointer/invoker_method are filled in
+    // lazily. libil2cpp does the same before its own invoker_method calls (see
+    // vm::Runtime::InvokeWithThrow). No-op without HybridCLR, and for AOT methods.
+    ZLuaEnsureInvokable(method);
+
     if (ctx->retMeta != nullptr)
     {
         void* ret = alloca(ctx->retMeta->size);
@@ -138,6 +143,17 @@ static bool DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(const MethodInfo* 
 
 FnLua2CsInvoker MethodBridge::ResolveMethodInvoker(const MethodInfo* method)
 {
+    // HybridCLR: hot-update methods run on the interpreter and have no AOT entry
+    // point, so a specialized stub -- which casts methodPointer to the method's
+    // concrete native signature and calls it directly -- would be an ABI mismatch.
+    // Force the generic invoker_method path. Checked before the methodPointer tests
+    // below because at this point an interpreted method's pointer may still be an
+    // unresolved stub; this call also initializes it.
+    if (ZLuaRequiresGenericInvoke(method))
+    {
+        return DefaultInvokeLuaMethod;
+    }
+
     if (method->methodPointer == nullptr || ZLuaIsAnUnresolvedCallStubWasNotFound(method->methodPointer) || DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(method))
     {
         return DefaultInvokeLuaMethod;

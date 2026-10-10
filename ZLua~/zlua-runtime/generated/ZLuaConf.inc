@@ -5,4 +5,5 @@
 #define ZLUA_TUANJIE_ENGINE     0
 #define ZLUA_UNITY_VERSION      20220362
 #define ZLUA_TUANJIE_VERSION    0
+#define ZLUA_ENABLE_HYBRIDCLR   0
 #define ZLUA_CONF_ID            "stub|unity-2022.3.62|tuanjie-0"

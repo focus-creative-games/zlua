@@ -28,6 +28,59 @@ namespace zlua
 {
 
 // ---------------------------------------------------------------------------
+// HybridCLR fallback for the direct-methodPointer accessors below.
+//
+// Those accessors cast methodPointer to the property's concrete native
+// signature. A HybridCLR-interpreted accessor has no such entry point, so for
+// those we go through invoker_method instead -- which always works and needs no
+// generated native2managed bridge.
+//
+// Reachable two ways: a property declared on a hot-update type, and a virtual
+// property on an AOT type overridden by a hot-update subclass. The second only
+// shows up in the MethodInfo resolved per call (PropertyBridge::InvokeGetter ->
+// MetadataUtil::ResolveInvokeMethod), so the check has to be per call, not at
+// accessor-resolution time. Cost when compiled in is one bitfield read; the
+// whole path compiles out when ZLUA_ENABLE_HYBRIDCLR is 0.
+//
+// invoker_method ABI: follow ctx->meta->passByValue exactly as
+// MethodBridge::DefaultInvokeLuaMethod does -- a passByValue type occupies the arg
+// slot directly, anything else passes a pointer to storage. Reusing that flag
+// instead of classifying T here keeps one source of truth; note it covers more
+// than managed references (IL2CPP_TYPE_PTR / FNPTR are passByValue too, while
+// IntPtr is not), which a per-type trait would be easy to get wrong.
+// Return values always come back through a caller-supplied buffer.
+// ---------------------------------------------------------------------------
+
+template <typename T>
+inline T ZLuaInvokerGet(void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
+{
+    IL2CPP_ASSERT(sizeof(T) >= ctx->meta->size);
+    (void)ctx;
+    T value{};
+    method->invoker_method(method->methodPointer, method, target, nullptr, &value);
+    return value;
+}
+
+template <typename T>
+inline void ZLuaInvokerSet(void* target, T value, const MethodInfo* method, const PropertyMarshalCtx* ctx)
+{
+    // Same invariant DefaultInvokeLuaMethod asserts: passByValue implies pointer-sized.
+    IL2CPP_ASSERT(!ctx->meta->passByValue || ctx->meta->size == sizeof(void*));
+
+    void* params[1];
+    if (ctx->meta->passByValue)
+    {
+        params[0] = *reinterpret_cast<void**>(&value);
+    }
+    else
+    {
+        params[0] = &value;
+    }
+
+    method->invoker_method(method->methodPointer, method, target, params, nullptr);
+}
+
+// ---------------------------------------------------------------------------
 // ByValue: direct methodPointer; Push(L, T) / Pop(L, idx) -> T
 // (primitives, string, IntPtr, pointer, …)
 // ---------------------------------------------------------------------------
@@ -36,6 +89,12 @@ template <typename T, void (*Push)(lua_State*, T)>
 inline void PropertyInstanceGetterByValue(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)ctx;
+    if (ZLuaRequiresGenericInvoke(method))
+    {
+        Push(L, ZLuaInvokerGet<T>(target, method, ctx));
+        return;
+    }
+
     using FnGet = T (*)(void*, const MethodInfo*);
     T value = reinterpret_cast<FnGet>(method->methodPointer)(target, method);
     Push(L, value);
@@ -45,6 +104,12 @@ template <typename T, T (*Pop)(lua_State*, int)>
 inline void PropertyInstanceSetterByValue(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)ctx;
+    if (ZLuaRequiresGenericInvoke(method))
+    {
+        ZLuaInvokerSet<T>(target, Pop(L, valueIdx), method, ctx);
+        return;
+    }
+
     using FnSet = void (*)(void*, T, const MethodInfo*);
     reinterpret_cast<FnSet>(method->methodPointer)(target, Pop(L, valueIdx), method);
 }
@@ -54,6 +119,12 @@ inline void PropertyStaticGetterByValue(lua_State* L, void* target, const Method
 {
     (void)target;
     (void)ctx;
+    if (ZLuaRequiresGenericInvoke(method))
+    {
+        Push(L, ZLuaInvokerGet<T>(nullptr, method, ctx));
+        return;
+    }
+
     using FnGet = T (*)(const MethodInfo*);
     T value = reinterpret_cast<FnGet>(method->methodPointer)(method);
     Push(L, value);
@@ -64,6 +135,12 @@ inline void PropertyStaticSetterByValue(lua_State* L, void* target, int valueIdx
 {
     (void)target;
     (void)ctx;
+    if (ZLuaRequiresGenericInvoke(method))
+    {
+        ZLuaInvokerSet<T>(nullptr, Pop(L, valueIdx), method, ctx);
+        return;
+    }
+
     using FnSet = void (*)(T, const MethodInfo*);
     reinterpret_cast<FnSet>(method->methodPointer)(Pop(L, valueIdx), method);
 }
@@ -76,6 +153,12 @@ inline void PropertyStaticSetterByValue(lua_State* L, void* target, int valueIdx
 template <typename T, void (*Push)(lua_State*, T, const PropertyMarshalCtx*)>
 inline void PropertyInstanceGetterByValueCtx(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
+    if (ZLuaRequiresGenericInvoke(method))
+    {
+        Push(L, ZLuaInvokerGet<T>(target, method, ctx), ctx);
+        return;
+    }
+
     using FnGet = T (*)(void*, const MethodInfo*);
     T value = reinterpret_cast<FnGet>(method->methodPointer)(target, method);
     Push(L, value, ctx);
@@ -84,6 +167,12 @@ inline void PropertyInstanceGetterByValueCtx(lua_State* L, void* target, const M
 template <typename T, T (*Pop)(lua_State*, int, const PropertyMarshalCtx*)>
 inline void PropertyInstanceSetterByValueCtx(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
+    if (ZLuaRequiresGenericInvoke(method))
+    {
+        ZLuaInvokerSet<T>(target, Pop(L, valueIdx, ctx), method, ctx);
+        return;
+    }
+
     using FnSet = void (*)(void*, T, const MethodInfo*);
     reinterpret_cast<FnSet>(method->methodPointer)(target, Pop(L, valueIdx, ctx), method);
 }
@@ -92,6 +181,12 @@ template <typename T, void (*Push)(lua_State*, T, const PropertyMarshalCtx*)>
 inline void PropertyStaticGetterByValueCtx(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
+    if (ZLuaRequiresGenericInvoke(method))
+    {
+        Push(L, ZLuaInvokerGet<T>(nullptr, method, ctx), ctx);
+        return;
+    }
+
     using FnGet = T (*)(const MethodInfo*);
     T value = reinterpret_cast<FnGet>(method->methodPointer)(method);
     Push(L, value, ctx);
@@ -101,6 +196,12 @@ template <typename T, T (*Pop)(lua_State*, int, const PropertyMarshalCtx*)>
 inline void PropertyStaticSetterByValueCtx(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
+    if (ZLuaRequiresGenericInvoke(method))
+    {
+        ZLuaInvokerSet<T>(nullptr, Pop(L, valueIdx, ctx), method, ctx);
+        return;
+    }
+
     using FnSet = void (*)(T, const MethodInfo*);
     reinterpret_cast<FnSet>(method->methodPointer)(Pop(L, valueIdx, ctx), method);
 }
@@ -113,9 +214,15 @@ inline void PropertyStaticSetterByValueCtx(lua_State* L, void* target, int value
 template <typename T, void (*Pop)(lua_State*, int, const PropertyMarshalCtx*, T*)>
 inline void PropertyInstanceSetterOutParamCtx(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    using FnSet = void (*)(void*, T, const MethodInfo*);
     T value;
     Pop(L, valueIdx, ctx, &value);
+    if (ZLuaRequiresGenericInvoke(method))
+    {
+        ZLuaInvokerSet<T>(target, value, method, ctx);
+        return;
+    }
+
+    using FnSet = void (*)(void*, T, const MethodInfo*);
     reinterpret_cast<FnSet>(method->methodPointer)(target, value, method);
 }
 
@@ -123,9 +230,15 @@ template <typename T, void (*Pop)(lua_State*, int, const PropertyMarshalCtx*, T*
 inline void PropertyStaticSetterOutParamCtx(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    using FnSet = void (*)(T, const MethodInfo*);
     T value;
     Pop(L, valueIdx, ctx, &value);
+    if (ZLuaRequiresGenericInvoke(method))
+    {
+        ZLuaInvokerSet<T>(nullptr, value, method, ctx);
+        return;
+    }
+
+    using FnSet = void (*)(T, const MethodInfo*);
     reinterpret_cast<FnSet>(method->methodPointer)(value, method);
 }
 

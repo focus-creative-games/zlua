@@ -124,6 +124,23 @@ namespace ZLua
                 return true;
             }
 
+            // Toggling HybridCLR support moves the whole install to a different tree.
+            bool hybridclrMode = HybridCLRIntegration.Enabled;
+            if (saved.hybridclrMode != hybridclrMode)
+            {
+                return true;
+            }
+
+            // A HybridCLR reinstall/upgrade rewrites libil2cpp and drops ZLua's overlay.
+            if (hybridclrMode)
+            {
+                string currentHybridclrVersion = HybridCLRIntegration.ReadInstalledVersion() ?? "unknown";
+                if (!string.Equals(saved.hybridclrVersion, currentHybridclrVersion, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
             return false;
         }
 
@@ -214,6 +231,12 @@ namespace ZLua
                     $"zlua-runtime missing: {CommonDirs.ZluaRuntimePathInPackage}");
             }
 
+            bool hybridclrMode = HybridCLRIntegration.Enabled;
+            if (hybridclrMode)
+            {
+                HybridCLRIntegration.AssertReadyForInstall();
+            }
+
             string luaVersionId = LuaVersionUtil.ResolveConfiguredOrDefault(
                 Settings.Instance.luaVersionId, out bool wroteDefault);
             if (wroteDefault)
@@ -232,37 +255,52 @@ namespace ZLua
             WarnIfEditorPluginMissing(luaInfo);
 
             Directory.CreateDirectory(CommonDirs.InstallRootDir);
-            string localIl2CppDataDir = CommonDirs.LocalIl2CppDataPath;
-            DirectoryUtil.RecreateDir(localIl2CppDataDir);
 
-#if !NEW_IL2CPP_PATH
-            DirectoryUtil.CopyDir(
-                $"{Directory.GetParent(editorIl2cppPath)}/MonoBleedingEdge",
-                $"{localIl2CppDataDir}/MonoBleedingEdge",
-                true);
-#endif
-            DirectoryUtil.CopyDir(editorIl2cppPath, CommonDirs.LocalIl2CppPath, true);
-#if NEW_IL2CPP_PATH
-            string buildDir = $"{CommonDirs.LocalIl2CppPath}/build";
-            if (RuntimeInformation.ProcessArchitecture == Architecture.Arm
-                || RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
+            if (hybridclrMode)
             {
-                DirectoryUtil.CopyDir($"{buildDir}/deploy_arm64", $"{buildDir}/deploy", false);
+                // HybridCLR already staged the Editor's il2cpp into its own tree and
+                // replaced libil2cpp with the il2cpp_plus variant. That tree is the only
+                // tree (HybridCLR hardcodes it for codegen, the iOS copy and its
+                // MethodBridge.inc check), so overlay onto it rather than building ours.
+                // Restoring from the baseline first keeps repeated Installs idempotent.
+                string pristine = HybridCLRBaseline.EnsurePristineTree();
+                Debug.Log($"[ZLua] HybridCLR mode: overlaying onto {pristine}");
             }
             else
             {
-                DirectoryUtil.CopyDir($"{buildDir}/deploy_x86_64", $"{buildDir}/deploy", false);
-            }
+                string localIl2CppDataDir = CommonDirs.LocalIl2CppDataPath;
+                DirectoryUtil.RecreateDir(localIl2CppDataDir);
+
+#if !NEW_IL2CPP_PATH
+                DirectoryUtil.CopyDir(
+                    $"{Directory.GetParent(editorIl2cppPath)}/MonoBleedingEdge",
+                    $"{localIl2CppDataDir}/MonoBleedingEdge",
+                    true);
 #endif
+                DirectoryUtil.CopyDir(editorIl2cppPath, CommonDirs.LocalIl2CppPath, true);
+#if NEW_IL2CPP_PATH
+                string buildDir = $"{CommonDirs.LocalIl2CppPath}/build";
+                if (RuntimeInformation.ProcessArchitecture == Architecture.Arm
+                    || RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
+                {
+                    DirectoryUtil.CopyDir($"{buildDir}/deploy_arm64", $"{buildDir}/deploy", false);
+                }
+                else
+                {
+                    DirectoryUtil.CopyDir($"{buildDir}/deploy_x86_64", $"{buildDir}/deploy", false);
+                }
+#endif
+            }
 
             if (!UnityIl2CppPatchUtil.TryResolvePatchFile(
                     Application.unityVersion, out string il2cppPatchFile, out string il2cppPatchKey))
             {
                 string series = UnityIl2CppPatchUtil.GetSeriesKey(Application.unityVersion);
                 throw new InvalidOperationException(
-                    $"[ZLua] No libil2cpp patch for Unity {Application.unityVersion}. "
+                    $"[ZLua] No libil2cpp patch for Unity {Application.unityVersion}"
+                    + (hybridclrMode ? " (HybridCLR mode)" : string.Empty) + ". "
                     + $"Expected a floor patch X.Y.Z.patch (greatest version <= Editor) under "
-                    + Path.Combine(CommonDirs.Libil2cppPatchesPathInPackage, series ?? "?"));
+                    + Path.Combine(CommonDirs.ActiveLibil2cppPatchesPath, series ?? "?"));
             }
 
             Debug.Log($"[ZLua] Applying libil2cpp patch {il2cppPatchKey}: {il2cppPatchFile}");
@@ -287,6 +325,10 @@ namespace ZLua
                 luaPatchKey = luaPatchKey,
                 packageContentStamp = ComputePackageContentStamp(),
                 defines = defines,
+                hybridclrMode = hybridclrMode,
+                hybridclrVersion = hybridclrMode
+                    ? (HybridCLRIntegration.ReadInstalledVersion() ?? "unknown")
+                    : string.Empty,
             });
 
             // Legacy stamp for older checks.
@@ -303,8 +345,13 @@ namespace ZLua
             RequiresEditorRestart = true;
             Debug.Log(
                 $"[ZLua] Install succeeded. unity={Application.unityVersion} lua={luaInfo.Id} "
-                + $"libil2cppPatch={il2cppPatchKey} luaPatch={luaPatchKey} defines={defines}. "
-                + "Restart the Unity Editor if the Lua series/DLL or scripting defines changed.");
+                + $"libil2cppPatch={il2cppPatchKey} luaPatch={luaPatchKey} defines={defines} "
+                + $"hybridclr={(hybridclrMode ? "on" : "off")}. "
+                + "Restart the Unity Editor if the Lua series/DLL or scripting defines changed."
+                + (hybridclrMode
+                    ? "\n[ZLua] Next: run 'HybridCLR/Generate/All' then 'ZLua/Generate/All'. "
+                      + "Re-run 'ZLua/Install...' after any HybridCLR reinstall or upgrade."
+                    : string.Empty));
         }
 
         private static string InstallLuaSources(LuaVersionInfo luaInfo)
@@ -1004,6 +1051,37 @@ namespace ZLua
             if (!File.Exists(Path.Combine(CommonDirs.LocalLibil2cppPath, "vm", "Runtime.cpp")))
             {
                 throw new InvalidOperationException("[ZLua] Local libil2cpp incomplete after install.");
+            }
+
+            if (HybridCLRIntegration.Enabled)
+            {
+                // The overlay must never clobber HybridCLR: both must be present in the
+                // shared tree for the interpreter and Lua to coexist.
+                if (!Directory.Exists(Path.Combine(CommonDirs.LocalLibil2cppPath, "hybridclr")))
+                {
+                    throw new InvalidOperationException(
+                        "[ZLua] HybridCLR's libil2cpp/hybridclr is missing after the ZLua overlay. "
+                        + "Re-run 'HybridCLR/Installer' then 'ZLua/Install...'.");
+                }
+
+                string runtimeCppText = File.ReadAllText(
+                    Path.Combine(CommonDirs.LocalLibil2cppPath, "vm", "Runtime.cpp"), Encoding.UTF8);
+                if (!runtimeCppText.Contains("hybridclr::Runtime::Initialize"))
+                {
+                    throw new InvalidOperationException(
+                        "[ZLua] HybridCLR's Runtime::Initialize call is missing from the shared "
+                        + "libil2cpp/vm/Runtime.cpp after the ZLua overlay.");
+                }
+
+                int hybridclrAt = runtimeCppText.IndexOf("hybridclr::Runtime::Initialize", StringComparison.Ordinal);
+                int zluaAt = runtimeCppText.IndexOf("LuaAppDomain::Initialize", StringComparison.Ordinal);
+                if (hybridclrAt >= 0 && zluaAt >= 0 && hybridclrAt > zluaAt)
+                {
+                    throw new InvalidOperationException(
+                        "[ZLua] Lua is initialized before HybridCLR in the shared Runtime.cpp; "
+                        + "the interpreter must come up first. The libil2cpp-hybridclr patch is wrong "
+                        + "for this tree.");
+                }
             }
 
             if (!Directory.Exists(CommonDirs.LocalZluaPath))

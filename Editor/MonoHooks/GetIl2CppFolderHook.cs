@@ -39,6 +39,19 @@ namespace ZLua.MonoHooks
 
         static GetIl2CppFolderHook()
         {
+            // HybridCLR installs a byte-identical hook on this same native method.
+            // MonoHook patches the target's machine code keyed by raw function pointer
+            // with no cross-package registry, so installing both leaves the second
+            // write stacked on the first. Stand down and let HybridCLR's run: the
+            // override behaviour (isDevelopmentLocation = false) is identical.
+            if (ZLua.Utils.HybridCLRIntegration.HasEquivalentHook(nameof(GetIl2CppFolderHook)))
+            {
+                Debug.Log(
+                    "[ZLua] GetIl2CppFolderHook: HybridCLR provides an equivalent hook; "
+                    + "skipping ZLua's to avoid double-patching IL2CPPUtils.GetIl2CppFolder.");
+                return;
+            }
+
             if (_hook == null)
             {
                 Type type = typeof(UnityEditor.EditorApplication).Assembly.GetType("UnityEditorInternal.IL2CPPUtils");

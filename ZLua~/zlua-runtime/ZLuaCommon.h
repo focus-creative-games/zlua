@@ -27,6 +27,7 @@
 #include "generated/ZLuaConf.inc"
 #include "LuaCompatible.h"
 #include "Il2CppCompatible.h"
+#include "HybridCLRCompatible.h"
 
 #ifndef ZLUA_LUA_VERSION
 #define ZLUA_LUA_VERSION LUA_VERSION_NUM

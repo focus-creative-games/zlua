@@ -31,16 +31,10 @@ using UnityEditor.UnityLinker;
 using UnityEngine;
 using ZLua;
 using ZLua.Utils;
-#if !UNITY_2021_1_OR_NEWER
-using UnityEditor.Il2Cpp;
-#endif
 
 namespace ZLua.BuildProcessors
 {
     internal class CopyStrippedAOTAssemblies : IPostprocessBuildWithReport, IPreprocessBuildWithReport
-#if !UNITY_2021_1_OR_NEWER
-     , IIl2CppProcessor
-#endif
     {
 
         public int callbackOrder => 0;
@@ -121,6 +115,11 @@ namespace ZLua.BuildProcessors
                 Debug.Log($"[CopyStrippedAOTAssemblies] disabled");
                 return;
             }
+            if (HybridCLRIntegration.Enabled)
+            {
+                Debug.Log($"[CopyStrippedAOTAssemblies] HybridCLR enabled, skip copy stripped dlls");
+                return;
+            }
             Debug.Log($"[CopyStrippedAOTAssemblies] CopyScripDlls. src:{srcStripDllPath} target:{target}");
 
             var dstPath = CommonDirs.GetManagedStrippedDuplicatePath(target);
@@ -137,18 +136,36 @@ namespace ZLua.BuildProcessors
 
         public void OnPostprocessBuild(BuildReport report)
         {
-#if UNITY_2021_1_OR_NEWER
+            if (!Settings.Instance.enable)
+            {
+                Debug.Log($"[CopyStrippedAOTAssemblies] disabled");
+                return;
+            }
+            if (HybridCLRIntegration.Enabled)
+            {
+                Debug.Log($"[CopyStrippedAOTAssemblies] HybridCLR enabled, skip copy stripped dlls");
+                return;
+            }
             BuildTarget target = report.summary.platform;
             string srcStripDllPath = GetStripAssembliesDir2021(target);
             if (!string.IsNullOrEmpty(srcStripDllPath) && Directory.Exists(srcStripDllPath))
             {
                 CopyStripDlls(srcStripDllPath, target);
             }
-#endif
         }
 
         public void OnPreprocessBuild(BuildReport report)
         {
+            if (!Settings.Instance.enable)
+            {
+                Debug.Log($"[CopyStrippedAOTAssemblies] disabled");
+                return;
+            }
+            if (HybridCLRIntegration.Enabled)
+            {
+                Debug.Log($"[CopyStrippedAOTAssemblies] HybridCLR enabled, skip copy stripped dlls");
+                return;
+            }
             BuildTarget target = report.summary.platform;
             var dstPath = CommonDirs.GetManagedStrippedDuplicatePath(target);
             DirectoryUtil.RecreateDir(dstPath);

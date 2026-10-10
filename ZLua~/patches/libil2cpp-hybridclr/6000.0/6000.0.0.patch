@@ -1,0 +1,54 @@
+Subject: [PATCH] zlua integration for HybridCLR (il2cpp_plus) libil2cpp
+
+Adds GenericMethod::IsAnUnresolvedCallStubWasNotFound and the
+zlua::LuaAppDomain::Initialize() call. Generated against the
+HybridCLR-patched libil2cpp for this Unity LTS series; see
+tools/gen_hybridclr_patches.py in the integration repo.
+
+diff --git a/libil2cpp/metadata/GenericMethod.cpp b/libil2cpp/metadata/GenericMethod.cpp
+--- a/libil2cpp/metadata/GenericMethod.cpp
++++ b/libil2cpp/metadata/GenericMethod.cpp
+@@ -142,6 +142,11 @@
+ 
+     static FullySharedGenericMethodInfo ambiguousMethodInfo;
+ 
++    bool GenericMethod::IsAnUnresolvedCallStubWasNotFound(Il2CppMethodPointer methodPointer)
++    {
++        return methodPointer == (Il2CppMethodPointer)AnUnresolvedCallStubWasNotFound || methodPointer == (Il2CppMethodPointer)AnUnresolvedCallStubWasNotFoundValueType;
++    }
++
+     bool GenericMethod::IsGenericAmbiguousMethodInfo(const MethodInfo* method)
+     {
+         return method == &ambiguousMethodInfo;
+diff --git a/libil2cpp/metadata/GenericMethod.h b/libil2cpp/metadata/GenericMethod.h
+--- a/libil2cpp/metadata/GenericMethod.h
++++ b/libil2cpp/metadata/GenericMethod.h
+@@ -31,6 +31,7 @@
+ 
+         static void ClearStatics();
+         static const Il2CppRGCTXData* InflateRGCTX(const MethodInfo* method);
++        static bool IsAnUnresolvedCallStubWasNotFound(Il2CppMethodPointer methodPointer);
+ 
+     private:
+         static const MethodInfo* CreateMethodLocked(const Il2CppGenericMethod& gmethod);
+diff --git a/libil2cpp/vm/Runtime.cpp b/libil2cpp/vm/Runtime.cpp
+--- a/libil2cpp/vm/Runtime.cpp
++++ b/libil2cpp/vm/Runtime.cpp
+@@ -67,6 +67,8 @@
+ 
+ #include "hybridclr/Runtime.h"
+ #include "hybridclr/Il2CppCompatibleDef.h"
++
++#include "zlua/lvm/LuaAppDomain.h"
+ 
+ Il2CppDefaults il2cpp_defaults;
+ bool g_il2cpp_is_fully_initialized = false;
+@@ -403,6 +405,8 @@
+         il2cpp::utils::DebugSymbolReader::LoadDebugSymbols();
+ #endif
+ 
++        zlua::LuaAppDomain::Initialize();
++
+         return true;
+     }
+ 

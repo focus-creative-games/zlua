@@ -98,6 +98,9 @@ void WritePropertyMember(void* structAddress, const CompositeMember& member, voi
         args[0] = *reinterpret_cast<void**>(valueStorage);
     else
         args[0] = valueStorage;
+    // HybridCLR: initialize before invoker_method in case the accessor is
+    // interpreted. No-op without HybridCLR, and for AOT methods.
+    ZLuaEnsureInvokable(setter);
     setter->invoker_method(setter->methodPointer, setter, structAddress, args, nullptr);
 }
 
@@ -106,6 +109,7 @@ void ReadPropertyMember(void* structAddress, const CompositeMember& member, void
     const PropertyInfo* property = member.property;
     IL2CPP_ASSERT(property->get != nullptr);
     const MethodInfo* getter = property->get;
+    ZLuaEnsureInvokable(getter);
     getter->invoker_method(getter->methodPointer, getter, structAddress, nullptr, valueStorage);
 }
 

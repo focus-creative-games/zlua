@@ -21,6 +21,7 @@
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using ZLua.Utils;
 
 namespace ZLua
 {
@@ -29,6 +30,20 @@ namespace ZLua
         public static string PackageName => "com.code-philosophy.zlua";
 
         public static string InstallRootDir => Path.GetFullPath($"Library/ZLua");
+
+        /// <summary>
+        /// Pristine copy of HybridCLR's <c>libil2cpp</c>, taken before ZLua overlays
+        /// itself. Install restores from here first so re-running it is idempotent
+        /// rather than stacking a second overlay on an already-patched tree.
+        /// </summary>
+        public static string HybridCLRBaselineDir =>
+            Path.Combine(InstallRootDir, "hybridclr-baseline");
+
+        public static string HybridCLRBaselineLibil2cppDir =>
+            Path.Combine(HybridCLRBaselineDir, "libil2cpp");
+
+        public static string HybridCLRBaselineStampPath =>
+            Path.Combine(HybridCLRBaselineDir, "baseline_version.txt");
 
         public static string ZLuaDataPathInPackage => $"Packages/{PackageName}/ZLua~";
 
@@ -49,12 +64,51 @@ namespace ZLua
         public static string Libil2cppPatchesPathInPackage =>
             Path.GetFullPath(Path.Combine(ZLuaDataPathInPackage, "patches", "libil2cpp"));
 
+        /// <summary>
+        /// Patches re-anchored for HybridCLR's (il2cpp_plus) libil2cpp. One per Unity
+        /// LTS series: HybridCLR swaps libil2cpp wholesale per series, so micro
+        /// versions share a tree and the floor patch is always <c>X.Y.0.patch</c>.
+        /// </summary>
+        public static string Libil2cppHybridCLRPatchesPathInPackage =>
+            Path.GetFullPath(Path.Combine(ZLuaDataPathInPackage, "patches", "libil2cpp-hybridclr"));
+
+        /// <summary>The patch root matching the active mode.</summary>
+        public static string ActiveLibil2cppPatchesPath =>
+            HybridCLRIntegration.Enabled
+                ? Libil2cppHybridCLRPatchesPathInPackage
+                : Libil2cppPatchesPathInPackage;
+
         public static string LuaPatchesPathInPackage =>
             Path.GetFullPath(Path.Combine(ZLuaDataPathInPackage, "patches", "lua"));
 
+        /// <summary>
+        /// ZLua's own il2cpp staging root. Unused in HybridCLR mode, where the
+        /// HybridCLR tree is the only tree.
+        /// </summary>
         public static string LocalIl2CppDataPath => $"{InstallRootDir}/LocalIl2CppData-{Application.platform}";
 
-        public static string LocalIl2CppPath => $"{LocalIl2CppDataPath}/il2cpp";
+        /// <summary>
+        /// The il2cpp tree this project builds from. In HybridCLR mode this is
+        /// HybridCLR's tree, which ZLua overlays rather than replaces; every derived
+        /// path below (<see cref="LocalLibil2cppPath"/>, <see cref="LocalLuaSrcPath"/>,
+        /// <see cref="LocalZluaPath"/>, <see cref="GeneratedZLuaPath"/>) follows it.
+        /// </summary>
+        public static string LocalIl2CppPath
+        {
+            get
+            {
+                if (HybridCLRIntegration.Enabled)
+                {
+                    string hybridclrDir = HybridCLRIntegration.LocalIl2CppDir;
+                    if (!string.IsNullOrEmpty(hybridclrDir))
+                    {
+                        return hybridclrDir;
+                    }
+                }
+
+                return $"{LocalIl2CppDataPath}/il2cpp";
+            }
+        }
 
         public static string LocalLibil2cppPath => $"{LocalIl2CppPath}/libil2cpp";
 

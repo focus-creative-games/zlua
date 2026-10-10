@@ -63,7 +63,19 @@ Il2CppMethodPointer DelegateBridge::Resolve(Il2CppClass* delegateClass)
     auto it = s_nameToMethodPointer.find(s_tempStubName.c_str());
     if (it != s_nameToMethodPointer.end())
         return it->second;
+#if ZLUA_ENABLE_HYBRIDCLR
+    // Delegate invoke thunks are generated at build time from the AOT assembly set,
+    // so a delegate *type* first declared in a hot-update assembly has none, and
+    // there is no generic fallback for an invoke thunk. Declare the delegate type in
+    // an AOT assembly and the hot-update code can still assign methods to it.
+    LuaException::ThrowFormat(
+        "Delegate bridge not found for %s. If this delegate type is declared in a "
+        "hot-update assembly, move its declaration to an AOT assembly: invoke thunks "
+        "are generated at build time and cannot be created for hot-update types.",
+        MetadataUtil::GetTypeFullName(delegateClass));
+#else
     LuaException::ThrowFormat("Delegate bridge not found for %s", MetadataUtil::GetTypeFullName(delegateClass));
+#endif
     return nullptr;
 }
 

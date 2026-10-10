@@ -28,6 +28,13 @@ namespace ZLua.Utils
             public int UnityVersion;
             public int TuanjieVersion;
             public string ConfId;
+
+            /// <summary>
+            /// 1 when building against HybridCLR's libil2cpp. Gates every HybridCLR-aware
+            /// code path in zlua-runtime, so a standalone build compiles byte-identically
+            /// to before this integration existed.
+            /// </summary>
+            public int EnableHybridCLR;
         }
 
         public static ConfValues Build(LuaVersionInfo luaInfo, string unityVersionStr = null)
@@ -50,6 +57,7 @@ namespace ZLua.Utils
                 UnityVersion = EngineVersionUtil.EncodeUnityVersion(unityLine),
                 TuanjieVersion = tjCode,
                 ConfId = EngineVersionUtil.BuildConfId(luaInfo.Id, unityLine, tjLabel),
+                EnableHybridCLR = HybridCLRIntegration.Enabled ? 1 : 0,
             };
         }
 
@@ -62,6 +70,7 @@ namespace ZLua.Utils
             sb.AppendLine($"#define ZLUA_TUANJIE_ENGINE     {v.TuanjieEngine}");
             sb.AppendLine($"#define ZLUA_UNITY_VERSION      {v.UnityVersion}");
             sb.AppendLine($"#define ZLUA_TUANJIE_VERSION    {v.TuanjieVersion}");
+            sb.AppendLine($"#define ZLUA_ENABLE_HYBRIDCLR   {v.EnableHybridCLR}");
             sb.AppendLine($"#define ZLUA_CONF_ID            \"{EscapeCString(v.ConfId)}\"");
             return sb.ToString();
         }

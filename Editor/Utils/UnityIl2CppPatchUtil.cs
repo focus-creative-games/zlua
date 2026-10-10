@@ -17,15 +17,20 @@ namespace ZLua.Utils
             RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         /// <summary>
-        /// Resolve patch under <c>patches/libil2cpp/{series}/</c> with the same floor rule as Lua:
+        /// Resolve patch under <c>{patchRoot}/{series}/</c> with the same floor rule as Lua:
         /// greatest <c>{major}.{minor}.{patch}.patch</c> with version &lt;= Editor, no <c>default.patch</c>.
         /// Series dirs tried: <c>major.minor</c> then <c>major</c> when <c>major &gt;= 6000</c>.
         /// </summary>
-        public static bool TryResolvePatchFile(string unityVersion, out string patchFile, out string patchKey)
+        /// <param name="patchRoot">
+        /// Patch tree to search. Defaults to <see cref="CommonDirs.ActiveLibil2cppPatchesPath"/>,
+        /// which selects the HybridCLR-anchored patches when that integration is on.
+        /// </param>
+        public static bool TryResolvePatchFile(
+            string unityVersion, out string patchFile, out string patchKey, string patchRoot = null)
         {
             patchFile = null;
             patchKey = null;
-            string root = CommonDirs.Libil2cppPatchesPathInPackage;
+            string root = patchRoot ?? CommonDirs.ActiveLibil2cppPatchesPath;
             if (!Directory.Exists(root))
             {
                 return false;

@@ -37,8 +37,19 @@ namespace ZLua.BuildProcessors
         {
             if (!Settings.EnableForCurrentBuildTarget)
             {
+
+                // callbackOrder 2 runs after HybridCLR's CheckSettings (order 0), so
+                // blanking the path here would silently undo its setup and make the
+                // build use the stock Editor il2cpp. Leave its value alone.
+                if (ZLua.Utils.HybridCLRIntegration.IsPackagePresent)
+                {
+                    Debug.Log(
+                        "[SetupIl2CppEnv] ZLua disabled; leaving UNITY_IL2CPP_PATH as set by HybridCLR "
+                        + $"('{Environment.GetEnvironmentVariable("UNITY_IL2CPP_PATH")}').");
+                    return;
+                }
+
                 Environment.SetEnvironmentVariable("UNITY_IL2CPP_PATH", "");
-                Environment.SetEnvironmentVariable("LEANAOT_EXTRA_ARGS", "");
                 return;
             }
             var installerController = new LocalInstaller();
@@ -47,9 +58,15 @@ namespace ZLua.BuildProcessors
                 throw new BuildFailedException(
                     "[ZLua] Please install ZLua first via menu 'ZLua/Install...'.");
             }
+
+            // In HybridCLR mode CommonDirs.LocalIl2CppPath already resolves to
+            // HybridCLR's tree (the single shared tree carrying both overlays), so
+            // setting it here is what both packages need.
             string runtimeDir = CommonDirs.LocalIl2CppPath;
             Environment.SetEnvironmentVariable("UNITY_IL2CPP_PATH", runtimeDir);
-            Debug.Log($"[SetupIl2CppEnv] set UNITY_IL2CPP_PATH='{runtimeDir}'");
+            Debug.Log(
+                $"[SetupIl2CppEnv] set UNITY_IL2CPP_PATH='{runtimeDir}'"
+                + (ZLua.Utils.HybridCLRIntegration.Enabled ? " (shared with HybridCLR)" : string.Empty));
         }
     }
 }

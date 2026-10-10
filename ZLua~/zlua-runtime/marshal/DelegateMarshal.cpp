@@ -215,6 +215,10 @@ void DelegateMarshal::Push(lua_State* L, Il2CppDelegate* delegate, int metatable
 
 inline void ConstructDelegate(const MethodInfo* ctor, Il2CppDelegate* delegate, Il2CppObject* target, Il2CppMethodPointer methodPointer, const MethodInfo* method)
 {
+    // HybridCLR: a hot-update delegate type's ctor is interpreted, so initialize it
+    // before using invoker_method. The ConstructClosedDelegate branch below needs no
+    // equivalent -- libil2cpp's vm::Type does this itself for interpreted ctors.
+    ZLuaEnsureInvokable(ctor);
 
     void* ctorArgs[2] = {target, (void*)&method};
     ctor->invoker_method(ctor->methodPointer, ctor, delegate, ctorArgs, NULL);

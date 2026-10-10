@@ -43,6 +43,17 @@ namespace ZLua.BuildProcessors
                 return;
             }
 
+            // HybridCLR runs an equivalent processor (earlier, at the default order)
+            // copying from the same shared libil2cpp tree -- which already carries
+            // ZLua's overlay. Ours would delete and re-copy the identical tree.
+            if (ZLua.Utils.HybridCLRIntegration.Enabled)
+            {
+                Debug.Log(
+                    "[AddLil2cppSourceCodeToXcodeproj] HybridCLR mode: skipping ZLua's Xcode "
+                    + "libil2cpp copy; HybridCLR copies the shared tree (ZLua overlay included).");
+                return;
+            }
+
             CopyLibil2cppToXcodeProj(pathToBuiltProject);
         }
 

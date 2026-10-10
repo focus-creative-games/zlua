@@ -28,6 +28,7 @@ using UnityEditor;
 using UnityEditor.Build;
 using ZLua.CppCodeGen;
 using ZLua.Meta;
+using ZLua.Utils;
 
 namespace ZLua.Commands
 {
@@ -46,9 +47,27 @@ namespace ZLua.Commands
 
             BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
 
-            StrippedAotAssemblyGenrator.Generate(target);
+            if (HybridCLRIntegration.Enabled)
+            {
+                UnityEngine.Debug.Log("[PrebuildCommand] HybridCLR build detected, skipping StrippedAotAssemblyGenrator.Generate of ZLua");
+            }
+            else
+            {
+                StrippedAotAssemblyGenrator.Generate(target);
+            }
 
             string strippedAotAssemblyDir = CommonDirs.GetManagedStrippedDuplicatePath(target);
+
+            // With HybridCLR present ZLua's StripAssembliesTo hook stands down (both
+            // packages patch the same native method), so on Unity 2021.1-2022 this
+            // directory can come up empty. Mirror HybridCLR's copy of the same artifacts.
+            if (!ZLua.Utils.StrippedAotAssemblyDir.EnsurePopulated(target))
+            {
+                throw new BuildFailedException(
+                    $"[ZLua] No stripped AOT assemblies under '{strippedAotAssemblyDir}'. "
+                    + "Run a player build once so Unity produces them, then re-run Generate/All.");
+            }
+
             var assemblyNames = Directory.GetFiles(strippedAotAssemblyDir, "*.dll", SearchOption.TopDirectoryOnly)
                 .Select(Path.GetFileNameWithoutExtension)
                 .ToList();

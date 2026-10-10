@@ -38,6 +38,21 @@ namespace ZLua.MonoHook
 
         static CopyStrippedAOTAssembliesHook()
         {
+            // HybridCLR hooks this same native method. MonoHook patches machine code
+            // keyed by raw function pointer with no cross-package registry, so two
+            // installs stack and only the later override body runs. Stand down here;
+            // unlike GetIl2CppFolderHook the two bodies copy to different directories,
+            // so ZLua recovers its copy by mirroring HybridCLR's output — see
+            // StrippedAotAssemblyDir.EnsurePopulated.
+            if (ZLua.Utils.HybridCLRIntegration.HasEquivalentHook(nameof(CopyStrippedAOTAssembliesHook)))
+            {
+                Debug.Log(
+                    "[ZLua] CopyStrippedAOTAssembliesHook: HybridCLR provides an equivalent hook; "
+                    + "skipping ZLua's to avoid double-patching AssemblyStripper.StripAssembliesTo. "
+                    + "Stripped AOT dlls will be mirrored from HybridCLR's output instead.");
+                return;
+            }
+
             if (_hook == null)
             {
                 Type type = typeof(UnityEditor.EditorApplication).Assembly.GetType("UnityEditorInternal.AssemblyStripper");

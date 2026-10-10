@@ -39,15 +39,24 @@ public:
     static void Initialize();
     static PropertyAccessor ResolvePropertyAccessor(const PropertyInfo* property, bool isStatic);
 
+    // Single choke point for every property access, so HybridCLR's lazy
+    // methodPointer/invoker_method init happens once here and covers all accessor
+    // shapes -- including the invoker_method-based ones that never cast the
+    // pointer. The accessor is cached per property but the MethodInfo is resolved
+    // per call (virtual dispatch), so a hot-update override only becomes visible
+    // at this point. No-op without HybridCLR, and for AOT methods.
+
     static inline void InvokeGetter(lua_State* L, void* target, const PropertyMarshalCtx* ctx)
     {
         const MethodInfo* method = MetadataUtil::ResolveInvokeMethod(ctx->property->get, target, ctx->getterSealed);
+        ZLuaEnsureInvokable(method);
         ctx->getter(L, target, method, ctx);
     }
 
     static inline void InvokeSetter(lua_State* L, void* target, int valueIdx, const PropertyMarshalCtx* ctx)
     {
         const MethodInfo* method = MetadataUtil::ResolveInvokeMethod(ctx->property->set, target, ctx->setterSealed);
+        ZLuaEnsureInvokable(method);
         ctx->setter(L, target, valueIdx, method, ctx);
     }
 };
