@@ -91,6 +91,14 @@ namespace ZLua.Mt
                 return GetTypeFromTypeTable(L, index);
             }
 
+            // System.Type reflection object (e.g. from zlua.typeof); RuntimeType etc. are Type.
+            if (t == LuaDataType.UserData
+                && ObjectRegistry.TryGetObject(L, index, out object obj)
+                && obj is Type clrType)
+            {
+                return clrType;
+            }
+
             return null;
         }
 

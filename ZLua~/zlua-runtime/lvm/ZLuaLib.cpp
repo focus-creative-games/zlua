@@ -63,13 +63,26 @@ static Il2CppClass* ResolveTypeArg(lua_State* L, int index)
         return MetadataUtil::ResolveTypeFromName(typeName);
     }
 
-    if (!lua_istable(L, index))
-        return nullptr;
+    if (lua_istable(L, index))
+    {
+        lua_getfield(L, index, LuaConsts::Klass);
+        Il2CppClass* klass = (Il2CppClass*)lua_touserdata(L, -1);
+        lua_pop(L, 1);
+        return klass;
+    }
 
-    lua_getfield(L, index, LuaConsts::Klass);
-    Il2CppClass* klass = (Il2CppClass*)lua_touserdata(L, -1);
-    lua_pop(L, 1);
-    return klass;
+    // System.Type reflection object (e.g. from zlua.typeof); RuntimeType is a Type subclass.
+    if (lua_type(L, index) == LUA_TUSERDATA)
+    {
+        ZLuaObjectUserData* ud = (ZLuaObjectUserData*)lua_touserdata(L, index);
+        if (ud != nullptr && ud->header.kind == UserDataKind::ByObj && ud->obj != nullptr
+            && il2cpp::vm::Object::IsInst(ud->obj, il2cpp_defaults.systemtype_class) != nullptr)
+        {
+            return il2cpp::vm::Class::FromSystemType(reinterpret_cast<Il2CppReflectionType*>(ud->obj));
+        }
+    }
+
+    return nullptr;
 }
 
 static int ZLuaBox(lua_State* L)
