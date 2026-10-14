@@ -100,6 +100,13 @@ namespace ZLua.Emit
                         return IsSupportedType(type);
                     }
 
+                    // ActualTypeUserData is return-only; on parameters validation soft-falls to Default.
+                    // Allow Expression emit so the method is still bound.
+                    if (attr.LuaMarshalType == LuaMarshalType.ActualTypeUserData)
+                    {
+                        return IsSupportedType(type);
+                    }
+
                     return false;
                 }
             }

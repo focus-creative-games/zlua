@@ -30,6 +30,10 @@ namespace ZLua
         OpaqueValue,
         UnpackedValues,
         Table,
+        /// <summary>
+        /// Return-only: ByObj UserData with viewKlass = runtime actual type (not declared type).
+        /// </summary>
+        ActualTypeUserData,
     }
 
     [AttributeUsage(

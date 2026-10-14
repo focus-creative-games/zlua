@@ -80,6 +80,18 @@ namespace ZLua.DelegateImpl
                 return;
             }
 
+            if (marshalType == LuaMarshalType.ActualTypeUserData)
+            {
+                if (value == null)
+                {
+                    LuaDll.lua_pushnil(L);
+                    return;
+                }
+
+                ObjectMarshal.Push(L, value, value.GetType());
+                return;
+            }
+
             throw new NotSupportedException($"unsupported LuaMarshalAs push for {targetType.Name} ({marshalType})");
         }
 

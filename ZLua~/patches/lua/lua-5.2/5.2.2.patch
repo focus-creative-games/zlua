@@ -137,7 +137,7 @@ diff --git a/src/lvm.c b/patched/src/lvm.c
  
  
  
-@@ -120,9 +121,80 @@ void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
+@@ -120,9 +121,102 @@ void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
          return;
        }
        /* else will try the tag method */
@@ -169,6 +169,17 @@ diff --git a/src/lvm.c b/patched/src/lvm.c
 +          if (s[0] == '_' && s[1] == '_') {
 +            setnilvalue(val);
 +            return;
++          }
++        }
++        /* memberTable.__index: lazy §3.7 full-signature resolve (seal bypasses normal mt). */
++        {
++          const TValue *idx_tm = fasttm(L, idx->metatable, TM_INDEX);
++          if (idx_tm != NULL && ttisfunction(idx_tm)) {
++            TValue idxtv;
++            sethvalue(L, &idxtv, idx);
++            callTM(L, idx_tm, &idxtv, key, val, 1);
++            if (!ttisnil(val))
++              return;
 +          }
 +        }
 +        {
@@ -205,6 +216,17 @@ diff --git a/src/lvm.c b/patched/src/lvm.c
 +            return;
 +          }
 +        }
++        /* memberTable.__index: lazy §3.7 full-signature resolve (seal bypasses normal mt). */
++        {
++          const TValue *idx_tm = fasttm(L, idx->metatable, TM_INDEX);
++          if (idx_tm != NULL && ttisfunction(idx_tm)) {
++            TValue idxtv;
++            sethvalue(L, &idxtv, idx);
++            callTM(L, idx_tm, &idxtv, key, val, 1);
++            if (!ttisnil(val))
++              return;
++          }
++        }
 +        {
 +          const TValue *tn = luaH_getstr(mt, luaS_newliteral(L, "__zlua_typename"));
 +          const char *typeName = (tn != NULL && !ttisnil(tn) && ttisstring(tn))
@@ -218,7 +240,7 @@ diff --git a/src/lvm.c b/patched/src/lvm.c
      if (ttisfunction(tm)) {
        callTM(L, tm, t, key, val, 1);
        return;
-@@ -137,6 +181,48 @@ void luaV_settable (lua_State *L, const TValue *t, TValue *key, StkId val) {
+@@ -137,6 +203,48 @@ void luaV_settable (lua_State *L, const TValue *t, TValue *key, StkId val) {
    int loop;
    for (loop = 0; loop < MAXTAGLOOP; loop++) {
      const TValue *tm;

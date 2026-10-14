@@ -38,7 +38,7 @@ class FastMetatable
 
     static void SealMetatable(lua_State* L, int mtIndex);
 
-    /* Late-bound method alias (zlua.register_method): rawset closure into sealed __index table. */
+    /* Late-bound method on miss (e.g. §3.7 full-signature): rawset closure into sealed __index table. */
     static void RawSetMethodOnIndexTable(lua_State* L, Il2CppClass* klass, bool isStatic, bool isByVal, const char* aliasName, int closureStackIndex);
 };
 

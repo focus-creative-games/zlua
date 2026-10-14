@@ -37,6 +37,7 @@
 #include "utils/StringUtils.h"
 #include "utils/HashUtils.h"
 
+#include <cstring>
 #include <unordered_set>
 
 namespace zlua
@@ -781,7 +782,7 @@ static bool TryReadLuaMarshalTypeFromAttributeObject(Il2CppObject* attr, LuaMars
         return false;
 
     const int32_t rawValue = *reinterpret_cast<int32_t*>(ZLuaObjectUnbox(enumValue));
-    if (rawValue < 0 || rawValue > static_cast<int32_t>(LuaMarshalType::Table))
+    if (rawValue < 0 || rawValue > static_cast<int32_t>(LuaMarshalType::ActualTypeUserData))
         return false;
 
     marshalTypeOut = static_cast<LuaMarshalType>(rawValue);
@@ -887,6 +888,40 @@ static bool IsBytesAllowed(Il2CppClass* klass)
     return false;
 }
 
+/// Return-only ByObj facades: class / interface / object / arrays (not string / struct / delegate).
+static bool IsActualTypeUserDataAllowed(Il2CppClass* klass)
+{
+    if (klass == nullptr || MetadataUtil::IsUnsupportedMarshalType(klass))
+        return false;
+
+    if (klass->byval_arg.type == IL2CPP_TYPE_PTR)
+        return false;
+
+    if (klass->byval_arg.type == IL2CPP_TYPE_STRING)
+        return false;
+    if (IsStructClass(klass))
+        return false;
+    if (MetadataUtil::IsDelegateClass(klass))
+        return false;
+    if (MarshalIsPrimitiveValueClass(klass))
+        return false;
+    if (klass->enumtype)
+        return false;
+    if (MetadataUtil::IsIntPtrClass(klass) || MetadataUtil::IsUIntPtrClass(klass))
+        return false;
+
+    if (IL2CPP_CLASS_IS_ARRAY(klass))
+        return true;
+    if (klass->byval_arg.type == IL2CPP_TYPE_OBJECT)
+        return true;
+    if (klass->byval_arg.type == IL2CPP_TYPE_CLASS)
+        return true;
+    if (il2cpp::vm::Class::IsInterface(klass))
+        return true;
+
+    return false;
+}
+
 static Il2CppClass* GetEffectiveMarshalClass(const Il2CppType* type)
 {
     if (type == nullptr)
@@ -943,6 +978,8 @@ static bool IsMarshalTypeValidForParameter(LuaMarshalType marshalType, const Il2
             return false;
         return IsStructClass(klass);
     }
+    case LuaMarshalType::ActualTypeUserData:
+        return isReturnValue && IsActualTypeUserDataAllowed(GetEffectiveMarshalClass(type));
     default:
         return false;
     }
@@ -1197,6 +1234,104 @@ void MetadataUtil::NullableSetHasValue(void* dataAddr, Il2CppClass* klass)
     EnsureFields(klass);
     IL2CPP_ASSERT(klass->fields[0].type->type == IL2CPP_TYPE_BOOLEAN);
     *(reinterpret_cast<uint8_t*>(dataAddr)) = 1;
+}
+
+static bool HasPublicParameterlessCtor(Il2CppClass* klass)
+{
+    if (MetadataUtil::IsValueTypeClass(klass))
+        return true;
+
+    MetadataUtil::EnsureMethods(klass);
+    for (uint16_t i = 0; i < klass->method_count; ++i)
+    {
+        const MethodInfo* method = klass->methods[i];
+        if (method == nullptr || std::strcmp(method->name, ".ctor") != 0)
+            continue;
+        if (method->parameters_count == 0 && MetadataUtil::IsPublicMethod(method))
+            return true;
+    }
+    return false;
+}
+
+static Il2CppMetadataGenericContainerHandle GetOpenMethodGenericContainer(const MethodInfo* openMethod)
+{
+    if (openMethod->is_inflated && openMethod->genericMethod != nullptr && openMethod->genericMethod->methodDefinition != nullptr)
+        return openMethod->genericMethod->methodDefinition->genericContainerHandle;
+    return openMethod->genericContainerHandle;
+}
+
+bool MetadataUtil::MethodGenericTypeArgsSatisfyConstraints(const MethodInfo* openMethod, const Il2CppType* const* typeArgs, uint32_t typeArgCount)
+{
+    if (openMethod == nullptr || typeArgs == nullptr)
+        return false;
+
+    Il2CppMetadataGenericContainerHandle container = GetOpenMethodGenericContainer(openMethod);
+    if (container == nullptr)
+        return false;
+
+    if (il2cpp::vm::MetadataCache::GetGenericContainerCount(container) != typeArgCount)
+        return false;
+
+    for (uint32_t i = 0; i < typeArgCount; ++i)
+    {
+        Il2CppMetadataGenericParameterHandle gp =
+            il2cpp::vm::MetadataCache::GetGenericParameterFromIndex(container, (GenericContainerParameterIndex)i);
+        Il2CppClass* argKlass = il2cpp::vm::Class::FromIl2CppType(typeArgs[i]);
+        if (argKlass == nullptr)
+            return false;
+        il2cpp::vm::Class::Init(argKlass);
+
+        const uint16_t flags = il2cpp::vm::MetadataCache::GetGenericParameterFlags(gp);
+        if ((flags & IL2CPP_GENERIC_PARAMETER_ATTRIBUTE_REFERENCE_TYPE_CONSTRAINT) != 0)
+        {
+            if (IsValueTypeClass(argKlass))
+                return false;
+        }
+        if ((flags & IL2CPP_GENERIC_PARAMETER_ATTRIBUTE_NOT_NULLABLE_VALUE_TYPE_CONSTRAINT) != 0)
+        {
+            // where T : struct — value type and not Nullable<T>
+            if (!IsValueTypeClass(argKlass) || argKlass->nullabletype)
+                return false;
+        }
+        if ((flags & IL2CPP_GENERIC_PARAMETER_ATTRIBUTE_DEFAULT_CONSTRUCTOR_CONSTRAINT) != 0)
+        {
+            if (!HasPublicParameterlessCtor(argKlass))
+                return false;
+        }
+
+        const int16_t constraintCount = il2cpp::vm::MetadataCache::GetGenericConstraintCount(gp);
+        for (int16_t c = 0; c < constraintCount; ++c)
+        {
+            const Il2CppType* constraintType =
+                il2cpp::vm::MetadataCache::GetGenericParameterConstraintFromIndex(gp, (GenericParameterConstraintIndex)c);
+            if (constraintType == nullptr)
+                continue;
+
+            // Inflate constraints that refer to other method type parameters.
+            const Il2CppType* effectiveConstraint = constraintType;
+            if (constraintType->type == IL2CPP_TYPE_MVAR || constraintType->type == IL2CPP_TYPE_VAR)
+            {
+                Il2CppMetadataGenericParameterHandle constraintGp =
+                    il2cpp::vm::MetadataCache::GetGenericParameterFromType(constraintType);
+                Il2CppGenericParameterInfo info = il2cpp::vm::MetadataCache::GetGenericParameterInfo(constraintGp);
+                if ((uint32_t)info.num >= typeArgCount)
+                    return false;
+                effectiveConstraint = typeArgs[info.num];
+            }
+
+            Il2CppClass* constraintKlass = il2cpp::vm::Class::FromIl2CppType(effectiveConstraint);
+            if (constraintKlass == nullptr)
+                return false;
+            il2cpp::vm::Class::Init(constraintKlass);
+
+            // System.Object / ValueType / Enum appear as special flags; ValueType/Enum as type
+            // constraints still require assignability (struct → ValueType, not string).
+            if (!il2cpp::vm::Class::IsAssignableFrom(constraintKlass, argKlass))
+                return false;
+        }
+    }
+
+    return true;
 }
 
 uint32_t MetadataUtil::GetParameterToken(const MethodInfo* method, int paramIndex /* -1 for return type */)

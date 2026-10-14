@@ -331,6 +331,13 @@ namespace ZLua.Mt
                 return;
             }
 
+            // Method/type generic parameters: use the CLR parameter name only (e.g. "T").
+            if (type.IsGenericParameter)
+            {
+                sb.Append(type.Name);
+                return;
+            }
+
             if (type.IsArray)
             {
                 AppendLuaFullName(sb, type.GetElementType());

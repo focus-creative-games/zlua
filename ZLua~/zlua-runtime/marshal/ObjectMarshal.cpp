@@ -44,9 +44,15 @@ void ObjectMarshal::Push(lua_State* L, Il2CppObject* obj, const MarshalMetaInfo*
         return;
     }
     IL2CPP_ASSERT(meta != nullptr);
+    /* ActualTypeUserData: ByObj with viewKlass = runtime actual type (string stays ByObj). */
+    if (meta->marshalType == LuaMarshalType::ActualTypeUserData)
+    {
+        ObjectRegistry::Push(L, obj, obj->klass, LUA_NOREF);
+        return;
+    }
     Il2CppClass* viewKlass = meta->typeKlass;
     IL2CPP_ASSERT(viewKlass != nullptr);
-    /* Declared-type facade only; never switch to runtime klass or special marshal here. */
+    /* Declared-type facade only; never switch to runtime klass for Default / UserData. */
     int metatableRefIndex = MarshalMeta::EnsureByObjMetatableRef(L, meta);
     ObjectRegistry::Push(L, obj, viewKlass, metatableRefIndex);
 }

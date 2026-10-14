@@ -21,6 +21,7 @@
 using System;
 using System.Linq.Expressions;
 using System.Reflection;
+using ZLua.Marshaling;
 using ZLua.Utils;
 
 namespace ZLua.Emit
@@ -131,6 +132,14 @@ namespace ZLua.Emit
 
         private static LuaCSFunction CompileGetter(PropertyInfo property, MethodInfo getter, bool isStatic, bool isByVal)
         {
+            LuaMarshalBinding returnBinding = LuaMarshalAsValidation.ResolveReturnBinding(
+                getter,
+                LuaMarshalDirection.CSharpToLua);
+            if (returnBinding.MarshalType == LuaMarshalType.ActualTypeUserData || returnBinding.IsComposite)
+            {
+                return CompileGetterInterpreted(property, getter, isStatic, isByVal, returnBinding);
+            }
+
             Type declaringType = property.DeclaringType;
             Type propertyType = property.PropertyType;
             ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
@@ -178,6 +187,36 @@ namespace ZLua.Emit
 
             Func<IntPtr, int> core = Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
             return Wrap(core);
+        }
+
+        private static LuaCSFunction CompileGetterInterpreted(
+            PropertyInfo property,
+            MethodInfo getter,
+            bool isStatic,
+            bool isByVal,
+            LuaMarshalBinding returnBinding)
+        {
+            Type declaringType = property.DeclaringType;
+            Type propertyType = property.PropertyType;
+            return Wrap(L =>
+            {
+                object value;
+                if (isStatic)
+                {
+                    value = getter.Invoke(null, null);
+                }
+                else if (isByVal && declaringType != null && declaringType.IsValueType)
+                {
+                    value = ByValInstanceOps.InvokePropertyGetter(L, 1, declaringType, getter);
+                }
+                else
+                {
+                    object target = BridgeMarshaling.PopTarget(L, 1, declaringType, isByVal: false);
+                    value = getter.Invoke(target, null);
+                }
+
+                return CompositeMarshal.Push(L, value, propertyType, returnBinding);
+            });
         }
 
         private static LuaCSFunction CompileSetter(PropertyInfo property, MethodInfo setter, bool isStatic, bool isByVal)

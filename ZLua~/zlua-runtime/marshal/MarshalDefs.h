@@ -32,6 +32,8 @@ enum class LuaMarshalType : uint8_t
     OpaqueValue,
     UnpackedValues,
     Table,
+    /// Return-only: ByObj UserData with viewKlass = runtime actual type (not declared type).
+    ActualTypeUserData,
 };
 
 enum class MetaTableKind : uint8_t

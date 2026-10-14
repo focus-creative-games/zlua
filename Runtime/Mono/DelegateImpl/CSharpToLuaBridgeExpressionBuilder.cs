@@ -254,6 +254,30 @@ namespace ZLua.DelegateImpl
                     return LuaMarshalType.UserData;
                 case LuaMarshalType.OpaqueValue:
                     return LuaMarshalType.OpaqueValue;
+                case LuaMarshalType.ActualTypeUserData:
+                {
+                    // Expression path soft-filters like Attribute validation (ByObj facades only).
+                    Type target = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
+                    if (target == null
+                        || target == typeof(string)
+                        || target.IsValueType
+                        || typeof(Delegate).IsAssignableFrom(target)
+                        || target.IsPointer
+                        || target.IsByRef)
+                    {
+                        return LuaMarshalType.Default;
+                    }
+
+                    if (target.IsArray
+                        || target == typeof(object)
+                        || target.IsClass
+                        || target.IsInterface)
+                    {
+                        return LuaMarshalType.ActualTypeUserData;
+                    }
+
+                    return LuaMarshalType.Default;
+                }
                 default:
                     return LuaMarshalType.Default;
             }

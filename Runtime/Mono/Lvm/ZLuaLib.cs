@@ -19,7 +19,6 @@
 // SOFTWARE.
 
 using System;
-using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -55,8 +54,7 @@ namespace ZLua.Lvm
         private static readonly LuaCSFunction s_toDelegate = Guard(ZLuaToDelegate);
         private static readonly LuaCSFunction s_toBytes = Guard(ZLuaToBytes);
         private static readonly LuaCSFunction s_toTable = Guard(ZLuaToTable);
-        private static readonly LuaCSFunction s_makeGenericMethod = Guard(ZLuaMakeGenericMethod);
-        private static readonly LuaCSFunction s_registerMethod = Guard(ZLuaRegisterMethod);
+        private static readonly LuaCSFunction s_inflate = Guard(ZLuaInflate);
         private static readonly LuaCSFunction s_getOpaqueValue = Guard(ZLuaGetOpaqueValue);
         private static readonly LuaCSFunction s_setOpaqueValue = Guard(ZLuaSetOpaqueValue);
 
@@ -72,14 +70,13 @@ namespace ZLua.Lvm
 
             Register(L, "__zlua_create_signature", s_createSignature);
             Register(L, "__zlua_make_generic_type", s_makeGenericType);
-            Register(L, "__zlua_make_generic_method", s_makeGenericMethod);
+            Register(L, "__zlua_inflate", s_inflate);
             Register(L, "__zlua_make_szarray_type", s_makeSzArrayType);
             Register(L, "__zlua_make_mdarray_type", s_makeMdArrayType);
             Register(L, "__zlua_new_szarray_by_element_type", s_newSzArrayByElementType);
             Register(L, "__zlua_new_szarray_by_szarray_type", s_newSzArrayBySzArrayType);
             Register(L, "__zlua_new_mdarray_by_mdarray_type", s_newMdArrayByMdArrayType);
             Register(L, "__zlua_new_mdarray_by_spec", s_newMdArrayBySpec);
-            Register(L, "__zlua_register_method", s_registerMethod);
             Register(L, "__zlua_to_delegate", s_toDelegate);
             Register(L, "__zlua_get_opaquevalue", s_getOpaqueValue);
             Register(L, "__zlua_set_opaquevalue", s_setOpaqueValue);
@@ -709,129 +706,92 @@ namespace ZLua.Lvm
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]
-        private static int ZLuaMakeGenericMethod(IntPtr L)
+        private static int ZLuaInflate(IntPtr L)
         {
             try
             {
-                const int closureIndex = 1;
-                if (LuaDll.lua_iscfunction(L, closureIndex) == 0)
-                {
-                    LuaCallbackBoundary.Throw("zlua.make_generic_method expects callable closure");
-                }
-
-                if (!ClosurePin.TryGetMethodTag(L, closureIndex, out MethodClosureTag tag) || tag?.Method == null)
-                {
-                    LuaCallbackBoundary.Throw("zlua.make_generic_method expects direct method closure");
-                }
-
-                MethodInfo openMethod = tag.Method;
-                if (openMethod == null
-                    || (!openMethod.IsGenericMethodDefinition && !openMethod.ContainsGenericParameters))
-                {
-                    LuaCallbackBoundary.Throw("zlua.make_generic_method expects generic method");
-                }
-
-                Type[] genericParams = openMethod.GetGenericArguments();
-                int argCount = LuaDll.lua_gettop(L) - closureIndex;
-                if (argCount != genericParams.Length)
+                int top = LuaDll.lua_gettop(L);
+                if (top < 3)
                 {
                     LuaCallbackBoundary.Throw(
-                        $"zlua.make_generic_method expects {genericParams.Length} arguments, got {argCount}");
+                        "zlua.inflate expects (type, methodNameOrSignature, typeArg1, ...)");
                 }
 
-                var typeArgs = new Type[argCount];
-                for (int i = 0; i < argCount; i++)
+                Type ownerType = TypeRegistry.ResolveTypeArg(L, 1);
+                if (ownerType == null)
                 {
-                    Type argType = TypeRegistry.ResolveTypeArg(L, closureIndex + i + 1);
+                    LuaCallbackBoundary.Throw("zlua.inflate expects type as first arg");
+                }
+
+                if (ownerType.IsGenericTypeDefinition || ownerType.ContainsGenericParameters)
+                {
+                    LuaCallbackBoundary.Throw(
+                        "zlua.inflate expects closed declaring type (use zlua.make_generic_type first)");
+                }
+
+                if (LuaDll.lua_type(L, 2) != LuaDataType.String)
+                {
+                    LuaCallbackBoundary.Throw("zlua.inflate expects string method name or signature");
+                }
+
+                string nameOrSignature = LuaDllExtension.tostring(L, 2);
+                if (string.IsNullOrEmpty(nameOrSignature))
+                {
+                    LuaCallbackBoundary.Throw("zlua.inflate expects non-empty method name or signature");
+                }
+
+                int typeArgCount = top - 2;
+                if (typeArgCount < 1)
+                {
+                    LuaCallbackBoundary.Throw("zlua.inflate expects at least one typeArg");
+                }
+
+                var typeArgs = new Type[typeArgCount];
+                for (int i = 0; i < typeArgCount; i++)
+                {
+                    Type argType = TypeRegistry.ResolveTypeArg(L, i + 3);
                     if (argType == null)
                     {
-                        LuaCallbackBoundary.Throw($"zlua.make_generic_method arg {i + 1} is not a type");
+                        LuaCallbackBoundary.Throw($"zlua.inflate typeArg {i + 1} is not a type");
                     }
 
                     typeArgs[i] = argType;
                 }
 
-                MethodInfo closedMethod = openMethod.MakeGenericMethod(typeArgs);
+                if (!MetaBinding.TryFindOpenGenericMethod(
+                        ownerType,
+                        nameOrSignature,
+                        typeArgCount,
+                        out MethodInfo openMethod,
+                        out bool isStatic,
+                        out bool isByVal))
+                {
+                    LuaCallbackBoundary.Throw(
+                        $"zlua.inflate: no open generic method '{nameOrSignature}' with {typeArgCount} type arg(s) on {TypeRegistry.GetLuaFullName(ownerType)}");
+                }
+
+                MethodInfo closedMethod;
+                try
+                {
+                    closedMethod = openMethod.MakeGenericMethod(typeArgs);
+                }
+                catch (Exception ex)
+                {
+                    LuaCallbackBoundary.Throw(
+                        $"zlua.inflate MakeGenericMethod failed: {ex.Message}");
+                    return 0;
+                }
+
+                var tag = new MethodClosureTag
+                {
+                    Method = openMethod,
+                    OwnerType = ownerType,
+                    IsStatic = isStatic,
+                    IsByVal = isByVal,
+                };
                 int closureRef = MethodEmitter.GetOrCreateClosedMethodClosureRef(L, closedMethod, tag);
                 LuaDll.lua_rawgeti(L, LuaConsts.LuaRegistryIndex, closureRef);
                 return 1;
-            }
-            catch (Exception ex)
-            {
-                return LuaCallbackBoundary.ToLuaError(L, ex);
-            }
-        }
-
-        [MonoLuaCallback(typeof(LuaCSFunction))]
-        private static int ZLuaRegisterMethod(IntPtr L)
-        {
-            try
-            {
-                if (LuaDll.lua_gettop(L) != 2)
-                {
-                    LuaCallbackBoundary.Throw("zlua.register_method expects (aliasName, methodOrClosure)");
-                }
-
-                if (LuaDll.lua_type(L, 1) != LuaDataType.String)
-                {
-                    LuaCallbackBoundary.Throw("zlua.register_method argument mismatch: expects string alias name");
-                }
-
-                string aliasName = LuaDllExtension.tostring(L, 1);
-                if (string.IsNullOrEmpty(aliasName))
-                {
-                    LuaCallbackBoundary.Throw("zlua.register_method expects non-empty alias name");
-                }
-
-                if (LuaDll.lua_iscfunction(L, 2) == 0)
-                {
-                    LuaCallbackBoundary.Throw("zlua.register_method argument mismatch: expects callable closure");
-                }
-
-                if (!TryRequireMethodClosure(L, 2, out MethodClosureTag tag))
-                {
-                    LuaCallbackBoundary.Throw("zlua.register_method argument mismatch: expects direct method closure");
-                }
-
-                TypeBinding binding = MetaBinding.EnsureBinding(tag.OwnerType);
-                MemberTableSet tables = tag.IsStatic
-                    ? binding.StaticTables
-                    : (tag.IsByVal ? binding.ByValInstanceTables : binding.ByObjInstanceTables);
-                Dictionary<string, MetaInfo> map = tag.IsStatic
-                    ? binding.StaticMap
-                    : (tag.IsByVal ? binding.ByValInstanceMap : binding.ByObjInstanceMap);
-
-                if (map.ContainsKey(aliasName))
-                {
-                    LuaCallbackBoundary.Throw($"zlua: method alias already exists: {aliasName}");
-                }
-
-                if (tables == null || !tables.IsValid)
-                {
-                    LuaCallbackBoundary.Throw($"zlua: method table not bound for {tag.OwnerType.FullName}");
-                }
-
-                LuaDll.lua_rawgeti(L, LuaConsts.LuaRegistryIndex, tables.MethodTableRef);
-                LuaDll.lua_getfield(L, -1, aliasName);
-                if (!LuaDll.lua_isnil(L, -1))
-                {
-                    LuaDll.lua_pop(L, 2);
-                    LuaCallbackBoundary.Throw($"zlua: method alias already exists: {aliasName}");
-                }
-
-                LuaDll.lua_pop(L, 1);
-                LuaDll.lua_pushvalue(L, 2);
-                LuaDll.lua_setfield(L, -2, aliasName);
-                LuaDll.lua_pop(L, 1);
-
-                map[aliasName] = new MetaInfo
-                {
-                    Kind = MetaKind.Method,
-                    Name = aliasName,
-                    IsStatic = tag.IsStatic,
-                    Method = tag.Method,
-                };
-                return 0;
             }
             catch (Exception ex)
             {
@@ -892,23 +852,6 @@ namespace ZLua.Lvm
             {
                 return LuaCallbackBoundary.ToLuaError(L, ex);
             }
-        }
-
-        private static bool TryRequireMethodClosure(IntPtr L, int index, out MethodClosureTag tag)
-        {
-            if (LuaDll.lua_iscfunction(L, index) == 0)
-            {
-                tag = null;
-                return false;
-            }
-
-            if (!ClosurePin.TryGetMethodTag(L, index, out tag) || tag?.Method == null || tag.OwnerType == null)
-            {
-                tag = null;
-                return false;
-            }
-
-            return true;
         }
 
         private static object BoxValue(Type type, object value)

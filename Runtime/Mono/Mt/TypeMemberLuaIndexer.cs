@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 using System;
+using System.Runtime.InteropServices;
 using ZLua.Utils;
 
 namespace ZLua.Mt
@@ -30,10 +31,13 @@ namespace ZLua.Mt
     internal static class TypeMemberLuaIndexer
     {
         // setter(obj, value) — matches Docs-New/spec/metatable/02-INDEX.md
+        // resolveSig(key): C# upvalue; full-signature miss → lazy method resolve (§3.7).
         private const string BootstrapChunk = @"
 local rawget = rawget
+local type = type
+local string_find = string.find
 
-local function bind_indexer(methodTable, fieldGetterTable, fieldSetterTable, extrasTable, isStatic, typeFullName)
+local function bind_indexer(methodTable, fieldGetterTable, fieldSetterTable, extrasTable, isStatic, typeFullName, resolveSig)
     if type(methodTable) ~= 'table' then
         error('bind_indexer: methodTable must be table, got ' .. type(methodTable))
     end
@@ -49,6 +53,9 @@ local function bind_indexer(methodTable, fieldGetterTable, fieldSetterTable, ext
     if type(typeFullName) ~= 'string' or typeFullName == '' then
         error('bind_indexer: typeFullName must be non-empty string')
     end
+    if type(resolveSig) ~= 'function' then
+        error('bind_indexer: resolveSig must be function')
+    end
 
     local function qualified(key)
         return typeFullName .. '.' .. tostring(key)
@@ -62,6 +69,12 @@ local function bind_indexer(methodTable, fieldGetterTable, fieldSetterTable, ext
         local member = rawget(methodTable, key)
         if member ~= nil then
             return member
+        end
+        if type(key) == 'string' and string_find(key, '(', 1, true) then
+            local resolved = resolveSig(key)
+            if resolved ~= nil then
+                return resolved
+            end
         end
         local getter = rawget(fieldGetterTable, key)
         if getter ~= nil then
@@ -96,6 +109,8 @@ end
 
 return bind_indexer
 ";
+
+        private static readonly LuaCSFunction s_resolveSignature = ResolveSignatureMethod;
 
         private static int _bindIndexerRef = LuaConsts.LuaNoRef;
         private static bool _loaded;
@@ -140,7 +155,8 @@ return bind_indexer
             int metatableIndex,
             int methodTableIndex,
             int fieldGetterTableIndex,
-            int fieldSetterTableIndex)
+            int fieldSetterTableIndex,
+            bool isByVal)
         {
             BindMetatable(
                 luaState,
@@ -150,7 +166,8 @@ return bind_indexer
                 fieldGetterTableIndex,
                 fieldSetterTableIndex,
                 extrasTableIndex: 0,
-                isStatic: false);
+                isStatic: false,
+                isByVal: isByVal);
         }
 
         internal static void BindStaticMetatable(
@@ -169,7 +186,8 @@ return bind_indexer
                 fieldGetterTableIndex,
                 fieldSetterTableIndex,
                 extrasTableIndex: staticMetatableIndex,
-                isStatic: true);
+                isStatic: true,
+                isByVal: false);
         }
 
         private static void BindMetatable(
@@ -180,7 +198,8 @@ return bind_indexer
             int fieldGetterTableIndex,
             int fieldSetterTableIndex,
             int extrasTableIndex,
-            bool isStatic)
+            bool isStatic,
+            bool isByVal)
         {
             EnsureLoaded(luaState);
             int absMetatableIndex = LuaDll.lua_absindex(luaState, metatableIndex);
@@ -213,7 +232,16 @@ return bind_indexer
             LuaDll.lua_pushboolean(luaState, isStatic ? 1 : 0);
             LuaDll.lua_pushstring(luaState, TypeRegistry.GetLuaFullName(type));
 
-            if (LuaDll.lua_pcall(luaState, 6, 2, 0) != 0)
+            // resolveSig upvalues: type, isStatic, isByVal
+            TypeHandleStore.PushLightUserData(luaState, type);
+            LuaDll.lua_pushboolean(luaState, isStatic ? 1 : 0);
+            LuaDll.lua_pushboolean(luaState, isByVal ? 1 : 0);
+            LuaCallbackGate.PushCClosure(
+                luaState,
+                Marshal.GetFunctionPointerForDelegate(s_resolveSignature),
+                3);
+
+            if (LuaDll.lua_pcall(luaState, 7, 2, 0) != 0)
             {
                 string error = LuaDllExtension.tostring(luaState, -1) ?? "unknown Lua error";
                 LuaDll.lua_pop(luaState, 1);
@@ -223,6 +251,45 @@ return bind_indexer
             // pcall returns index, newindex — set __newindex first (top), then __index
             LuaDll.lua_setfield(luaState, absMetatableIndex, LuaConsts.MetaNewIndex);
             LuaDll.lua_setfield(luaState, absMetatableIndex, LuaConsts.MetaIndex);
+        }
+
+        [MonoLuaCallback(typeof(LuaCSFunction))]
+        private static int ResolveSignatureMethod(IntPtr L)
+        {
+            try
+            {
+                if (LuaDll.lua_type(L, 1) != LuaDataType.String)
+                {
+                    LuaDll.lua_pushnil(L);
+                    return 1;
+                }
+
+                string key = LuaDllExtension.tostring(L, 1);
+                if (string.IsNullOrEmpty(key) || key.IndexOf('(') < 0)
+                {
+                    LuaDll.lua_pushnil(L);
+                    return 1;
+                }
+
+                Type type = TypeHandleStore.ReadLightUserData(
+                    L, LuaDll.lua_upvalueindex(LuaCallbackGate.ManagedUpvalueIndex(1)));
+                bool isStatic = LuaDll.lua_toboolean(
+                    L, LuaDll.lua_upvalueindex(LuaCallbackGate.ManagedUpvalueIndex(2))) != 0;
+                bool isByVal = LuaDll.lua_toboolean(
+                    L, LuaDll.lua_upvalueindex(LuaCallbackGate.ManagedUpvalueIndex(3))) != 0;
+
+                if (MetaBinding.TryResolveSignatureMethodAndPush(L, type, key, isStatic, isByVal) == 1)
+                {
+                    return 1;
+                }
+
+                LuaDll.lua_pushnil(L);
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                return LuaCallbackBoundary.ToLuaError(L, ex);
+            }
         }
 
         private static void ExpectTable(IntPtr luaState, int index, string label)

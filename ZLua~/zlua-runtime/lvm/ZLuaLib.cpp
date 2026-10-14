@@ -405,114 +405,67 @@ static int ZLuaNewMdArrayBySpec(lua_State* L)
     ZLUA_TRY_END()
 }
 
-static int ZLuaMakeGenericMethod(lua_State* L)
+static int InternClosedGenericMethodClosure(lua_State* L, const MethodInfo* openMethod, const TypeBinding* binding, bool isStatic, bool isByVal,
+                                            const std::vector<const Il2CppType*>& typeArgs)
 {
-    ZLUA_TRY_BEGIN()
-    const int kclosureStackIndex = 1;
-
-    if (!lua_iscfunction(L, kclosureStackIndex))
-        LuaException::Throw("zlua.register_method expects callable closure");
-
-    if (!MetaBinding::IsDirectMethodClosure(L, kclosureStackIndex))
-        LuaException::Throw("zlua.register_method expects direct method closure");
-
-    const MethodMarshalCtx* ctx = MetaBinding::GetMethodMarshalCtxFromClosure(L, kclosureStackIndex);
-    IL2CPP_ASSERT(ctx != nullptr);
-    if (!ctx->method->is_generic)
-        LuaException::Throw("zlua.make_generic_method expects generic method");
-
-    const TypeBinding* binding = MetaBinding::GetTypeBindingFromClosure(L, kclosureStackIndex);
-    IL2CPP_ASSERT(binding != nullptr);
-
-    std::vector<const Il2CppType*> typeArgs;
-    int32_t genericArgumentCount = MetadataUtil::GetMethodGenericParameterCount(ctx->method);
-    IL2CPP_ASSERT(genericArgumentCount > 0);
-    int32_t argCount = lua_gettop(L) - kclosureStackIndex;
-    if (argCount != genericArgumentCount)
-        LuaException::ThrowFormat("zlua.make_generic_method expects %d arguments, got %d", genericArgumentCount, argCount);
-
-    for (int32_t i = 0; i < genericArgumentCount; ++i)
+    if (!MetadataUtil::MethodGenericTypeArgsSatisfyConstraints(openMethod, typeArgs.data(), (uint32_t)typeArgs.size()))
     {
-        Il2CppClass* argClass = ResolveTypeArg(L, kclosureStackIndex + i + 1);
-        if (argClass == nullptr)
-            LuaException::ThrowFormat("zlua.make_generic_method arg %d is not a type", i + 1);
-        typeArgs.push_back(&argClass->byval_arg);
-    }
-    const MethodInfo* method = ctx->method;
-    const Il2CppGenericInst* methodInst = il2cpp::vm::MetadataCache::GetGenericInst(typeArgs.data(), (uint32_t)typeArgs.size());
-
-    if (method->is_inflated)
-    {
-        method = il2cpp::metadata::GenericMethod::GetMethod(method->genericMethod->methodDefinition, method->genericMethod->context.class_inst, methodInst);
-    }
-    else
-    {
-        method = il2cpp::metadata::GenericMethod::GetMethod(method, NULL, methodInst);
-    }
-    std::string methodSignature = MetadataUtil::CreateMethodNameWithParametersAndGenericArguments(method);
-    
-    NameMetaMap& nmm = MetadataUtil::IsStaticMethod(ctx->method) ? binding->staticMap : (ctx->byVal ? binding->byvalInstanceMap : binding->byobjInstanceMap);
-    auto it = nmm.find(methodSignature.c_str());
-    if (it != nmm.end())
-    {
-        LuaUtil::PushRef(L, it->second.closureRef);
-        return 1;
+        LuaException::Throw(
+            "zlua.inflate MakeGenericMethod failed: GenericArguments must match the GenericParameterAttributes of the generic definition.");
     }
 
-    int closureRef = MetaBinding::CreateDirectMethodClosureRef(L, method, binding, MetadataUtil::IsStaticMethod(method), ctx->byVal);
-    MetaInfo newMeta = {};
-    newMeta.kind = MetaKind::Method;
-    newMeta.closureRef = closureRef;
-    const char* key = zlua_strdup(methodSignature.c_str());
-    nmm.insert({key, newMeta});
+    const int closureRef = MetaBinding::InternClosedGenericMethod(L, openMethod, binding, isStatic, isByVal, typeArgs.data(),
+                                                                  (uint32_t)typeArgs.size());
     LuaUtil::PushRef(L, closureRef);
     return 1;
-    ZLUA_TRY_END()
 }
 
-static int ZLuaRegisterMethod(lua_State* L)
+static int ZLuaInflate(lua_State* L)
 {
     ZLUA_TRY_BEGIN()
-    if (lua_gettop(L) != 2)
-        LuaException::Throw("zlua.register_method expects (aliasName, methodOrClosure)");
+    const int top = lua_gettop(L);
+    if (top < 3)
+        LuaException::Throw("zlua.inflate expects (type, methodNameOrSignature, typeArg1, ...)");
 
-    if (lua_type(L, 1) != LUA_TSTRING)
-        LuaException::Throw("zlua.register_method argument mismatch: expects string alias name");
+    Il2CppClass* ownerKlass = ResolveTypeArg(L, 1);
+    if (ownerKlass == nullptr)
+        LuaException::Throw("zlua.inflate expects type as first arg");
 
-    const char* aliasName = lua_tostring(L, 1);
-    if (aliasName[0] == '\0')
-        LuaException::Throw("zlua.register_method expects non-empty alias name");
+    if (ZLuaIsGenericTypeDefinition(ownerKlass) || il2cpp::metadata::GenericMetadata::ContainsGenericParameters(ownerKlass))
+        LuaException::Throw("zlua.inflate expects closed declaring type (use zlua.make_generic_type first)");
 
-    const int kclosureStackIndex = 2;
+    if (lua_type(L, 2) != LUA_TSTRING)
+        LuaException::Throw("zlua.inflate expects string method name or signature");
 
-    if (!lua_iscfunction(L, kclosureStackIndex))
-        LuaException::Throw("zlua.register_method argument mismatch: expects callable closure");
+    const char* nameOrSignature = lua_tostring(L, 2);
+    if (nameOrSignature == nullptr || nameOrSignature[0] == '\0')
+        LuaException::Throw("zlua.inflate expects non-empty method name or signature");
 
-    if (!MetaBinding::IsDirectMethodClosure(L, kclosureStackIndex))
-        LuaException::Throw("zlua.register_method argument mismatch: expects direct method closure");
+    const int typeArgCount = top - 2;
+    if (typeArgCount < 1)
+        LuaException::Throw("zlua.inflate expects at least one typeArg");
 
-    const MethodMarshalCtx* ctx = MetaBinding::GetMethodMarshalCtxFromClosure(L, kclosureStackIndex);
-    IL2CPP_ASSERT(ctx != nullptr);
+    std::vector<const Il2CppType*> typeArgs;
+    typeArgs.reserve((size_t)typeArgCount);
+    for (int i = 0; i < typeArgCount; ++i)
+    {
+        Il2CppClass* argClass = ResolveTypeArg(L, i + 3);
+        if (argClass == nullptr)
+            LuaException::ThrowFormat("zlua.inflate typeArg %d is not a type", i + 1);
+        typeArgs.push_back(&argClass->byval_arg);
+    }
 
-    const TypeBinding* binding = MetaBinding::GetTypeBindingFromClosure(L, kclosureStackIndex);
-    IL2CPP_ASSERT(binding != nullptr);
+    const MethodInfo* openMethod = nullptr;
+    bool isStatic = false;
+    bool isByVal = false;
+    if (!MetaBinding::TryFindOpenGenericMethod(L, ownerKlass, nameOrSignature, typeArgCount, &openMethod, &isStatic, &isByVal))
+    {
+        LuaException::ThrowFormat("zlua.inflate: no open generic method '%s' with %d type arg(s) on %s",
+                                  nameOrSignature, typeArgCount, MetadataUtil::GetLuaFullName(ownerKlass).c_str());
+    }
 
-    const bool isStatic = MetadataUtil::IsStaticMethod(ctx->method);
-    NameMetaMap& map = isStatic ? binding->staticMap : (ctx->byVal ? binding->byvalInstanceMap : binding->byobjInstanceMap);
-    auto it = map.find(aliasName);
-    if (it != map.end())
-        LuaException::ThrowFormat("zlua: method alias already exists: %s", aliasName);
-
-#if ZLUA_FAST_METATABLE
-    FastMetatable::RawSetMethodOnIndexTable(L, binding->klass, isStatic, ctx->byVal, aliasName, kclosureStackIndex);
-#endif
-
-    MetaInfo newMeta = {};
-    newMeta.kind = MetaKind::Method;
-    newMeta.closureRef = LuaUtil::ToLuaRef(L);
-    const char* key = zlua_strdup(aliasName);   
-    map.insert({key, newMeta});
-    return 0;
+    TypeBinding* binding = MetaBinding::EnsureBinding(L, ownerKlass);
+    return InternClosedGenericMethodClosure(L, openMethod, binding, isStatic, isByVal, typeArgs);
     ZLUA_TRY_END()
 }
 
@@ -679,10 +632,8 @@ void ZLuaLib::RegisterGlobals(lua_State* L)
     lua_setglobal(L, "__zlua_new_mdarray_by_mdarray_type");
     lua_pushcfunction(L, ZLuaNewMdArrayBySpec);
     lua_setglobal(L, "__zlua_new_mdarray_by_spec");
-    lua_pushcfunction(L, ZLuaMakeGenericMethod);
-    lua_setglobal(L, "__zlua_make_generic_method");
-    lua_pushcfunction(L, ZLuaRegisterMethod);
-    lua_setglobal(L, "__zlua_register_method");
+    lua_pushcfunction(L, ZLuaInflate);
+    lua_setglobal(L, "__zlua_inflate");
     lua_pushcfunction(L, ZLuaBox);
     lua_setglobal(L, "__zlua_box");
     lua_pushcfunction(L, ZLuaUnbox);

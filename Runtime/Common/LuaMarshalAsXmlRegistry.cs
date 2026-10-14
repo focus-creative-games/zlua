@@ -440,7 +440,7 @@ namespace ZLua
                             + type.FullName + " in " + rule.SourcePath);
                     }
 
-                    EnsureDeterminedTarget(field.FieldType, "Field '" + rule.MemberName + "'", rule);
+                    // Field/Property/Param/Return may target open slots (T / List<T>); §3 checked at resolve.
                     PutMember(maps, field.MetadataToken, rule);
                     break;
                 }
@@ -457,7 +457,6 @@ namespace ZLua
                             + type.FullName + " in " + rule.SourcePath);
                     }
 
-                    EnsureDeterminedTarget(property.PropertyType, "Property '" + rule.MemberName + "'", rule);
                     PutMember(maps, property.MetadataToken, rule);
                     break;
                 }
@@ -475,10 +474,6 @@ namespace ZLua
                             + " in " + rule.SourcePath);
                     }
 
-                    EnsureDeterminedTarget(
-                        parameters[index].ParameterType,
-                        "Param index " + index + " of " + rule.MethodName + rule.Signature,
-                        rule);
                     PutMethodSlot(maps, method.MetadataToken, index, rule);
                     break;
                 }
@@ -493,10 +488,6 @@ namespace ZLua
                             + type.FullName + "." + rule.MethodName + " in " + rule.SourcePath);
                     }
 
-                    EnsureDeterminedTarget(
-                        methodInfo.ReturnType,
-                        "Return of " + rule.MethodName + rule.Signature,
-                        rule);
                     PutMethodSlot(maps, methodInfo.MetadataToken, -1, rule);
                     break;
                 }
@@ -505,19 +496,6 @@ namespace ZLua
                     throw new LuaMarshalAsConfigurationException(
                         "[ZLua] Unknown MarshalAs XML target kind in " + rule.SourcePath);
             }
-        }
-
-        private static void EnsureDeterminedTarget(Type clrType, string targetDescription, LuaMarshalAsXmlRule rule)
-        {
-            if (IsDeterminedMarshalTargetType(clrType))
-            {
-                return;
-            }
-
-            throw new LuaMarshalAsConfigurationException(
-                "[ZLua] MarshalAs XML cannot target undetermined generic type (" + targetDescription + "): "
-                + (clrType != null ? (clrType.FullName ?? clrType.Name) : "<null>")
-                + " in " + rule.SourcePath);
         }
 
         private static void PutMember(BoundMaps maps, int token, LuaMarshalAsXmlRule rule)

@@ -127,7 +127,7 @@ index cc43d87..2f6a096 100644
  
  
  /* limit for table tag-method chains (to avoid loops) */
-@@ -161,6 +162,50 @@ void luaV_finishget (lua_State *L, const TValue *t, TValue *key, StkId val,
+@@ -161,6 +162,61 @@ void luaV_finishget (lua_State *L, const TValue *t, TValue *key, StkId val,
                        const TValue *slot) {
    int loop;  /* counter to avoid infinite loops */
    const TValue *tm;  /* metamethod */
@@ -165,6 +165,17 @@ index cc43d87..2f6a096 100644
 +          return;
 +        }
 +      }
++      /* memberTable.__index: lazy §3.7 full-signature resolve (seal bypasses normal mt). */
++      {
++        const TValue *idx_tm = fasttm(L, idx->metatable, TM_INDEX);
++        if (idx_tm != NULL && ttisfunction(idx_tm)) {
++          TValue idxtv;
++          sethvalue(L, &idxtv, idx);
++          luaT_callTM(L, idx_tm, &idxtv, key, val, 1);
++          if (!ttisnil(val))
++            return;
++        }
++      }
 +      {
 +        const TValue *tn = luaH_getshortstr(mt, luaS_newliteral(L, "__zlua_typename"));
 +        const char *typeName = (tn != NULL && !ttisnil(tn) && ttisstring(tn))
@@ -178,7 +189,7 @@ index cc43d87..2f6a096 100644
    for (loop = 0; loop < MAXTAGLOOP; loop++) {
      if (slot == NULL) {  /* 't' is not a table? */
        lua_assert(!ttistable(t));
-@@ -203,6 +234,35 @@ void luaV_finishget (lua_State *L, const TValue *t, TValue *key, StkId val,
+@@ -203,6 +245,35 @@ void luaV_finishget (lua_State *L, const TValue *t, TValue *key, StkId val,
  void luaV_finishset (lua_State *L, const TValue *t, TValue *key,
                       StkId val, const TValue *slot) {
    int loop;  /* counter to avoid infinite loops */

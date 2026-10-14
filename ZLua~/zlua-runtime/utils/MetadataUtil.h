@@ -250,6 +250,9 @@ class MetadataUtil
                                    : il2cpp::vm::MetadataCache::GetGenericContainerCount(method->genericContainerHandle);
     }
 
+    /// True when typeArgs satisfy the open method's generic parameter constraints (class / struct / new() / type bounds).
+    static bool MethodGenericTypeArgsSatisfyConstraints(const MethodInfo* openMethod, const Il2CppType* const* typeArgs, uint32_t typeArgCount);
+
     static uint32_t GetParameterToken(const MethodInfo* method, int paramIndex /* -1 for return type */);
     static bool HasParameterMarshalAsAttribute(const Il2CppImage* image, uint32_t token);
 };

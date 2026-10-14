@@ -20,6 +20,8 @@
 
 #include "TypeRegistryCommon.h"
 
+#include <cstring>
+
 #include "MetaBinding.h"
 #include "InstanceTarget.h"
 
@@ -188,6 +190,30 @@ static void FillInstanceMetatable(lua_State* L, TypeBinding* binding, int typeTa
 }
 
 #if ZLUA_FAST_METATABLE
+/// When __index is a table, Lua only returns nil on miss unless the table has its own __index.
+static int FastMemberTableIndexMiss(lua_State* L)
+{
+    TypeBinding* binding = (TypeBinding*)lua_touserdata(L, lua_upvalueindex(1));
+    const FastInstanceKind kind = (FastInstanceKind)(int)lua_tonumber(L, lua_upvalueindex(2));
+    const char* key = lua_tostring(L, 2);
+    if (key == nullptr || std::strchr(key, '(') == nullptr)
+        return 0;
+
+    const bool isStatic = kind == FastInstanceKind::Static;
+    const bool isByVal = kind == FastInstanceKind::StructByVal;
+    return MetaBinding::TryResolveSignatureMethodAndPush(L, binding, key, isStatic, isByVal);
+}
+
+static void AttachMemberTableSignatureMiss(lua_State* L, TypeBinding* binding, FastInstanceKind kind, int memberTableIndex)
+{
+    lua_newtable(L);
+    lua_pushlightuserdata(L, binding);
+    lua_pushnumber(L, (lua_Number)(int)kind);
+    lua_pushcclosure(L, FastMemberTableIndexMiss, 2);
+    lua_setfield(L, -2, LuaConsts::MetaIndex);
+    lua_setmetatable(L, memberTableIndex);
+}
+
 static void AttachFastInstanceIndexTables(lua_State* L, TypeBinding* binding, const NameMetaMap* map, FastInstanceKind kind, int mtIndex)
 {
     lua_newtable(L); /* memberTable */
@@ -195,6 +221,7 @@ static void AttachFastInstanceIndexTables(lua_State* L, TypeBinding* binding, co
     const int setterTableIndex = lua_gettop(L);
     const int memberTableIndex = setterTableIndex - 1;
     FastMetatable::FillMemberTables(L, binding, map, kind, memberTableIndex, setterTableIndex);
+    AttachMemberTableSignatureMiss(L, binding, kind, memberTableIndex);
     lua_pushvalue(L, memberTableIndex);
     lua_setfield(L, mtIndex, LuaConsts::MetaIndex);
     lua_pushvalue(L, setterTableIndex);
@@ -308,6 +335,13 @@ static int DispatchInstanceIndex(lua_State* L)
         }
     }
 
+    if (key != nullptr && std::strchr(key, '(') != nullptr)
+    {
+        const bool isByVal = kind == MetaTableKind::StructByVal;
+        if (MetaBinding::TryResolveSignatureMethodAndPush(L, binding, key, /*isStatic*/ false, isByVal) == 1)
+            return 1;
+    }
+
     return ErrorMemberNotFound(L, binding, key);
 }
 
@@ -391,6 +425,12 @@ int StaticIndex(lua_State* L)
         default:
             break;
         }
+    }
+
+    if (key != nullptr && std::strchr(key, '(') != nullptr)
+    {
+        if (MetaBinding::TryResolveSignatureMethodAndPush(L, binding, key, /*isStatic*/ true, /*isByVal*/ false) == 1)
+            return 1;
     }
 
     // Extras such as _default / __call live on the static metatable (SMT), not the type table.
@@ -559,6 +599,7 @@ void TypeRegistryCommon::AttachStaticTypeMetatable(lua_State* L, Il2CppClass* kl
     const int setterTableIndex = lua_gettop(L);
     const int memberTableIndex = setterTableIndex - 1;
     FastMetatable::FillMemberTables(L, binding, &binding->staticMap, FastInstanceKind::Static, memberTableIndex, setterTableIndex);
+    AttachMemberTableSignatureMiss(L, binding, FastInstanceKind::Static, memberTableIndex);
     lua_pushvalue(L, memberTableIndex);
     lua_setfield(L, smtIndex, LuaConsts::MetaIndex);
     lua_pushvalue(L, setterTableIndex);

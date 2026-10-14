@@ -90,19 +90,27 @@ enum class ClosureKind
     Direct,
     Indirect,
     DirectGeneric,
+    Gtap, // short-name wrapper: try GTAP open-generic inflate, then optional non-generic fallback
 };
 
 class MetaBinding
 {
   public:
     static TypeBinding* EnsureBinding(lua_State* L, Il2CppClass* klass);
-    static bool TryRegisterMethodAlias(lua_State* L, Il2CppClass* klass, bool isStatic, const std::string& aliasName, int closureStackIndex);
     static MethodMarshalCtx* CreateMethodMarshalCtx(lua_State* L, const MethodInfo* method, bool isByVal);
     static int CreateDirectMethodClosureRef(lua_State* L, const MethodInfo* method, const TypeBinding* binding, bool isStatic, bool isByVal);
     // static int PushMethodClosure(lua_State* L, const MethodInfo* method, bool isStatic);
     static bool IsDirectMethodClosure(lua_State* L, int closureStackIndex);
     static const MethodMarshalCtx* GetMethodMarshalCtxFromClosure(lua_State* L, int closureStackIndex);
     static const TypeBinding* GetTypeBindingFromClosure(lua_State* L, int closureStackIndex);
+    /// Find an open generic method for <c>zlua.inflate</c> by short name or §3.7 open-signature key.
+    static bool TryFindOpenGenericMethod(lua_State* L, Il2CppClass* ownerKlass, const char* nameOrSignature, int genericArity,
+                                         const MethodInfo** outMethod, bool* outIsStatic, bool* outIsByVal);
+    /// Intern closed generic method closure (shared by inflate / GTAP). Constraints must already hold.
+    static int InternClosedGenericMethod(lua_State* L, const MethodInfo* openMethod, const TypeBinding* binding, bool isStatic, bool isByVal,
+                                         const Il2CppType* const* typeArgs, uint32_t typeArgCount);
+    /// §3.7 full-signature miss: find first matching public method (no ctor/cctor), cache, push closure. Returns 1 or 0.
+    static int TryResolveSignatureMethodAndPush(lua_State* L, TypeBinding* binding, const char* signatureKey, bool isStatic, bool isByVal);
     /// Drop TypeBindings that embed state-local method closure registry refs. Process-level
     /// MethodMarshalShared / Bridge tables are kept. Call from LuaEnv::Shutdown.
     static void ShutdownState();

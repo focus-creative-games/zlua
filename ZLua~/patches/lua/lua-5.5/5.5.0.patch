@@ -108,7 +108,7 @@ index c70e2b8..b183d93 100644
  
  
  /*
-@@ -292,6 +293,49 @@ lu_byte luaV_finishget (lua_State *L, const TValue *t, TValue *key,
+@@ -292,6 +293,60 @@ lu_byte luaV_finishget (lua_State *L, const TValue *t, TValue *key,
                                        StkId val, lu_byte tag) {
    int loop;  /* counter to avoid infinite loops */
    const TValue *tm;  /* metamethod */
@@ -145,6 +145,17 @@ index c70e2b8..b183d93 100644
 +          return LUA_VNIL;
 +        }
 +      }
++      /* memberTable.__index: lazy §3.7 full-signature resolve (seal bypasses normal mt). */
++      {
++        const TValue *idx_tm = fasttm(L, idx->metatable, TM_INDEX);
++        if (idx_tm != NULL && ttisfunction(idx_tm)) {
++          TValue idxtv;
++          sethvalue(L, &idxtv, idx);
++          tag = luaT_callTMres(L, idx_tm, &idxtv, key, val);
++          if (!ttisnil(s2v(val)))
++            return tag;
++        }
++      }
 +      {
 +        const TValue *tn = luaH_Hgetshortstr(mt, luaS_newliteral(L, "__zlua_typename"));
 +        const char *typeName = (tn != NULL && !isempty(tn) && ttisstring(tn))
@@ -158,7 +169,7 @@ index c70e2b8..b183d93 100644
    for (loop = 0; loop < MAXTAGLOOP; loop++) {
      if (tag == LUA_VNOTABLE) {  /* 't' is not a table? */
        lua_assert(!ttistable(t));
-@@ -334,6 +375,37 @@ lu_byte luaV_finishget (lua_State *L, const TValue *t, TValue *key,
+@@ -334,6 +386,37 @@ lu_byte luaV_finishget (lua_State *L, const TValue *t, TValue *key,
  void luaV_finishset (lua_State *L, const TValue *t, TValue *key,
                        TValue *val, int hres) {
    int loop;  /* counter to avoid infinite loops */

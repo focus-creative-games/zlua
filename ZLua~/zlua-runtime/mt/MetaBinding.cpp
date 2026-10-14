@@ -18,6 +18,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#include <cstring>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -57,9 +59,8 @@
 #include "vm/Parameter.h"
 #include "gc/GarbageCollector.h"
 #include "il2cpp-tabledefs.h"
-
-#include <cstring>
 #include "metadata/GenericMetadata.h"
+#include "metadata/GenericMethod.h"
 
 namespace zlua
 {
@@ -320,9 +321,335 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
     return ctx;
 }
 
+struct GtapMethodCtx
+{
+    const TypeBinding* binding;
+    bool isStatic;
+    bool isByVal;
+    int fallbackClosureRef; // LUA_NOREF when open-generic only
+    size_t openCount;
+    const MethodInfo** openMethods;
+};
+
+static bool TryPeekSystemTypeUserData(lua_State* L, int index, Il2CppClass** outKlass)
+{
+    if (lua_type(L, index) != LUA_TUSERDATA)
+        return false;
+    ZLuaObjectUserData* ud = (ZLuaObjectUserData*)lua_touserdata(L, index);
+    if (ud == nullptr || ud->header.kind != UserDataKind::ByObj || ud->obj == nullptr)
+        return false;
+    if (il2cpp::vm::Object::IsInst(ud->obj, il2cpp_defaults.systemtype_class) == nullptr)
+        return false;
+    *outKlass = il2cpp::vm::Class::FromSystemType(reinterpret_cast<Il2CppReflectionType*>(ud->obj));
+    return *outKlass != nullptr;
+}
+
+static bool TryReadSystemTypePrefix(lua_State* L, int argStart, int count, std::vector<const Il2CppType*>& typeArgs)
+{
+    typeArgs.clear();
+    const int top = lua_gettop(L);
+    if (argStart + count - 1 > top)
+        return false;
+    typeArgs.reserve((size_t)count);
+    for (int i = 0; i < count; ++i)
+    {
+        Il2CppClass* klass = nullptr;
+        if (!TryPeekSystemTypeUserData(L, argStart + i, &klass))
+        {
+            typeArgs.clear();
+            return false;
+        }
+        typeArgs.push_back(&klass->byval_arg);
+    }
+    return true;
+}
+
+static int CallClosureOnStack(lua_State* L)
+{
+    // Stack: [closure][args...]
+    const int nargs = lua_gettop(L) - 1;
+    lua_call(L, nargs, LUA_MULTRET);
+    return lua_gettop(L);
+}
+
+static bool TryInvokeGtap(lua_State* L, const MethodInfo* const* openMethods, size_t openCount, const TypeBinding* binding, bool isStatic,
+                          bool isByVal, int* outNrets)
+{
+    *outNrets = 0;
+    if (openMethods == nullptr || openCount == 0 || binding == nullptr)
+        return false;
+
+    const int argStart = isStatic ? 1 : 2;
+    const int top = lua_gettop(L);
+
+    const MethodInfo* matchedOpen = nullptr;
+    std::vector<const Il2CppType*> matchedTypeArgs;
+    int matchedPrefixCount = 0;
+    int matchCount = 0;
+
+    for (size_t i = 0; i < openCount; ++i)
+    {
+        const MethodInfo* open = openMethods[i];
+        if (open == nullptr)
+            continue;
+        const int n = MetadataUtil::GetMethodGenericParameterCount(open);
+        if (n < 1)
+            continue;
+
+        std::vector<const Il2CppType*> typeArgs;
+        if (!TryReadSystemTypePrefix(L, argStart, n, typeArgs))
+            continue;
+        if (!MetadataUtil::MethodGenericTypeArgsSatisfyConstraints(open, typeArgs.data(), (uint32_t)typeArgs.size()))
+            continue;
+
+        const MethodInfo* closedDef = open;
+        const Il2CppGenericInst* methodInst =
+            il2cpp::vm::MetadataCache::GetGenericInst(typeArgs.data(), (uint32_t)typeArgs.size());
+        const MethodInfo* closed = nullptr;
+        if (closedDef->is_inflated)
+        {
+            closed = il2cpp::metadata::GenericMethod::GetMethod(closedDef->genericMethod->methodDefinition,
+                                                               closedDef->genericMethod->context.class_inst, methodInst);
+        }
+        else
+        {
+            closed = il2cpp::metadata::GenericMethod::GetMethod(closedDef, nullptr, methodInst);
+        }
+        if (closed == nullptr)
+            continue;
+
+        const int valueArgStart = argStart + n;
+        int valueArgCount = top - valueArgStart + 1;
+        if (valueArgCount < 0)
+            valueArgCount = 0;
+
+        MethodMarshalCtx* closedCtx = MetaBinding::CreateMethodMarshalCtx(L, closed, isByVal);
+        const int minArity = GetMinLuaArity(closedCtx);
+        const int maxArity = closedCtx->luaArity;
+        if (valueArgCount < minArity || valueArgCount > maxArity)
+            continue;
+
+        // Zero-arg closed methods (e.g. GetComp<T>()) skip conversion scoring.
+        if (maxArity > 0 || valueArgCount > 0)
+        {
+            if (!MethodOverloadResolver::IsApplicable(L, closedCtx, valueArgStart, valueArgCount))
+                continue;
+        }
+
+        matchCount++;
+        if (matchCount == 1)
+        {
+            matchedOpen = open;
+            matchedTypeArgs = std::move(typeArgs);
+            matchedPrefixCount = n;
+        }
+    }
+
+    if (matchCount != 1 || matchedOpen == nullptr)
+        return false;
+
+    for (int i = 0; i < matchedPrefixCount; ++i)
+        lua_remove(L, argStart);
+
+    const int closureRef = MetaBinding::InternClosedGenericMethod(L, matchedOpen, binding, isStatic, isByVal, matchedTypeArgs.data(),
+                                                                  (uint32_t)matchedTypeArgs.size());
+    LuaUtil::PushRef(L, closureRef);
+    lua_insert(L, 1);
+    *outNrets = CallClosureOnStack(L);
+    return true;
+}
+
+static int InvokeGtapThenFallback(lua_State* L)
+{
+    ZLUA_TRY_BEGIN()
+    const TypeBinding* binding = (const TypeBinding*)lua_touserdata(L, lua_upvalueindex(kUpvalueIndexBinding));
+    const GtapMethodCtx* gtap = (const GtapMethodCtx*)lua_touserdata(L, lua_upvalueindex(kUpvalueIndexGroupsOrCtx));
+    IL2CPP_ASSERT(gtap != nullptr);
+
+    int nrets = 0;
+    if (TryInvokeGtap(L, gtap->openMethods, gtap->openCount, binding, gtap->isStatic, gtap->isByVal, &nrets))
+        return nrets;
+
+    if (gtap->fallbackClosureRef != LUA_NOREF)
+    {
+        LuaUtil::PushRef(L, gtap->fallbackClosureRef);
+        lua_insert(L, 1);
+        return CallClosureOnStack(L);
+    }
+
+    const char* methodName = (gtap->openCount > 0 && gtap->openMethods[0] != nullptr) ? gtap->openMethods[0]->name : "?";
+    LuaException::ThrowFormat(
+        "zlua: cannot invoke open generic method %s without System.Type GTAP prefix "
+        "(use zlua.inflate, or pass zlua.typeof(...) prefixes)",
+        methodName);
+    return 0;
+    ZLUA_TRY_END()
+}
+
 static int InvokeMethodDirectGeneric(lua_State* L)
 {
-    return luaL_error(L, "zlua: static generic methods are not supported yet");
+    ZLUA_TRY_BEGIN()
+    const TypeBinding* binding = (const TypeBinding*)lua_touserdata(L, lua_upvalueindex(kUpvalueIndexBinding));
+    const MethodMarshalCtx* ctx = (const MethodMarshalCtx*)lua_touserdata(L, lua_upvalueindex(kUpvalueIndexGroupsOrCtx));
+    IL2CPP_ASSERT(ctx != nullptr && ctx->method != nullptr);
+
+    const MethodInfo* openMethods[1] = { ctx->method };
+    const bool isStatic = MetadataUtil::IsStaticMethod(ctx->method);
+    int nrets = 0;
+    if (TryInvokeGtap(L, openMethods, 1, binding, isStatic, ctx->byVal, &nrets))
+        return nrets;
+
+    LuaException::ThrowFormat(
+        "zlua: cannot invoke open generic method %s without System.Type GTAP prefix "
+        "(use zlua.inflate, or pass zlua.typeof(...) prefixes)",
+        ctx->method->name);
+    return 0;
+    ZLUA_TRY_END()
+}
+
+static int CreateGtapWrapperClosureRef(lua_State* L, const TypeBinding* binding, const std::vector<const MethodInfo*>& openMethods,
+                                       int fallbackClosureRef, bool isStatic, bool isByVal)
+{
+    IL2CPP_ASSERT(!openMethods.empty());
+    GtapMethodCtx* gtap = LuaMetadataAlloc::MallocAnyZeroed<GtapMethodCtx>();
+    gtap->binding = binding;
+    gtap->isStatic = isStatic;
+    gtap->isByVal = isByVal;
+    gtap->fallbackClosureRef = fallbackClosureRef;
+    gtap->openCount = openMethods.size();
+    gtap->openMethods = LuaMetadataAlloc::CallocArray<const MethodInfo*>(openMethods.size());
+    for (size_t i = 0; i < openMethods.size(); ++i)
+        gtap->openMethods[i] = openMethods[i];
+
+    lua_pushnumber(L, (lua_Number)(int)ClosureKind::Gtap);
+    lua_pushlightuserdata(L, (void*)binding);
+    lua_pushlightuserdata(L, gtap);
+    lua_pushcclosure(L, InvokeGtapThenFallback, 3);
+    return LuaUtil::ToLuaRef(L);
+}
+
+int MetaBinding::InternClosedGenericMethod(lua_State* L, const MethodInfo* openMethod, const TypeBinding* binding, bool isStatic, bool isByVal,
+                                           const Il2CppType* const* typeArgs, uint32_t typeArgCount)
+{
+    IL2CPP_ASSERT(openMethod != nullptr && binding != nullptr && typeArgs != nullptr && typeArgCount > 0);
+
+    const MethodInfo* method = openMethod;
+    const Il2CppGenericInst* methodInst = il2cpp::vm::MetadataCache::GetGenericInst(typeArgs, typeArgCount);
+    if (method->is_inflated)
+    {
+        method = il2cpp::metadata::GenericMethod::GetMethod(method->genericMethod->methodDefinition, method->genericMethod->context.class_inst,
+                                                           methodInst);
+    }
+    else
+    {
+        method = il2cpp::metadata::GenericMethod::GetMethod(method, nullptr, methodInst);
+    }
+    if (method == nullptr)
+        LuaException::Throw("zlua.inflate MakeGenericMethod failed: could not construct closed method");
+
+    // Intern key includes isStatic/isByVal via separate NameMetaMaps (static / byobj / byval).
+    std::string methodSignature = MetadataUtil::CreateMethodNameWithParametersAndGenericArguments(method);
+    NameMetaMap& nmm = isStatic ? binding->staticMap : (isByVal ? binding->byvalInstanceMap : binding->byobjInstanceMap);
+    auto it = nmm.find(methodSignature.c_str());
+    if (it != nmm.end())
+        return it->second.closureRef;
+
+    int closureRef = CreateDirectMethodClosureRef(L, method, binding, MetadataUtil::IsStaticMethod(method), isByVal);
+    MetaInfo newMeta = {};
+    newMeta.kind = MetaKind::Method;
+    newMeta.closureRef = closureRef;
+    const char* key = zlua_strdup(methodSignature.c_str());
+    nmm.insert({key, newMeta});
+    return closureRef;
+}
+
+/// §3.7 key without method-generic angle brackets (align with Mono / inflate open keys).
+static std::string BuildMethodSignatureKey(const MethodInfo* method)
+{
+    std::string name = method->name;
+    name += '(';
+    const int paramStart = MetadataUtil::IsExtensionMethod(method) ? 1 : 0;
+    bool first = true;
+    for (int i = paramStart; i < method->parameters_count; i++)
+    {
+        if (!first)
+            name += ',';
+        first = false;
+        name += MetadataUtil::GetLuaFullName(method->parameters[i]);
+    }
+    name += ')';
+    return name;
+}
+
+static bool ShouldSkipSignatureResolve(const MethodInfo* method)
+{
+    if (method == nullptr)
+        return true;
+    if (MetadataUtil::IsCtorOrCCtor(method))
+        return true;
+    const char* n = method->name;
+    if (std::strncmp(n, "get_", 4) == 0 || std::strncmp(n, "set_", 4) == 0)
+        return true;
+    return false;
+}
+
+static const MethodInfo* FindMethodBySignatureKey(Il2CppClass* ownerKlass, const char* signatureKey, bool isStatic)
+{
+    IL2CPP_ASSERT(ownerKlass != nullptr && signatureKey != nullptr);
+    for (Il2CppClass* walk = ownerKlass; walk != nullptr; walk = walk->parent)
+    {
+        if (walk == il2cpp_defaults.object_class || walk == il2cpp_defaults.value_type_class || walk == il2cpp_defaults.enum_class)
+            break;
+
+        MetadataUtil::EnsureMethods(walk);
+        for (uint16_t i = 0; i < walk->method_count; ++i)
+        {
+            const MethodInfo* method = walk->methods[i];
+            if (!MetadataUtil::IsPublicMethod(method))
+                continue;
+            if (ShouldSkipSignatureResolve(method))
+                continue;
+            if (MetadataUtil::IsStaticMethod(method) != isStatic)
+                continue;
+            if (BuildMethodSignatureKey(method) == signatureKey)
+                return method;
+        }
+    }
+    return nullptr;
+}
+
+int MetaBinding::TryResolveSignatureMethodAndPush(lua_State* L, TypeBinding* binding, const char* signatureKey, bool isStatic, bool isByVal)
+{
+    IL2CPP_ASSERT(binding != nullptr);
+    if (signatureKey == nullptr || signatureKey[0] == '\0' || std::strchr(signatureKey, '(') == nullptr)
+        return 0;
+
+    NameMetaMap& map = isStatic ? binding->staticMap : (isByVal ? binding->byvalInstanceMap : binding->byobjInstanceMap);
+    auto it = map.find(signatureKey);
+    if (it != map.end() && it->second.kind == MetaKind::Method)
+    {
+        return LuaUtil::PushRef(L, it->second.closureRef);
+    }
+
+    const MethodInfo* method = FindMethodBySignatureKey(binding->klass, signatureKey, isStatic);
+    if (method == nullptr)
+        return 0;
+
+    const int closureRef = CreateDirectMethodClosureRef(L, method, binding, isStatic, isByVal);
+    MetaInfo newMeta = {};
+    newMeta.kind = MetaKind::Method;
+    newMeta.closureRef = closureRef;
+    map[CopyRuntimeAliasKey(std::string(signatureKey))] = newMeta;
+
+#if ZLUA_FAST_METATABLE
+    LuaUtil::PushRef(L, closureRef);
+    const int closureStackIndex = lua_gettop(L);
+    FastMetatable::RawSetMethodOnIndexTable(L, binding->klass, isStatic, isByVal, signatureKey, closureStackIndex);
+    // leave closure on stack for caller
+#else
+    return LuaUtil::PushRef(L, closureRef);
+#endif
+    return 1;
 }
 
 int MetaBinding::CreateDirectMethodClosureRef(lua_State* L, const MethodInfo* method, const TypeBinding* binding, bool isStatic, bool isByVal)
@@ -468,30 +795,6 @@ static void CollectBindableMethods(Il2CppClass* klass, std::vector<const MethodI
             }
         }
     }
-}
-
-bool MetaBinding::TryRegisterMethodAlias(lua_State* L, Il2CppClass* klass, bool isStatic, const std::string& aliasName, int closureStackIndex)
-{
-    if (aliasName.empty())
-        return false;
-
-    TypeBinding* binding = EnsureBinding(L, klass);
-    NameMetaMap& map = isStatic ? binding->staticMap : binding->byobjInstanceMap;
-    if (map.find(aliasName.c_str()) != map.end())
-        return false;
-
-#if ZLUA_FAST_METATABLE
-    FastMetatable::RawSetMethodOnIndexTable(L, klass, isStatic, /*isByVal*/ false, aliasName.c_str(), closureStackIndex);
-#endif
-
-    lua_pushvalue(L, closureStackIndex);
-    const int closureRef = LuaUtil::ToLuaRef(L);
-
-    MetaInfo info = {};
-    info.kind = MetaKind::Method;
-    info.closureRef = closureRef;
-    map[CopyRuntimeAliasKey(aliasName)] = info;
-    return true;
 }
 
 static bool IsPublicField(const FieldInfo* field)
@@ -677,21 +980,6 @@ static void SetupCtorMethod(lua_State* L, TypeBinding* binding, const std::vecto
     }
 }
 
-static void RegisterMethodsdWithSignature(lua_State* L, TypeBinding* binding, const char* name, const std::vector<const MethodInfo*>& overloads, bool isStatic, bool isByVal,
-                                          NameMetaMap& map)
-{
-    for (const MethodInfo* method : overloads)
-    {
-        std::string methodSignature = MetadataUtil::CreateMethodNameWithParametersAndGenericArguments(method);
-        if (map.find(methodSignature.c_str()) != map.end())
-            continue;
-        MetaInfo fullNameInfo = {};
-        fullNameInfo.kind = MetaKind::Method;
-        fullNameInfo.closureRef = MetaBinding::CreateDirectMethodClosureRef(L, method, binding, isStatic, isByVal);
-        map[CopyRuntimeAliasKey(methodSignature)] = fullNameInfo;
-    }
-}
-
 static void RegisterMethodGroup(lua_State* L, TypeBinding* binding, const char* name, const std::vector<const MethodInfo*>& overloads, bool isStatic, bool isByVal,
                                 NameMetaMap& map)
 {
@@ -711,8 +999,7 @@ static void RegisterMethodGroup(lua_State* L, TypeBinding* binding, const char* 
         MethodGroups* groups = CreateMethodGroups(L, overloads, isByVal);
         info.closureRef = CreateMethodDispatchClosureRef(L, binding, groups, isStatic ? InvokeStaticMethodDispatch : InvokeInstanceMethodDispatch);
         map[name] = info;
-
-        RegisterMethodsdWithSignature(L, binding, name, overloads, isStatic, isByVal, map);
+        // Full-signature keys are lazy (§3.7); do not Bind-pre-register.
     }
 }
 
@@ -720,15 +1007,29 @@ static void RegisterGenericMethodGroup(lua_State* L, TypeBinding* binding, const
                                        NameMetaMap& map)
 {
     IL2CPP_ASSERT(overloads.size() > 0 && name != nullptr);
-    if (overloads.size() == 1 && map.find(name) == map.end())
+    NameMetaMap::iterator existing = map.find(name);
+    if (existing != map.end())
+    {
+        // Non-generic already owns short name (e.g. GetComp(Type)): GTAP first, then fallback (§3.8.2).
+        existing->second.closureRef =
+            CreateGtapWrapperClosureRef(L, binding, overloads, existing->second.closureRef, isStatic, isByVal);
+    }
+    else if (overloads.size() == 1)
+    {
+        // Single open generic: DirectGeneric closure (GTAP in InvokeMethodDirectGeneric).
+        MetaInfo info = {};
+        info.kind = MetaKind::Method;
+        info.closureRef = MetaBinding::CreateDirectMethodClosureRef(L, overloads[0], binding, isStatic, isByVal);
+        map[name] = info;
+    }
+    else
     {
         MetaInfo info = {};
         info.kind = MetaKind::Method;
-        int closureRef = MetaBinding::CreateDirectMethodClosureRef(L, overloads[0], binding, isStatic, isByVal);
-        info.closureRef = closureRef;
+        info.closureRef = CreateGtapWrapperClosureRef(L, binding, overloads, LUA_NOREF, isStatic, isByVal);
         map[name] = info;
     }
-    RegisterMethodsdWithSignature(L, binding, name, overloads, isStatic, isByVal, map);
+    // Full-signature keys are lazy (§3.7); do not Bind-pre-register.
 }
 
 static void AddToMethodGroup(const std::vector<const MethodInfo*>& methods, MethodGroupMap& methodGroups, MethodGroupMap& genericMethods)
@@ -917,6 +1218,136 @@ TypeBinding* MetaBinding::EnsureBinding(lua_State* L, Il2CppClass* klass)
     BuildBinding(L, binding);
     s_bindings[klass] = binding;
     return binding;
+}
+
+static std::string BuildOpenMethodSignatureKey(const MethodInfo* method)
+{
+    return BuildMethodSignatureKey(method);
+}
+
+struct OpenGenericMatchState
+{
+    const char* nameOrSignature;
+    bool isSignature;
+    int genericArity;
+    const MethodInfo* match;
+    bool matchStatic;
+    bool matchByVal;
+    int matchCount;
+};
+
+static void ConsiderOpenGenericCandidate(const MethodInfo* method, bool isStatic, bool isByVal, OpenGenericMatchState* st)
+{
+    if (method == nullptr || !IsOpenGenericMethod(method))
+        return;
+    if (MetadataUtil::GetMethodGenericParameterCount(method) != st->genericArity)
+        return;
+    if (st->isSignature)
+    {
+        if (BuildOpenMethodSignatureKey(method) != st->nameOrSignature)
+            return;
+    }
+    if (st->match == method)
+        return;
+    st->matchCount++;
+    if (st->matchCount == 1)
+    {
+        st->match = method;
+        st->matchStatic = isStatic;
+        st->matchByVal = isByVal;
+    }
+}
+
+static void CollectOpenGenericFromMap(lua_State* L, NameMetaMap& map, bool isStatic, bool isByVal, OpenGenericMatchState* st)
+{
+    for (NameMetaMap::iterator it = map.begin(); it != map.end(); ++it)
+    {
+        MetaInfo& info = it->second;
+        if (info.kind != MetaKind::Method)
+            continue;
+
+        if (!st->isSignature && std::strcmp(it->first, st->nameOrSignature) != 0)
+            continue;
+
+        LuaUtil::PushRef(L, info.closureRef);
+        lua_getupvalue(L, -1, kUpvalueIndexClosureKind);
+        ClosureKind kind = (ClosureKind)(int)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+
+        if (kind == ClosureKind::Direct || kind == ClosureKind::DirectGeneric)
+        {
+            const MethodMarshalCtx* ctx = MetaBinding::GetMethodMarshalCtxFromClosure(L, -1);
+            if (ctx != nullptr)
+                ConsiderOpenGenericCandidate(ctx->method, isStatic, isByVal, st);
+        }
+        else if (kind == ClosureKind::Gtap)
+        {
+            lua_getupvalue(L, -1, kUpvalueIndexGroupsOrCtx);
+            const GtapMethodCtx* gtap = (const GtapMethodCtx*)lua_touserdata(L, -1);
+            lua_pop(L, 1);
+            if (gtap != nullptr)
+            {
+                for (size_t i = 0; i < gtap->openCount; ++i)
+                    ConsiderOpenGenericCandidate(gtap->openMethods[i], isStatic, isByVal, st);
+            }
+        }
+        else if (kind == ClosureKind::Indirect)
+        {
+            lua_getupvalue(L, -1, kUpvalueIndexGroupsOrCtx);
+            const MethodGroups* groups = (const MethodGroups*)lua_touserdata(L, -1);
+            lua_pop(L, 1);
+            if (groups != nullptr)
+            {
+                for (size_t i = 0; i <= kMaxSmallArgCount; ++i)
+                {
+                    const MethodGroup* group = groups->smallArgCountMethodGroups[i];
+                    if (group == nullptr)
+                        continue;
+                    for (size_t j = 0; j < group->methodCount; ++j)
+                    {
+                        const MethodMarshalCtx* ctx = group->methods[j];
+                        if (ctx != nullptr)
+                            ConsiderOpenGenericCandidate(ctx->method, isStatic, isByVal, st);
+                    }
+                }
+                for (size_t j = 0; j < groups->largeArgCountMethodCount; ++j)
+                {
+                    const MethodMarshalCtx* ctx = groups->largeArgCountMethods[j];
+                    if (ctx != nullptr)
+                        ConsiderOpenGenericCandidate(ctx->method, isStatic, isByVal, st);
+                }
+            }
+        }
+        lua_pop(L, 1);
+    }
+}
+
+bool MetaBinding::TryFindOpenGenericMethod(lua_State* L, Il2CppClass* ownerKlass, const char* nameOrSignature, int genericArity,
+                                           const MethodInfo** outMethod, bool* outIsStatic, bool* outIsByVal)
+{
+    *outMethod = nullptr;
+    *outIsStatic = false;
+    *outIsByVal = false;
+    if (ownerKlass == nullptr || nameOrSignature == nullptr || nameOrSignature[0] == '\0' || genericArity < 1)
+        return false;
+
+    TypeBinding* binding = EnsureBinding(L, ownerKlass);
+    OpenGenericMatchState st = {};
+    st.nameOrSignature = nameOrSignature;
+    st.isSignature = std::strchr(nameOrSignature, '(') != nullptr;
+    st.genericArity = genericArity;
+
+    CollectOpenGenericFromMap(L, binding->staticMap, true, false, &st);
+    CollectOpenGenericFromMap(L, binding->byobjInstanceMap, false, false, &st);
+    // Prefer byobj; byval duplicates the same MethodInfo and is deduped.
+
+    if (st.matchCount != 1)
+        return false;
+
+    *outMethod = st.match;
+    *outIsStatic = st.matchStatic;
+    *outIsByVal = st.matchByVal;
+    return true;
 }
 
 void MetaBinding::ShutdownState()

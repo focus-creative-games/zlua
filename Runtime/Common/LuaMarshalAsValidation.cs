@@ -48,6 +48,7 @@ namespace ZLua
                     clrType,
                     direction,
                     isReturnValue: false,
+                    isTypeLevel: false,
                     out LuaMarshalBinding binding))
             {
                 return binding;
@@ -61,6 +62,7 @@ namespace ZLua
                     clrType,
                     direction,
                     isReturnValue: false,
+                    isTypeLevel: false,
                     out binding))
             {
                 return binding;
@@ -73,6 +75,7 @@ namespace ZLua
                     clrType,
                     direction,
                     isReturnValue: false,
+                    isTypeLevel: true,
                     out binding))
             {
                 return binding;
@@ -86,6 +89,7 @@ namespace ZLua
                     clrType,
                     direction,
                     isReturnValue: false,
+                    isTypeLevel: true,
                     out binding))
             {
                 return binding;
@@ -116,6 +120,7 @@ namespace ZLua
                         method.ReturnType,
                         direction,
                         isReturnValue: true,
+                        isTypeLevel: false,
                         out LuaMarshalBinding binding1))
                 {
                     return binding1;
@@ -130,6 +135,7 @@ namespace ZLua
                     method.ReturnType,
                     direction,
                     isReturnValue: true,
+                    isTypeLevel: false,
                     out LuaMarshalBinding bindingFromXml))
             {
                 return bindingFromXml;
@@ -144,6 +150,7 @@ namespace ZLua
                     method.ReturnType,
                     direction,
                     isReturnValue: true,
+                    isTypeLevel: true,
                     out LuaMarshalBinding binding))
             {
                 return binding;
@@ -157,6 +164,7 @@ namespace ZLua
                     method.ReturnType,
                     direction,
                     isReturnValue: true,
+                    isTypeLevel: true,
                     out binding))
             {
                 return binding;
@@ -205,6 +213,7 @@ namespace ZLua
             Type clrType,
             LuaMarshalDirection direction,
             bool isReturnValue,
+            bool isTypeLevel,
             out LuaMarshalBinding binding)
         {
             binding = LuaMarshalBinding.Default;
@@ -226,7 +235,8 @@ namespace ZLua
                 memberSignature);
             if (invalidReason == null)
             {
-                invalidReason = GetTypeOrDirectionInvalidReason(marshalType, clrType, parameter, direction);
+                invalidReason = GetTypeOrDirectionInvalidReason(
+                    marshalType, clrType, parameter, direction, isReturnValue, isTypeLevel);
             }
 
             if (invalidReason != null)
@@ -262,12 +272,9 @@ namespace ZLua
             Type memberOwnerType,
             string memberSignature)
         {
-            if (!LuaMarshalAsXmlRegistry.IsDeterminedMarshalTargetType(declaredType)
-                && !LuaMarshalAsXmlRegistry.IsDeterminedMarshalTargetType(memberOwnerType))
-            {
-                return "LuaMarshalAs cannot be applied to undetermined generic types "
-                    + "(e.g. type parameter T, List<T>, or open generic definitions); falling back to Default.";
-            }
+            // Open / partially-open member slots (T, List<T>, …) are allowed to declare
+            // LuaMarshalAs; §3 compatibility is judged against the type passed here
+            // (closed MethodInfo after inflate/GTAP uses the closed slot type).
 
             if (marshalType == LuaMarshalType.Table || marshalType == LuaMarshalType.UnpackedValues)
             {
@@ -407,13 +414,36 @@ namespace ZLua
             LuaMarshalType marshalType,
             Type clrType,
             ParameterInfo parameter,
-            LuaMarshalDirection direction)
+            LuaMarshalDirection direction,
+            bool isReturnValue = false,
+            bool isTypeLevel = false)
         {
             Type declaredType = StripByRef(clrType);
             Type targetType = UnwrapType(clrType);
             if (marshalType == LuaMarshalType.Default)
             {
                 return null;
+            }
+
+            if (marshalType == LuaMarshalType.ActualTypeUserData)
+            {
+                if (isTypeLevel || !isReturnValue)
+                {
+                    return "LuaMarshalType.ActualTypeUserData is only allowed on return values"
+                        + " (not parameters / fields / properties / type-level); falling back to Default.";
+                }
+
+                if (direction != LuaMarshalDirection.CSharpToLua)
+                {
+                    return "LuaMarshalType.ActualTypeUserData is CSharpToLua-only; falling back to Default.";
+                }
+
+                if (IsActualTypeUserDataAllowed(targetType))
+                {
+                    return null;
+                }
+
+                return $"LuaMarshalType.{marshalType} is not allowed for {targetType?.FullName}; falling back to Default.";
             }
 
             if (marshalType == LuaMarshalType.OpaqueValue)
@@ -520,6 +550,38 @@ namespace ZLua
                 || targetType.IsArray
                 || targetType == typeof(object)
                 || typeof(Delegate).IsAssignableFrom(targetType)
+                || targetType.IsClass
+                || targetType.IsInterface;
+        }
+
+        /// <summary>
+        /// Return-only ByObj facades: class / interface / object / arrays (not string / struct / delegate).
+        /// </summary>
+        private static bool IsActualTypeUserDataAllowed(Type targetType)
+        {
+            if (targetType == null || IsUnsupportedMarshalType(targetType))
+            {
+                return false;
+            }
+
+            if (targetType.IsPointer || targetType.IsByRef)
+            {
+                return false;
+            }
+
+            if (targetType == typeof(string)
+                || IsStructType(targetType)
+                || typeof(Delegate).IsAssignableFrom(targetType)
+                || targetType.IsPrimitive
+                || targetType.IsEnum
+                || targetType == typeof(IntPtr)
+                || targetType == typeof(UIntPtr))
+            {
+                return false;
+            }
+
+            return targetType.IsArray
+                || targetType == typeof(object)
                 || targetType.IsClass
                 || targetType.IsInterface;
         }

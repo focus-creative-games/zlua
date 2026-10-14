@@ -30,15 +30,58 @@ namespace ZLua.Emit
 {
     internal static class MethodEmitter
     {
-        private static readonly Dictionary<MethodInfo, int> s_closedMethodClosureRefs =
-            new Dictionary<MethodInfo, int>();
+        private sealed class ClosedMethodEntry
+        {
+            public int RegistryRef;
+            public LuaCSFunction Invoker;
+        }
+
+        private readonly struct ClosedMethodKey : IEquatable<ClosedMethodKey>
+        {
+            public readonly MethodInfo Method;
+            public readonly bool IsStatic;
+            public readonly bool IsByVal;
+
+            public ClosedMethodKey(MethodInfo method, bool isStatic, bool isByVal)
+            {
+                Method = method;
+                IsStatic = isStatic;
+                IsByVal = isByVal;
+            }
+
+            public bool Equals(ClosedMethodKey other)
+            {
+                return Method == other.Method
+                    && IsStatic == other.IsStatic
+                    && IsByVal == other.IsByVal;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is ClosedMethodKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = Method != null ? Method.GetHashCode() : 0;
+                    hash = (hash * 397) ^ (IsStatic ? 1 : 0);
+                    hash = (hash * 397) ^ (IsByVal ? 1 : 0);
+                    return hash;
+                }
+            }
+        }
+
+        private static readonly Dictionary<ClosedMethodKey, ClosedMethodEntry> s_closedMethods =
+            new Dictionary<ClosedMethodKey, ClosedMethodEntry>();
 
         /// <summary>
         /// Drop closed-method closure registry refs (state-local). Call on Reset / <c>lua_close</c>.
         /// </summary>
         internal static void Shutdown()
         {
-            s_closedMethodClosureRefs.Clear();
+            s_closedMethods.Clear();
         }
 
         internal static void Write(IntPtr L, int methodTableRef, MetaInfo info, Type ownerType, bool isStatic, bool isByVal)
@@ -60,13 +103,13 @@ namespace ZLua.Emit
             }
 
             var emitable = new List<MethodInfo>(methods.Count);
-            bool hadOpenGeneric = false;
+            var openGenerics = new List<MethodInfo>();
             string rejectMessage = null;
             for (int i = 0; i < methods.Count; i++)
             {
                 if (IsOpenGeneric(methods[i]))
                 {
-                    hadOpenGeneric = true;
+                    openGenerics.Add(methods[i]);
                     continue;
                 }
 
@@ -94,9 +137,9 @@ namespace ZLua.Emit
                 {
                     closure = CompileRejectStub(rejectMessage);
                 }
-                else if (hadOpenGeneric)
+                else if (openGenerics.Count > 0)
                 {
-                    closure = CompileOpenGenericStub();
+                    closure = CompileGtapClosure(openGenerics, tag, isStatic, isByVal, info.Name);
                 }
                 else
                 {
@@ -114,6 +157,7 @@ namespace ZLua.Emit
                     Name = info.Name,
                     Tag = tag,
                     Emitable = emitable,
+                    OpenGenerics = openGenerics,
                     IsStatic = isStatic,
                     IsByVal = isByVal,
                 });
@@ -128,6 +172,7 @@ namespace ZLua.Emit
             public string Name;
             public MethodClosureTag Tag;
             public List<MethodInfo> Emitable;
+            public List<MethodInfo> OpenGenerics;
             public bool IsStatic;
             public bool IsByVal;
             public readonly object Gate = new object();
@@ -148,9 +193,21 @@ namespace ZLua.Emit
                         {
                             try
                             {
-                                compiled = bind.Emitable.Count == 1
+                                LuaCSFunction closedPath = bind.Emitable.Count == 1
                                     ? CompileDirect(bind.Emitable[0], bind.IsStatic, bind.IsByVal)
-                                    : CompileOverloadDispatch(bind.Emitable, bind.IsStatic, bind.IsByVal, bind.Name);
+                                    : CompileOverloadDispatch(
+                                        bind.Emitable, bind.IsStatic, bind.IsByVal, bind.Name);
+
+                                compiled = bind.OpenGenerics != null && bind.OpenGenerics.Count > 0
+                                    ? WrapGtapThenFallback(
+                                        bind.OpenGenerics,
+                                        bind.Tag,
+                                        bind.IsStatic,
+                                        bind.IsByVal,
+                                        bind.Name,
+                                        closedPath)
+                                    : closedPath;
+
                                 ClosurePin.WriteToTableWithTag(L, bind.MethodTableRef, bind.Name, compiled, bind.Tag);
                                 bind.Compiled = compiled;
                             }
@@ -179,22 +236,36 @@ namespace ZLua.Emit
             MethodInfo closedMethod,
             MethodClosureTag sourceTag)
         {
+            return GetOrCreateClosedMethodEntry(L, closedMethod, sourceTag).RegistryRef;
+        }
+
+        private static ClosedMethodEntry GetOrCreateClosedMethodEntry(
+            IntPtr L,
+            MethodInfo closedMethod,
+            MethodClosureTag sourceTag)
+        {
             if (closedMethod == null)
             {
                 throw new ArgumentNullException(nameof(closedMethod));
             }
 
-            if (s_closedMethodClosureRefs.TryGetValue(closedMethod, out int existingRef))
+            var key = new ClosedMethodKey(closedMethod, sourceTag.IsStatic, sourceTag.IsByVal);
+            if (s_closedMethods.TryGetValue(key, out ClosedMethodEntry existing))
             {
-                return existingRef;
+                return existing;
             }
 
-            LuaCSFunction closure = CompileDirect(closedMethod, sourceTag.IsStatic, sourceTag.IsByVal);
+            LuaCSFunction invoker = CompileDirect(closedMethod, sourceTag.IsStatic, sourceTag.IsByVal);
             MethodClosureTag tag = BuildTag(closedMethod, sourceTag.OwnerType, sourceTag.IsStatic, sourceTag.IsByVal);
-            ClosurePin.PushWithTag(L, closure, tag);
+            ClosurePin.PushWithTag(L, invoker, tag);
             int closureRef = LuaDll.luaL_ref(L, LuaConsts.LuaRegistryIndex);
-            s_closedMethodClosureRefs[closedMethod] = closureRef;
-            return closureRef;
+            var entry = new ClosedMethodEntry
+            {
+                RegistryRef = closureRef,
+                Invoker = invoker,
+            };
+            s_closedMethods[key] = entry;
+            return entry;
         }
 
         private static MethodClosureTag BuildTag(MethodInfo method, Type ownerType, bool isStatic, bool isByVal)
@@ -236,13 +307,194 @@ namespace ZLua.Emit
             return InterpretedMethodInvoker.CanBind(method);
         }
 
-        private static LuaCSFunction CompileOpenGenericStub()
+        private static LuaCSFunction CompileGtapClosure(
+            List<MethodInfo> openGenerics,
+            MethodClosureTag tag,
+            bool isStatic,
+            bool isByVal,
+            string name)
         {
-            return Wrap(_ =>
+            return WrapGtapThenFallback(
+                openGenerics,
+                tag,
+                isStatic,
+                isByVal,
+                name,
+                fallback: L =>
+                {
+                    LuaCallbackBoundary.Throw(
+                        $"zlua: cannot invoke open generic method {name} without System.Type GTAP prefix "
+                        + "(use zlua.inflate, or pass zlua.typeof(...) prefixes)");
+                    return 0;
+                });
+        }
+
+        private static LuaCSFunction WrapGtapThenFallback(
+            List<MethodInfo> openGenerics,
+            MethodClosureTag tag,
+            bool isStatic,
+            bool isByVal,
+            string name,
+            LuaCSFunction fallback)
+        {
+            MethodInfo[] openArray = openGenerics.ToArray();
+            return L =>
             {
-                LuaCallbackBoundary.Throw("zlua: cannot invoke open generic method");
-                return 0;
-            });
+                LuaCallbackBoundary.Enter();
+                StructOpaqueScope.EnterLuaToCSharp();
+                try
+                {
+                    try
+                    {
+                        if (TryInvokeGtap(L, openArray, tag, isStatic, isByVal, out int nrets))
+                        {
+                            if (NestedLuaCallPendingError.TryTake(out string pendingGtap))
+                            {
+                                return LuaDllExtension.error(L, pendingGtap);
+                            }
+
+                            return nrets;
+                        }
+
+                        return fallback(L);
+                    }
+                    catch (Exception ex)
+                    {
+                        return LuaCallbackBoundary.ToLuaError(L, ex);
+                    }
+                }
+                finally
+                {
+                    StructOpaqueScope.LeaveLuaToCSharp();
+                    LuaCallbackBoundary.Leave();
+                }
+            };
+        }
+
+        /// <summary>
+        /// GTAP: peel N consecutive <see cref="Type"/> ByObj userdata, inflate, invoke closed method.
+        /// Prefers open-generic path over ordinary overloads when applicable (spec §3.8).
+        /// </summary>
+        private static bool TryInvokeGtap(
+            IntPtr L,
+            MethodInfo[] openGenerics,
+            MethodClosureTag tag,
+            bool isStatic,
+            bool isByVal,
+            out int nrets)
+        {
+            nrets = 0;
+            if (openGenerics == null || openGenerics.Length == 0)
+            {
+                return false;
+            }
+
+            int argStart = isStatic ? 1 : 2;
+            int top = LuaDll.lua_gettop(L);
+            MethodInfo matchedClosed = null;
+            int matchedPrefixCount = 0;
+            int matchCount = 0;
+
+            for (int i = 0; i < openGenerics.Length; i++)
+            {
+                MethodInfo open = openGenerics[i];
+                int n = open.GetGenericArguments().Length;
+                if (n < 1)
+                {
+                    continue;
+                }
+
+                if (!TryReadSystemTypePrefix(L, argStart, n, out Type[] typeArgs))
+                {
+                    continue;
+                }
+
+                int valueArgStart = argStart + n;
+                int valueArgCount = top - valueArgStart + 1;
+                if (valueArgCount < 0)
+                {
+                    valueArgCount = 0;
+                }
+
+                MethodInfo closed;
+                try
+                {
+                    closed = open.MakeGenericMethod(typeArgs);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                int minArity = DefaultParameterUtil.GetMinLuaArity(closed);
+                int maxArity = InterpretedMethodInvoker.GetLuaArity(closed);
+                if (valueArgCount < minArity || valueArgCount > maxArity)
+                {
+                    continue;
+                }
+
+                // Remaining args must be applicable to the closed signature.
+                // Zero-arg closed methods (e.g. GetComponent<T>()) skip SelectMethod.
+                if (maxArity > 0 || valueArgCount > 0)
+                {
+                    MethodInfo[] one = { closed };
+                    if (LuaArgMatcher.SelectMethod(L, valueArgStart, one, out _)
+                        != LuaOverloadMatch.BestMatch)
+                    {
+                        continue;
+                    }
+                }
+
+                matchCount++;
+                if (matchCount == 1)
+                {
+                    matchedClosed = closed;
+                    matchedPrefixCount = n;
+                }
+            }
+
+            if (matchCount != 1 || matchedClosed == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < matchedPrefixCount; i++)
+            {
+                LuaDll.lua_remove(L, argStart);
+            }
+
+            MethodClosureTag invokeTag = BuildTag(matchedClosed, tag.OwnerType, isStatic, isByVal);
+            ClosedMethodEntry entry = GetOrCreateClosedMethodEntry(L, matchedClosed, invokeTag);
+            nrets = entry.Invoker(L);
+            return true;
+        }
+
+        private static bool TryReadSystemTypePrefix(IntPtr L, int argStart, int count, out Type[] typeArgs)
+        {
+            typeArgs = null;
+            int top = LuaDll.lua_gettop(L);
+            if (argStart + count - 1 > top)
+            {
+                return false;
+            }
+
+            typeArgs = new Type[count];
+            for (int i = 0; i < count; i++)
+            {
+                int idx = argStart + i;
+                // GTAP prefix: System.Type ByObj userdata only (not type table / string).
+                if (LuaDll.lua_type(L, idx) != LuaDataType.UserData
+                    || !ObjectRegistry.TryGetObject(L, idx, out object obj)
+                    || !(obj is Type clrType))
+                {
+                    typeArgs = null;
+                    return false;
+                }
+
+                typeArgs[i] = clrType;
+            }
+
+            return true;
         }
 
         private static LuaCSFunction CompileRejectStub(string message)

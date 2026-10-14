@@ -292,6 +292,14 @@ namespace ZLua.CppCodeGen
             case LuaMarshalType.UnpackedValues:
                 throw new CodeGenException(
                     $"composite marshal type {marshalType} uses DefaultInvoke (no stub); method: {methodDef.FullName}");
+            case LuaMarshalType.ActualTypeUserData:
+            {
+                // Il2Cpp runtime Push(actual klass) lands with player runtime; Generate soft-falls for now.
+                Debug.LogError(
+                    $"[ZLua] LuaMarshalType.ActualTypeUserData Il2Cpp stub Push not wired yet; using Default for {methodDef.FullName}");
+                marshalType = LuaMarshalType.Default;
+                goto restart;
+            }
             default:
                 throw new CodeGenException($"unsupported marshal type {marshalType}, method: {methodDef.FullName}");
             }
@@ -395,6 +403,14 @@ namespace ZLua.CppCodeGen
             case LuaMarshalType.UnpackedValues:
                 throw new CodeGenException(
                     $"composite marshal type {marshalType} uses DefaultInvoke (no stub); method: {methodDef.FullName}");
+            case LuaMarshalType.ActualTypeUserData:
+            {
+                // Return-only per spec; parameter misuse soft-falls to Default.
+                Debug.LogError(
+                    $"[ZLua] LuaMarshalType.ActualTypeUserData is return-only; using Default for {methodDef.FullName}");
+                marshalType = LuaMarshalType.Default;
+                goto restart;
+            }
             default:
                 throw new CodeGenException($"unsupported marshal type {marshalType}, method: {methodDef.FullName}");
             }

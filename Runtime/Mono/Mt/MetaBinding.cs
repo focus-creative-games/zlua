@@ -21,6 +21,9 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text;
+using ZLua.Emit;
+using ZLua.Utils;
 
 namespace ZLua.Mt
 {
@@ -115,12 +118,324 @@ namespace ZLua.Mt
         }
 
         /// <summary>
-        /// Drop all type bindings (member maps, three-table refs, runtime <c>register_method</c> aliases).
+        /// Drop all type bindings (member maps, three-table refs).
         /// Aligns with Il2Cpp <c>MetaBinding::ShutdownState</c>; call on Reset / <c>lua_close</c>.
         /// </summary>
         internal static void Shutdown()
         {
             s_bindings.Clear();
+        }
+
+        /// <summary>
+        /// Find an open generic method for <c>zlua.inflate</c> by short name or full-signature key.
+        /// Searches static + ByObj instance maps (inflate returns ByObj-convention instance closures).
+        /// </summary>
+        internal static bool TryFindOpenGenericMethod(
+            Type ownerType,
+            string nameOrSignature,
+            int genericArity,
+            out MethodInfo openMethod,
+            out bool isStatic,
+            out bool isByVal)
+        {
+            openMethod = null;
+            isStatic = false;
+            isByVal = false;
+            if (ownerType == null || string.IsNullOrEmpty(nameOrSignature) || genericArity < 1)
+            {
+                return false;
+            }
+
+            TypeBinding binding = EnsureBinding(ownerType);
+            bool isSignature = nameOrSignature.IndexOf('(') >= 0;
+            MethodInfo match = null;
+            bool matchStatic = false;
+            bool matchByVal = false;
+            int matchCount = 0;
+
+            CollectOpenGenericMatches(
+                binding.StaticMap,
+                nameOrSignature,
+                isSignature,
+                genericArity,
+                isStaticCandidate: true,
+                isByValCandidate: false,
+                ref match,
+                ref matchStatic,
+                ref matchByVal,
+                ref matchCount);
+
+            CollectOpenGenericMatches(
+                binding.ByObjInstanceMap,
+                nameOrSignature,
+                isSignature,
+                genericArity,
+                isStaticCandidate: false,
+                isByValCandidate: false,
+                ref match,
+                ref matchStatic,
+                ref matchByVal,
+                ref matchCount);
+
+            if (matchCount != 1)
+            {
+                return false;
+            }
+
+            openMethod = match;
+            isStatic = matchStatic;
+            isByVal = matchByVal;
+            return true;
+        }
+
+        private static void CollectOpenGenericMatches(
+            Dictionary<string, MetaInfo> map,
+            string nameOrSignature,
+            bool isSignature,
+            int genericArity,
+            bool isStaticCandidate,
+            bool isByValCandidate,
+            ref MethodInfo match,
+            ref bool matchStatic,
+            ref bool matchByVal,
+            ref int matchCount)
+        {
+            if (map == null || map.Count == 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, MetaInfo> kv in map)
+            {
+                MetaInfo info = kv.Value;
+                if (info == null || info.Kind != MetaKind.Method)
+                {
+                    continue;
+                }
+
+                if (!isSignature
+                    && !string.Equals(info.Name, nameOrSignature, StringComparison.Ordinal))
+                {
+                    // Short-name lookup uses Lua final name (default or [LuaAlias]).
+                    continue;
+                }
+
+                List<MethodInfo> methods = info.MethodOverloads;
+                if (methods == null || methods.Count == 0)
+                {
+                    if (info.Method == null)
+                    {
+                        continue;
+                    }
+
+                    methods = new List<MethodInfo> { info.Method };
+                }
+
+                for (int i = 0; i < methods.Count; i++)
+                {
+                    MethodInfo method = methods[i];
+                    if (method == null || !IsOpenGenericMethod(method))
+                    {
+                        continue;
+                    }
+
+                    if (method.GetGenericArguments().Length != genericArity)
+                    {
+                        continue;
+                    }
+
+                    if (isSignature)
+                    {
+                        if (!string.Equals(
+                                BuildOpenMethodSignatureKey(method),
+                                nameOrSignature,
+                                StringComparison.Ordinal))
+                        {
+                            continue;
+                        }
+                    }
+
+                    matchCount++;
+                    if (matchCount == 1)
+                    {
+                        match = method;
+                        matchStatic = isStaticCandidate;
+                        matchByVal = isByValCandidate;
+                    }
+                }
+            }
+        }
+
+        private static bool IsOpenGenericMethod(MethodInfo method)
+        {
+            return method.IsGenericMethodDefinition || method.ContainsGenericParameters;
+        }
+
+        /// <summary>
+        /// Full-signature key: <c>Name(ParamFullNames…)</c> (CLR name, not Lua alias).
+        /// Extension methods omit the <c>this</c> parameter. Excludes ctors (callers must not pass them).
+        /// </summary>
+        internal static string BuildMethodSignatureKey(MethodInfo method)
+        {
+            ParameterInfo[] parameters = method.GetParameters();
+            int start = ExtensionMethodUtil.IsExtensionMethod(method) ? 1 : 0;
+            var sb = new StringBuilder(method.Name.Length + 16 + (parameters.Length - start) * 24);
+            sb.Append(method.Name);
+            sb.Append('(');
+            for (int i = start; i < parameters.Length; i++)
+            {
+                if (i > start)
+                {
+                    sb.Append(',');
+                }
+
+                sb.Append(TypeRegistry.GetLuaFullName(parameters[i].ParameterType));
+            }
+
+            sb.Append(')');
+            return sb.ToString();
+        }
+
+        /// <summary>Alias for open-generic inflate lookup; same format as <see cref="BuildMethodSignatureKey"/>.</summary>
+        internal static string BuildOpenMethodSignatureKey(MethodInfo method)
+        {
+            return BuildMethodSignatureKey(method);
+        }
+
+        /// <summary>
+        /// Find first public method whose §3.7 signature key matches (type + bases).
+        /// Never matches instance or static constructors.
+        /// </summary>
+        internal static bool TryFindMethodBySignatureKey(
+            Type ownerType,
+            string signatureKey,
+            bool isStatic,
+            out MethodInfo method)
+        {
+            method = null;
+            if (ownerType == null || string.IsNullOrEmpty(signatureKey) || signatureKey.IndexOf('(') < 0)
+            {
+                return false;
+            }
+
+            BindingFlags flags = BindingFlags.Public | BindingFlags.DeclaredOnly
+                | (isStatic ? BindingFlags.Static : BindingFlags.Instance);
+
+            Type walk = ownerType;
+            while (walk != null
+                   && walk != typeof(object)
+                   && walk != typeof(ValueType)
+                   && walk != typeof(Enum))
+            {
+                MethodInfo[] methods = walk.GetMethods(flags);
+                for (int i = 0; i < methods.Length; i++)
+                {
+                    MethodInfo candidate = methods[i];
+                    if (ShouldSkipSignatureResolve(candidate))
+                    {
+                        continue;
+                    }
+
+                    if (string.Equals(
+                            BuildMethodSignatureKey(candidate),
+                            signatureKey,
+                            StringComparison.Ordinal))
+                    {
+                        method = candidate;
+                        return true;
+                    }
+                }
+
+                walk = walk.BaseType;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Resolve full-signature key, emit direct/GTAP closure into method table + map, push closure.
+        /// Returns 1 if pushed; 0 if not found (caller pushes nil / continues miss).
+        /// </summary>
+        internal static int TryResolveSignatureMethodAndPush(
+            IntPtr L,
+            Type ownerType,
+            string signatureKey,
+            bool isStatic,
+            bool isByVal)
+        {
+            if (!TryFindMethodBySignatureKey(ownerType, signatureKey, isStatic, out MethodInfo method))
+            {
+                return 0;
+            }
+
+            TypeBinding binding = EnsureBinding(ownerType);
+            MemberTableSet tables = isStatic
+                ? binding.StaticTables
+                : (isByVal ? binding.ByValInstanceTables : binding.ByObjInstanceTables);
+            Dictionary<string, MetaInfo> map = isStatic
+                ? binding.StaticMap
+                : (isByVal ? binding.ByValInstanceMap : binding.ByObjInstanceMap);
+
+            if (tables == null || !tables.IsValid)
+            {
+                return 0;
+            }
+
+            if (!map.TryGetValue(signatureKey, out MetaInfo info) || info == null || info.Kind != MetaKind.Method)
+            {
+                info = new MetaInfo
+                {
+                    Kind = MetaKind.Method,
+                    Name = signatureKey,
+                    IsStatic = isStatic,
+                    Method = method,
+                };
+                map[signatureKey] = info;
+                MethodEmitter.Write(L, tables.MethodTableRef, info, ownerType, isStatic, isByVal);
+            }
+
+            LuaDll.lua_rawgeti(L, LuaConsts.LuaRegistryIndex, tables.MethodTableRef);
+            LuaDll.lua_getfield(L, -1, signatureKey);
+            LuaDll.lua_remove(L, -2);
+            if (LuaDll.lua_isnil(L, -1))
+            {
+                // Soft-skip emit left no closure; drop stale map entry.
+                map.Remove(signatureKey);
+                LuaDll.lua_pop(L, 1);
+                return 0;
+            }
+
+            return 1;
+        }
+
+        private static bool ShouldSkipSignatureResolve(MethodInfo method)
+        {
+            if (method == null)
+            {
+                return true;
+            }
+
+            // Instance ctor / static ctor (.cctor) — never exposed via full-signature keys.
+            if (method.IsConstructor
+                || string.Equals(method.Name, ".ctor", StringComparison.Ordinal)
+                || string.Equals(method.Name, ".cctor", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (method.IsSpecialName
+                && (method.Name.StartsWith("get_", StringComparison.Ordinal)
+                    || method.Name.StartsWith("set_", StringComparison.Ordinal)))
+            {
+                return true;
+            }
+
+            if (method.DeclaringType == typeof(object) && method.Name == "Finalize")
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private static void BuildBinding(TypeBinding binding)

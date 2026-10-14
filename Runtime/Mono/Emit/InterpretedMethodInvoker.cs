@@ -56,7 +56,7 @@ namespace ZLua.Emit
                 LuaMarshalBinding ret = LuaMarshalAsValidation.ResolveReturnBinding(
                     methodInfo,
                     LuaMarshalDirection.CSharpToLua);
-                if (ret.IsComposite)
+                if (ret.IsComposite || ret.MarshalType == LuaMarshalType.ActualTypeUserData)
                 {
                     return true;
                 }

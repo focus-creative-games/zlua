@@ -434,6 +434,15 @@ static MethodOverloadResolutionResult FindBestMatchMethod(lua_State* L, const Me
     return MethodOverloadResolutionResult{MethodOverloadResolutionKind::None, nullptr};
 }
 
+bool MethodOverloadResolver::IsApplicable(lua_State* L, const MethodMarshalCtx* method, int32_t argStart, int32_t argCount)
+{
+    if (method == nullptr)
+        return false;
+    const MethodMarshalCtx* methods[1] = { method };
+    MethodOverloadResolutionResult result = FindBestMatchMethod(L, methods, 1, argStart, argCount);
+    return result.kind == MethodOverloadResolutionKind::BestMatch;
+}
+
 MethodOverloadResolutionResult MethodOverloadResolver::Resolve(lua_State* L, const MethodGroups* groups, int32_t argStart, int32_t argCount)
 {
     if (argCount <= kMaxSmallArgCount)

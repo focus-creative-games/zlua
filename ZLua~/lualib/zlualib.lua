@@ -12,8 +12,8 @@ function zlua.make_generic_type(genericType, ...)
     return __zlua_make_generic_type(genericType, ...)
 end
 
-function zlua.make_generic_method(genericMethodBase, ...)
-    return __zlua_make_generic_method(genericMethodBase, ...)
+function zlua.inflate(type, methodNameOrSignature, ...)
+    return __zlua_inflate(type, methodNameOrSignature, ...)
 end
 
 function zlua.make_szarray_type(elementType)
@@ -70,10 +70,6 @@ end
 
 function zlua.cast(obj, targetType)
     return __zlua_cast(obj, targetType)
-end
-
-function zlua.register_method(aliasName, methodOrClosure)
-    return __zlua_register_method(aliasName, methodOrClosure)
 end
 
 zlua.types = {

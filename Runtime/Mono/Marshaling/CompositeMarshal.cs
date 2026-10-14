@@ -53,6 +53,19 @@ namespace ZLua.Marshaling
                 return 0;
             }
 
+            if (binding != null && binding.MarshalType == LuaMarshalType.ActualTypeUserData)
+            {
+                if (value == null)
+                {
+                    LuaDll.lua_pushnil(L);
+                    return 1;
+                }
+
+                // ByObj with viewKlass = runtime actual type (string stays ByObj, not Lua string).
+                ObjectMarshal.Push(L, value, value.GetType());
+                return 1;
+            }
+
             if (binding == null || !binding.IsComposite)
             {
                 TypedMarshal.PushObject(L, value, declaredType);

@@ -30,5 +30,7 @@ namespace zlua
 
     public:
         static MethodOverloadResolutionResult Resolve(lua_State* L, const MethodGroups* groups, int32_t argStart, int32_t argCount);
+        /// True when remaining Lua args at [argStart, argStart+argCount) are applicable to method (arity + conversion).
+        static bool IsApplicable(lua_State* L, const MethodMarshalCtx* method, int32_t argStart, int32_t argCount);
     };
 }

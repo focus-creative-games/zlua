@@ -164,7 +164,7 @@ namespace ZLua.Mt
             int setterIdx = LuaDll.lua_gettop(L);
             int getterIdx = setterIdx - 1;
             int methodIdx = setterIdx - 2;
-            TypeMemberLuaIndexer.BindInstanceMetatable(L, type, mtIndex, methodIdx, getterIdx, setterIdx);
+            TypeMemberLuaIndexer.BindInstanceMetatable(L, type, mtIndex, methodIdx, getterIdx, setterIdx, isByVal: true);
             LuaDll.lua_pop(L, 3);
 
             LuaDll.lua_setfield(L, typeTableIndex, LuaConsts.ByValInstanceMt);
@@ -247,7 +247,7 @@ namespace ZLua.Mt
             int setterIdx = LuaDll.lua_gettop(L);
             int getterIdx = setterIdx - 1;
             int methodIdx = setterIdx - 2;
-            TypeMemberLuaIndexer.BindInstanceMetatable(L, type, mtIndex, methodIdx, getterIdx, setterIdx);
+            TypeMemberLuaIndexer.BindInstanceMetatable(L, type, mtIndex, methodIdx, getterIdx, setterIdx, isByVal: false);
             LuaDll.lua_pop(L, 3);
 
             if (typeof(Delegate).IsAssignableFrom(type))
