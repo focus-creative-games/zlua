@@ -82,6 +82,28 @@ namespace ZLua
         }
 
         /// <summary>
+        /// Any Lua value → display string via <c>luaL_tolstring</c> (same as standard <c>print</c> / Il2Cpp).
+        /// Pops the temporary string left by <c>luaL_tolstring</c>.
+        /// </summary>
+        public static unsafe string ToDisplayString(IntPtr luaState, int index)
+        {
+            IntPtr strPtr = LuaDll.luaL_tolstring(luaState, index, out UIntPtr len);
+            try
+            {
+                if (strPtr == IntPtr.Zero)
+                {
+                    return string.Empty;
+                }
+
+                return Encoding.UTF8.GetString((byte*)strPtr, (int)len);
+            }
+            finally
+            {
+                LuaDll.lua_pop(luaState, 1);
+            }
+        }
+
+        /// <summary>
         /// Convert a Lua error object to a non-empty string (never null/empty for pcall failures).
         /// </summary>
         public static unsafe string FormatErrorObject(IntPtr luaState, int index)

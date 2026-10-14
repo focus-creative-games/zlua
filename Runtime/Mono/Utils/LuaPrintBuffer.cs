@@ -77,7 +77,8 @@ namespace ZLua.Utils
                     msg.Append('\t');
                 }
 
-                msg.Append(LuaDllExtension.tostring(luaState, i) ?? "null");
+                // lua_tolstring alone yields null for table/userdata; use luaL_tolstring like Il2Cpp print.
+                msg.Append(LuaDllExtension.ToDisplayString(luaState, i));
             }
 
             // level 1 = first Lua caller of print (same as previous luaL_where).
