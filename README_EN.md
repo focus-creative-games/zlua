@@ -20,6 +20,7 @@ Compared with xLua / toLua / SLua, ZLua's core strengths are:
 | **Less GC** | Reference types and structs (including structs with reference fields) are **0 GC** by default; plus OpaqueValue and other strategies |
 | **Tiny bridging** | Efficient **C++** stubs with same-signature merging; generated bridge size is about an order of magnitude smaller than xLua-style wrappers translated to C++; supports **0 bridge functions**, and even without generating any bridges, interop is still faster than other solutions' wrapper paths in most cases |
 | **Wider version support** | Lua **5.1–5.5** and **LuaJIT 2.x**; Unity **2021.3 / 2022.3 / 6000.0 / 6000.3 / 6000.5**; **Tuanjie Engine** (all releases) |
+| **Seamless HybridCLR compatibility** | Natively compatible with HybridCLR v9.0.0+; seamless interop with hot-update code |
 | **More active maintenance** | Full-time professional team; faster bug response and feature iteration |
 
 For performance details, see [Performance Comparison](https://doc.zlua.cn/docs/compare/PERFORMANCE).
