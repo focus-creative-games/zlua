@@ -25,6 +25,7 @@
 
 #include "../utils/LuaException.h"
 #include "../utils/LuaStackGuard.h"
+#include "../utils/LuaUtil.h"
 
 #include <string>
 #include <unordered_map>
@@ -69,18 +70,21 @@ int LuaGlobalRefs::GetModuleRef(const char* moduleName)
 
     lua_State* L = LuaEnv::GetState();
     LuaStackGuard stackGuard(L);
+    // Stack: [errhandler, require, moduleName] — errfunc so failures include Lua traceback.
+    const int errFunc = LuaEnv::PushErrorHandler();
     if (lua_getglobal(L, "require") != LUA_TFUNCTION)
     {
         LuaException::Throw("Lua global 'require' is not available.");
     }
 
     lua_pushstring(L, moduleName);
-    if (lua_pcall(L, 1, 1, 0) != LUA_OK)
+    if (lua_pcall(L, 1, 1, errFunc) != LUA_OK)
     {
-        const char* err = lua_tostring(L, -1);
-        std::string msg = std::string("Error requiring lua module '") + moduleName + "': " + (err ? err : "");
+        std::string msg = std::string("Error requiring lua module '") + moduleName + "': " + LuaUtil::FormatErrorObject(L, -1);
         LuaException::Throw(msg.c_str());
     }
+
+    lua_remove(L, errFunc);
 
     if (!lua_istable(L, -1))
     {

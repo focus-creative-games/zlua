@@ -182,6 +182,10 @@ namespace ZLua.Lvm
             LuaPrintBuffer.EnterManagedPcall();
             try
             {
+                // Stack: [errhandler, require, moduleName] — errfunc so failures include Lua traceback.
+                PushErrorHandler(L);
+                int errFunc = oldTop + 1;
+
                 LuaDataType requireType = LuaDll.lua_getglobal(L, "require");
                 if (requireType != LuaDataType.Function)
                 {
@@ -189,12 +193,14 @@ namespace ZLua.Lvm
                 }
 
                 LuaDll.lua_pushstring(L, moduleName);
-                int execResult = LuaDll.lua_pcall(L, 1, 1, 0);
+                int execResult = LuaDll.lua_pcall(L, 1, 1, errFunc);
                 if (execResult != 0)
                 {
                     string error = LuaDllExtension.FormatErrorObject(L, -1);
                     throw new LuaScriptException($"Error requiring lua module '{moduleName}': {error}");
                 }
+
+                LuaDll.lua_remove(L, errFunc);
 
                 if (LuaDll.lua_type(L, -1) != LuaDataType.Table)
                 {
@@ -246,6 +252,7 @@ namespace ZLua.Lvm
 
         public void DoStringIgnoreResult(string chunk)
         {
+            // Internal init only (before/around ErrFunc registration); no errfunc — not a public API path.
             int oldTop = LuaDll.lua_gettop(L);
             LuaPrintBuffer.EnterManagedPcall();
             try
@@ -254,14 +261,12 @@ namespace ZLua.Lvm
                 if (result != 0)
                 {
                     string error = LuaDllExtension.FormatErrorObject(L, -1);
-                    LuaDll.lua_settop(L, oldTop);
                     throw new LuaScriptException(error);
                 }
-
-                LuaDll.lua_settop(L, oldTop);
             }
             finally
             {
+                LuaDll.lua_settop(L, oldTop);
                 LuaPrintBuffer.LeaveManagedPcall();
             }
         }
