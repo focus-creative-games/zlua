@@ -69,7 +69,7 @@ void StructMarshal::PushValue(lua_State* L, void* dataAddr, Il2CppClass* klass, 
     const size_t payloadSize = (size_t)MetadataUtil::GetInstanceSizeWithoutHeader(klass);
     ByValUserDataHeader* header = CreateByValUserDataHeader(L, klass, payloadSize, metatableRefIndex);
     std::memcpy(header->Payload(), dataAddr, payloadSize);
-    if (!klass->is_blittable)
+    if (klass->has_references)
         StructRegistry::Register(header);
 }
 
@@ -80,7 +80,7 @@ void* StructMarshal::PushZeroedValue(lua_State* L, Il2CppClass* klass)
     ByValUserDataHeader* header = CreateByValUserDataHeader(L, klass, payloadSize, LUA_NOREF);
     void* payload = header->Payload();
     std::memset(payload, 0, payloadSize);
-    if (!klass->is_blittable)
+    if (klass->has_references)
         StructRegistry::Register(header);
     return payload;
 }
@@ -93,12 +93,12 @@ void StructMarshal::PopValue(lua_State* L, int index, Il2CppClass* klass, void* 
         LuaException::ThrowFormat("zlua argument mismatch: cannot convert non-by-val userdata to struct: %s.%s", klass->namespaze, klass->name);
 
     if (klass != header->klass)
-        LuaException::ThrowFormat("zlua argument mismatch: cannot convert userdata %s.%s to struct: %s.%s", header->klass->namespaze, header->klass->name,
-                                  klass->namespaze, klass->name);
+        LuaException::ThrowFormat("zlua argument mismatch: cannot convert userdata %s.%s to struct: %s.%s", header->klass->namespaze, header->klass->name, klass->namespaze,
+                                  klass->name);
 
     const size_t payloadSize = MetadataUtil::GetInstanceSizeWithoutHeader(klass);
     std::memcpy(outDataAddr, header->Payload(), payloadSize);
-    if (!klass->is_blittable)
+    if (klass->has_references)
     {
         il2cpp::gc::GarbageCollector::SetWriteBarrier((void**)outDataAddr, payloadSize);
     }

@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <climits>
+
 #include "../ZLuaCommon.h"
 
 namespace zlua
@@ -52,16 +54,16 @@ typedef void (*FnMarshalCs2Lua)(lua_State* L, void* address, const MarshalMetaIn
 struct CompositeMember
 {
     const char* clrName;
-    bool optional;
-    bool isField;
     union
     {
         const FieldInfo* field;
         const PropertyInfo* property;
     };
+    const MarshalMetaInfo* memberMeta;
     /// Offset into valuetype payload (excludes Il2CppObject header). Valid when isField.
     int32_t fieldOffset;
-    const MarshalMetaInfo* memberMeta;
+    bool optional;
+    bool isField;
 };
 
 struct MarshalMetaInfo
@@ -70,16 +72,16 @@ struct MarshalMetaInfo
     FnMarshalCs2Lua cs2luaWriter;
     const Il2CppType* type;
     Il2CppClass* typeKlass; // declared type for marshal facade (class/interface/object/array/struct/...)
+    const CompositeMember* members;
     int32_t size;
     int luaByValRefIndex;
     int luaByObjRefIndex;
     /// Matches MarshalMeta metatable-ref epoch when luaBy*RefIndex are valid for the current lua_State.
     int luaMetatableRefEpoch;
-    bool passByValue;
-    LuaMarshalType marshalType;
     uint16_t stackSlots; // Default/Table/... = 1; UnpackedValues = memberCount
     uint16_t memberCount;
-    const CompositeMember* members;
+    bool passByValue;
+    LuaMarshalType marshalType;
 };
 
 struct FieldMarshalCtx
@@ -124,11 +126,11 @@ typedef void* (*FnResolveMethodThis)(lua_State*, int);
 /// Dense trailing region only: slots[i] corresponds to CLR param (firstDefaultParamIndex + i).
 struct MethodDefaultArgs
 {
+    void** defaultValueSlots;          // [defaultParamCount] valuetype native buffers
+    Il2CppObject** defaultObjectSlots; // [defaultParamCount]; nullptr if no reference defaults
     int32_t minLuaArity;
     uint8_t firstDefaultParamIndex;
     uint8_t defaultParamCount; // parameters_count - firstDefaultParamIndex
-    void** defaultValueSlots;          // [defaultParamCount] valuetype native buffers
-    Il2CppObject** defaultObjectSlots; // [defaultParamCount]; nullptr if no reference defaults
 };
 
 struct MethodMarshalCtx
@@ -138,8 +140,10 @@ struct MethodMarshalCtx
     FnLua2CsInvoker lua2CsInvoker;
     const MarshalMetaInfo** paramsMeta; // exclude this
     const MarshalMetaInfo* retMeta;
-    int32_t luaArity; // max Σ paramsMeta[i]->stackSlots (extension: from param 1)
     const MethodDefaultArgs* defaults; // nullptr when method has no optional defaults
+    int32_t luaArity; // Σ paramsMeta[i]->stackSlots treating params as 1 slot (extension: from param 1)
+    /* CLR param index of params T[], or -1. Bind-time only; hot path never re-queries attributes. */
+    int32_t paramsParamIndex;
     bool byVal;
     /* Precomputed: true when method is effectively sealed (non-virtual, method final, klass sealed, or byVal). */
     bool sealed;
@@ -147,9 +151,28 @@ struct MethodMarshalCtx
     bool isExtension;
 };
 
+static inline bool HasParamsArray(const MethodMarshalCtx* ctx)
+{
+    return ctx->paramsParamIndex >= 0;
+}
+
+static inline int32_t GetMaxLuaArity(const MethodMarshalCtx* ctx)
+{
+    return HasParamsArray(ctx) ? INT32_MAX : ctx->luaArity;
+}
+
 static inline int32_t GetMinLuaArity(const MethodMarshalCtx* ctx)
 {
-    return ctx->defaults != nullptr ? ctx->defaults->minLuaArity : ctx->luaArity;
+    if (ctx->defaults != nullptr)
+        return ctx->defaults->minLuaArity;
+    if (HasParamsArray(ctx))
+    {
+        const MarshalMetaInfo* meta = ctx->paramsMeta[ctx->paramsParamIndex];
+        const int slots = meta->stackSlots > 0 ? meta->stackSlots : 1;
+        const int32_t min = ctx->luaArity - slots;
+        return min < 0 ? 0 : min;
+    }
+    return ctx->luaArity;
 }
 
 static inline bool HasOptionalDefaults(const MethodMarshalCtx* ctx)
@@ -252,16 +275,16 @@ enum class MethodOverloadResolutionKind : uint8_t
 
 struct MethodOverloadResolutionResult
 {
-    MethodOverloadResolutionKind kind;
     const MethodMarshalCtx* method;
+    MethodOverloadResolutionKind kind;
 };
 
 struct LuaMethod : Il2CppObject
 {
-    bool disposed;
     lua_State* L;
-    int32_t funcRef;
     const MethodMarshalCtx* methodMarshalCtx;
+    int32_t funcRef;
+    bool disposed;
 };
 
 

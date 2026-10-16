@@ -151,8 +151,8 @@ void TypeRegistryCommon::RegisterStaticLiteralFields(lua_State* L, Il2CppClass* 
     }
 }
 
-static void FillInstanceMetatable(lua_State* L, TypeBinding* binding, int typeTableIndex, int mtIndex, const char* userDataKind, lua_CFunction gc,
-                                  lua_CFunction tostring, lua_CFunction instanceIndex, lua_CFunction instanceNewIndex)
+static void FillInstanceMetatable(lua_State* L, TypeBinding* binding, int typeTableIndex, int mtIndex, const char* userDataKind, lua_CFunction gc, lua_CFunction tostring,
+                                  lua_CFunction instanceIndex, lua_CFunction instanceNewIndex)
 {
     lua_pushvalue(L, typeTableIndex);
     lua_setfield(L, mtIndex, LuaConsts::Type);
@@ -524,8 +524,8 @@ void TypeRegistryCommon::AttachByValInstanceMetatable(lua_State* L, Il2CppClass*
 
     LuaStackGuard stackGuard(L);
     const int mtIndex = stackGuard.GetTop();
-    FillInstanceMetatable(L, binding, typeTableIndex, mtIndex, LuaConsts::UdKindByVal, klass->is_blittable ? nullptr : StructRegistry::OnReleaseByValUserData,
-                          tostring, InstanceByValIndex, InstanceByValNewIndex);
+    FillInstanceMetatable(L, binding, typeTableIndex, mtIndex, LuaConsts::UdKindByVal, klass->has_references ? StructRegistry::OnReleaseByValUserData : nullptr, tostring,
+                          InstanceByValIndex, InstanceByValNewIndex);
 #if ZLUA_FAST_METATABLE
     AttachFastInstanceIndexTables(L, binding, &binding->byvalInstanceMap, FastInstanceKind::StructByVal, mtIndex);
 #endif
@@ -568,8 +568,8 @@ void TypeRegistryCommon::AttachReferenceInstanceMetatable(lua_State* L, Il2CppCl
     lua_setfield(L, typeTableIndex, LuaConsts::ByObjInstanceMt);
 }
 
-void TypeRegistryCommon::AttachStaticTypeMetatable(lua_State* L, Il2CppClass* klass, int typeTableIndex, lua_CFunction callFn, lua_CFunction extraFn,
-                                                   const char* extraFieldName, TypeBinding* binding)
+void TypeRegistryCommon::AttachStaticTypeMetatable(lua_State* L, Il2CppClass* klass, int typeTableIndex, lua_CFunction callFn, lua_CFunction extraFn, const char* extraFieldName,
+                                                   TypeBinding* binding)
 {
     lua_newtable(L);
 
@@ -620,7 +620,5 @@ void TypeRegistryCommon::AttachStaticTypeMetatable(lua_State* L, Il2CppClass* kl
 
     lua_setmetatable(L, typeTableIndex);
 }
-
-
 
 } // namespace zlua

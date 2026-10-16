@@ -78,6 +78,7 @@ struct MethodMarshalShared
     const MethodDefaultArgs* defaults;
     FnLua2CsInvoker lua2CsInvoker;
     int32_t luaArity;
+    int32_t paramsParamIndex; // -1 if none
     bool isExtension;
 };
 
@@ -131,8 +132,10 @@ static int InvokeExtensionMethodCore(lua_State* L, const MethodMarshalCtx* ctx)
     const int32_t minArity = GetMinLuaArity(ctx);
     if (available < minArity)
     {
-        if (minArity == ctx->luaArity)
+        if (!HasParamsArray(ctx) && minArity == ctx->luaArity)
             LuaException::ThrowFormat("zlua: argument mismatch: expected %d argument(s), got %d", minArity, available);
+        if (HasParamsArray(ctx))
+            LuaException::ThrowFormat("zlua: argument mismatch: expected at least %d argument(s), got %d", minArity, available);
         LuaException::ThrowFormat("zlua: argument mismatch: expected %d..%d argument(s), got %d", minArity, ctx->luaArity, available);
     }
     const MethodInfo* method = MetadataUtil::ResolveInvokeMethod(ctx->method, nullptr, /*sealed*/ true);
@@ -194,6 +197,7 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
         shared->retMeta = nullptr;
         shared->paramsMeta = nullptr;
         shared->luaArity = 0;
+        shared->paramsParamIndex = -1;
 
         int32_t luaArity = 0;
         if (method->parameters_count > 0)
@@ -207,16 +211,28 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
                 if (!shared->isExtension || i >= 1)
                     luaArity += meta->stackSlots > 0 ? meta->stackSlots : 1;
             }
+
+            // params is always the last CLR parameter (C# rule). Attribute check once at Bind.
+            const int lastParam = method->parameters_count - 1;
+            if (MetadataUtil::MethodParameterHasParamArrayAttribute(method, lastParam))
+                shared->paramsParamIndex = lastParam;
         }
         shared->luaArity = luaArity;
 
+        // params expand cannot use specialized stubs (they assume a single array slot).
+        if (shared->paramsParamIndex >= 0)
+            shared->lua2CsInvoker = MethodBridge::DefaultInvokeLuaMethod;
+
         // Trailing C# defaults → dense MethodDefaultArgs (Il2Cpp perf: no blob parse on call).
+        // params T[] is always omitable (empty array); continue scanning defaults before it.
         if (method->parameters_count > 0)
         {
             const int paramStart = shared->isExtension ? 1 : 0;
             bool trailingHasDefault = false;
             for (int i = method->parameters_count - 1; i >= paramStart; --i)
             {
+                if (MetadataUtil::MethodParameterHasParamArrayAttribute(method, i))
+                    continue;
                 if ((method->parameters[i]->attrs & PARAM_ATTRIBUTE_HAS_DEFAULT) == 0)
                     break;
                 bool isExplicitNull = false;
@@ -240,6 +256,12 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
                 bool anyObjectDefault = false;
                 for (int i = method->parameters_count - 1; i >= paramStart; --i)
                 {
+                    if (MetadataUtil::MethodParameterHasParamArrayAttribute(method, i))
+                    {
+                        omitSlots += shared->paramsMeta[i]->stackSlots > 0 ? shared->paramsMeta[i]->stackSlots : 1;
+                        continue;
+                    }
+
                     void* valueSlot = nullptr;
                     Il2CppObject* objectSlot = nullptr;
                     if (!TryMaterializeDefaultParam(method, i, shared->paramsMeta[i], &valueSlot, &objectSlot))
@@ -315,6 +337,7 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
     ctx->retMeta = shared->retMeta;
     ctx->luaArity = shared->luaArity;
     ctx->defaults = shared->defaults;
+    ctx->paramsParamIndex = shared->paramsParamIndex;
     ctx->byVal = isByVal;
     ctx->sealed = shared->isExtension ? true : MetadataUtil::IsMethodSealed(method, isByVal);
     ctx->isExtension = shared->isExtension;
@@ -425,12 +448,12 @@ static bool TryInvokeGtap(lua_State* L, const MethodInfo* const* openMethods, si
 
         MethodMarshalCtx* closedCtx = MetaBinding::CreateMethodMarshalCtx(L, closed, isByVal);
         const int minArity = GetMinLuaArity(closedCtx);
-        const int maxArity = closedCtx->luaArity;
+        const int maxArity = GetMaxLuaArity(closedCtx);
         if (valueArgCount < minArity || valueArgCount > maxArity)
             continue;
 
         // Zero-arg closed methods (e.g. GetComp<T>()) skip conversion scoring.
-        if (maxArity > 0 || valueArgCount > 0)
+        if (closedCtx->luaArity > 0 || valueArgCount > 0 || HasParamsArray(closedCtx))
         {
             if (!MethodOverloadResolver::IsApplicable(L, closedCtx, valueArgStart, valueArgCount))
                 continue;
@@ -895,19 +918,16 @@ static MethodGroups* CreateMethodGroups(lua_State* L, const std::vector<const Me
     for (const MethodInfo* method : methods)
     {
         const MethodMarshalCtx* ctx = MetaBinding::CreateMethodMarshalCtx(L, method, isByVal);
-        bool addedLarge = false;
-        for (int32_t arity = GetMinLuaArity(ctx); arity <= ctx->luaArity; ++arity)
+        const bool hasParams = HasParamsArray(ctx);
+        // params: register into all small buckets + large (unbounded expand).
+        const int32_t maxArity = hasParams ? static_cast<int32_t>(kMaxSmallArgCount) : ctx->luaArity;
+        for (int32_t arity = GetMinLuaArity(ctx); arity <= maxArity; ++arity)
         {
             if (arity <= static_cast<int32_t>(kMaxSmallArgCount))
-            {
                 methodGroups[arity].push_back(ctx);
-            }
-            else if (!addedLarge)
-            {
-                largeArgCountMethods.push_back(ctx);
-                addedLarge = true;
-            }
         }
+        if (hasParams || ctx->luaArity > static_cast<int32_t>(kMaxSmallArgCount))
+            largeArgCountMethods.push_back(ctx);
     }
 
     size_t methodGroupCount = 0;

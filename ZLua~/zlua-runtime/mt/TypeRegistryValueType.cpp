@@ -52,10 +52,13 @@ static int CreateValueTypeInstance(lua_State* L)
     {
         const MethodMarshalCtx* ctx = binding->uniqueCtorMethod;
         const int32_t minArity = GetMinLuaArity(ctx);
-        if (argCount < minArity || argCount > ctx->luaArity)
+        const int32_t maxArity = GetMaxLuaArity(ctx);
+        if (argCount < minArity || argCount > maxArity)
         {
-            if (minArity == ctx->luaArity)
+            if (!HasParamsArray(ctx) && minArity == ctx->luaArity)
                 LuaException::ThrowFormat("zlua: argument mismatch: constructor expects %d argument(s), but %d were given", ctx->luaArity, argCount);
+            if (HasParamsArray(ctx))
+                LuaException::ThrowFormat("zlua: argument mismatch: constructor expects at least %d argument(s), but %d were given", minArity, argCount);
             LuaException::ThrowFormat("zlua: argument mismatch: constructor expects %d..%d argument(s), but %d were given", minArity, ctx->luaArity, argCount);
         }
         targetMethodCtx = ctx;

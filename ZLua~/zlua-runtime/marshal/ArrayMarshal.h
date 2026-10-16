@@ -46,5 +46,11 @@ class ArrayMarshal
   static Il2CppArray* PopFromTable(lua_State* L, int arrayIndex, Il2CppClass* klass);
 
   static Il2CppArray* PopFromArrayObjectOrTable(lua_State* L, int arrayIndex, Il2CppClass* klass);
+
+  /// True when index holds a ByObj userdata assignable to arrayKlass (not table / nil).
+  static bool LooksLikeArrayUserData(lua_State* L, int index, Il2CppClass* arrayKlass);
+
+  /// Pack consecutive Lua stack slots [firstSlot, firstSlot+count) as elements of a new szarray.
+  static Il2CppArray* PopParamsExpand(lua_State* L, int firstSlot, int count, Il2CppClass* arrayKlass);
 };
 } // namespace zlua

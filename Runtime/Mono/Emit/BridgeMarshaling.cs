@@ -82,7 +82,7 @@ namespace ZLua.Emit
                 return false;
             }
 
-            // params T[]: treat as a single array argument (table or array userdata).
+            // params T[]: element type must be Expression-supported; expand packing uses Interpreted path.
             if (parameter.IsDefined(typeof(ParamArrayAttribute), inherit: false))
             {
                 return type.IsArray && type.GetArrayRank() == 1 && IsSupportedType(type.GetElementType());
@@ -194,6 +194,12 @@ namespace ZLua.Emit
                 if (minArgs == maxArgs)
                 {
                     LuaCallbackBoundary.Throw($"zlua argument mismatch: expected {minArgs} argument(s), got {actual}");
+                }
+
+                if (maxArgs == int.MaxValue)
+                {
+                    LuaCallbackBoundary.Throw(
+                        $"zlua argument mismatch: expected at least {minArgs} argument(s), got {actual}");
                 }
 
                 LuaCallbackBoundary.Throw(

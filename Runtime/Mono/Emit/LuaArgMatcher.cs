@@ -65,24 +65,47 @@ namespace ZLua.Emit
             selectedIndex = -1;
             int bestScore = -1;
             int bestOptionalUsed = int.MaxValue;
+            int bestParamsExpanded = int.MaxValue;
+            int bestParamsKind = int.MaxValue;
             int bestCount = 0;
 
             for (int i = 0; i < candidates.Length; i++)
             {
-                if (!TryScore(L, argStart, candidates[i], out int score, out int optionalUsed))
+                if (!TryScore(
+                        L,
+                        argStart,
+                        candidates[i],
+                        out int score,
+                        out int optionalUsed,
+                        out int paramsExpanded,
+                        out int paramsKind))
                 {
                     continue;
                 }
 
-                if (score > bestScore
-                    || (score == bestScore && optionalUsed < bestOptionalUsed))
+                bool better = score > bestScore
+                    || (score == bestScore && optionalUsed < bestOptionalUsed)
+                    || (score == bestScore
+                        && optionalUsed == bestOptionalUsed
+                        && paramsExpanded < bestParamsExpanded)
+                    || (score == bestScore
+                        && optionalUsed == bestOptionalUsed
+                        && paramsExpanded == bestParamsExpanded
+                        && paramsKind < bestParamsKind);
+
+                if (better)
                 {
                     bestScore = score;
                     bestOptionalUsed = optionalUsed;
+                    bestParamsExpanded = paramsExpanded;
+                    bestParamsKind = paramsKind;
                     selectedIndex = i;
                     bestCount = 1;
                 }
-                else if (score == bestScore && optionalUsed == bestOptionalUsed)
+                else if (score == bestScore
+                    && optionalUsed == bestOptionalUsed
+                    && paramsExpanded == bestParamsExpanded
+                    && paramsKind == bestParamsKind)
                 {
                     bestCount++;
                 }
@@ -103,10 +126,19 @@ namespace ZLua.Emit
             return LuaOverloadMatch.BestMatch;
         }
 
-        private static bool TryScore(IntPtr L, int argStart, MethodBase method, out int score, out int optionalUsed)
+        private static bool TryScore(
+            IntPtr L,
+            int argStart,
+            MethodBase method,
+            out int score,
+            out int optionalUsed,
+            out int paramsExpanded,
+            out int paramsKind)
         {
             score = 0;
             optionalUsed = 0;
+            paramsExpanded = 0;
+            paramsKind = ParamsArrayUtil.HasParamsArray(method) ? 1 : 0;
             ParameterInfo[] parameters = method.GetParameters();
             int paramStart = ExtensionMethodUtil.IsExtensionMethod(method) ? 1 : 0;
             int top = LuaDll.lua_gettop(L);
@@ -117,8 +149,50 @@ namespace ZLua.Emit
                     parameters[i],
                     method,
                     LuaMarshalDirection.LuaToCSharp);
-                int need = binding.StackSlots > 0 ? binding.StackSlots : 1;
                 int available = top >= slot ? top - slot + 1 : 0;
+
+                if (ParamsArrayUtil.IsParamsParameter(parameters[i]))
+                {
+                    if (available == 0)
+                    {
+                        optionalUsed++;
+                        continue;
+                    }
+
+                    Type arrayType = parameters[i].ParameterType;
+                    // Whole-array pass-through: matching szarray userdata only (not table / nil).
+                    if (available == 1 && ParamsArrayUtil.LooksLikeArrayUserDataArg(L, slot, arrayType))
+                    {
+                        if (!TryMatch(L, slot, arrayType, out int arrayPart))
+                        {
+                            score = -1;
+                            return false;
+                        }
+
+                        score += arrayPart;
+                        slot += 1;
+                        continue;
+                    }
+
+                    // Expand: each Lua arg matches element type (nil → null element).
+                    Type elementType = arrayType.GetElementType();
+                    for (int k = 0; k < available; k++)
+                    {
+                        if (!TryMatch(L, slot + k, elementType, out int elemPart))
+                        {
+                            score = -1;
+                            return false;
+                        }
+
+                        score += elemPart;
+                    }
+
+                    slot += available;
+                    paramsExpanded = 1;
+                    continue;
+                }
+
+                int need = binding.StackSlots > 0 ? binding.StackSlots : 1;
                 if (available >= need)
                 {
                     if (!TryMatchParameter(L, slot, parameters[i].ParameterType, binding, out int part))
@@ -138,6 +212,13 @@ namespace ZLua.Emit
                     continue;
                 }
 
+                score = -1;
+                return false;
+            }
+
+            // Leftover Lua args are only legal when consumed by params expand (handled above).
+            if (slot <= top)
+            {
                 score = -1;
                 return false;
             }

@@ -42,8 +42,10 @@ public:
         const int32_t minArity = GetMinLuaArity(ctx);
         if (available < minArity)
         {
-            if (minArity == ctx->luaArity)
+            if (!HasParamsArray(ctx) && minArity == ctx->luaArity)
                 LuaException::ThrowFormat("zlua: argument mismatch: expected %d argument(s), got %d", minArity, available);
+            if (HasParamsArray(ctx))
+                LuaException::ThrowFormat("zlua: argument mismatch: expected at least %d argument(s), got %d", minArity, available);
             LuaException::ThrowFormat("zlua: argument mismatch: expected %d..%d argument(s), got %d", minArity, ctx->luaArity, available);
         }
         const MethodInfo* method = MetadataUtil::ResolveInvokeMethod(ctx->method, target, ctx->sealed);

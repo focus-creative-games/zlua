@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 #include "MethodOverloadResolver.h"
+#include "ArrayMarshal.h"
 #include "MarshalDefs.h"
 #include "MarshalMeta.h"
 #include "PrimitiveMarshal.h"
@@ -339,16 +340,83 @@ static ConversionKind GetCompositeConversionKind(lua_State* L, int32_t slot, con
     return GetConversionKind(L, slot, paramMeta);
 }
 
-static ConversionScore ComputeMethodConversionScore(lua_State* L, int32_t argStart, int32_t argCount, const MethodMarshalCtx* method, int* outOptionalUsed)
+static MarshalMetaInfo MakeElementMeta(const MarshalMetaInfo* arrayMeta)
+{
+    MarshalMetaInfo elem = {};
+    IL2CPP_ASSERT(arrayMeta != nullptr && arrayMeta->typeKlass != nullptr && arrayMeta->typeKlass->element_class != nullptr);
+    Il2CppClass* elementKlass = arrayMeta->typeKlass->element_class;
+    elem.type = &elementKlass->byval_arg;
+    elem.typeKlass = elementKlass;
+    elem.marshalType = LuaMarshalType::Default;
+    elem.stackSlots = 1;
+    return elem;
+}
+
+static ConversionScore ComputeMethodConversionScore(lua_State* L, int32_t argStart, int32_t argCount, const MethodMarshalCtx* method,
+                                                    int* outOptionalUsed, int* outParamsExpanded, int* outParamsKind)
 {
     ConversionScore bestConversionScore = {ConversionKind::Identity, 0};
     int optionalUsed = 0;
+    int paramsExpanded = 0;
+    *outParamsKind = HasParamsArray(method) ? 1 : 0;
     int32_t slot = argStart;
     int32_t slotsLeft = argCount;
     const uint8_t paramStart = method->isExtension ? 1 : 0;
     for (uint8_t j = paramStart; j < method->method->parameters_count; j++)
     {
         const MarshalMetaInfo* paramMeta = method->paramsMeta[j];
+
+        if (method->paramsParamIndex >= 0 && static_cast<int32_t>(j) == method->paramsParamIndex)
+        {
+            if (slotsLeft == 0)
+            {
+                optionalUsed++;
+                continue;
+            }
+
+            // Whole-array pass-through: matching szarray userdata only (not table / nil).
+            if (slotsLeft == 1 && ArrayMarshal::LooksLikeArrayUserData(L, slot, paramMeta->typeKlass))
+            {
+                ConversionKind conversionKind = GetConversionKind(L, slot, paramMeta);
+                if (conversionKind == ConversionKind::NotConvertible)
+                {
+                    bestConversionScore.kind = ConversionKind::NotConvertible;
+                    bestConversionScore.score = 0;
+                    *outOptionalUsed = 0;
+                    *outParamsExpanded = 0;
+                    return bestConversionScore;
+                }
+                if (conversionKind > bestConversionScore.kind)
+                    bestConversionScore.kind = conversionKind;
+                bestConversionScore.score += static_cast<int>(conversionKind);
+                slot += 1;
+                slotsLeft = 0;
+                continue;
+            }
+
+            // Expand: each remaining slot matches element type T.
+            MarshalMetaInfo elemMeta = MakeElementMeta(paramMeta);
+            for (int32_t k = 0; k < slotsLeft; ++k)
+            {
+                ConversionKind conversionKind = GetConversionKind(L, slot + k, &elemMeta);
+                if (conversionKind == ConversionKind::NotConvertible)
+                {
+                    bestConversionScore.kind = ConversionKind::NotConvertible;
+                    bestConversionScore.score = 0;
+                    *outOptionalUsed = 0;
+                    *outParamsExpanded = 0;
+                    return bestConversionScore;
+                }
+                if (conversionKind > bestConversionScore.kind)
+                    bestConversionScore.kind = conversionKind;
+                bestConversionScore.score += static_cast<int>(conversionKind);
+            }
+            slot += slotsLeft;
+            slotsLeft = 0;
+            paramsExpanded = 1;
+            continue;
+        }
+
         const int need = paramMeta->stackSlots > 0 ? paramMeta->stackSlots : 1;
         if (slotsLeft >= need)
         {
@@ -358,6 +426,7 @@ static ConversionScore ComputeMethodConversionScore(lua_State* L, int32_t argSta
                 bestConversionScore.kind = ConversionKind::NotConvertible;
                 bestConversionScore.score = 0;
                 *outOptionalUsed = 0;
+                *outParamsExpanded = 0;
                 return bestConversionScore;
             }
             if (conversionKind > bestConversionScore.kind)
@@ -379,10 +448,21 @@ static ConversionScore ComputeMethodConversionScore(lua_State* L, int32_t argSta
         bestConversionScore.kind = ConversionKind::NotConvertible;
         bestConversionScore.score = 0;
         *outOptionalUsed = 0;
+        *outParamsExpanded = 0;
+        return bestConversionScore;
+    }
+
+    if (slotsLeft > 0)
+    {
+        bestConversionScore.kind = ConversionKind::NotConvertible;
+        bestConversionScore.score = 0;
+        *outOptionalUsed = 0;
+        *outParamsExpanded = 0;
         return bestConversionScore;
     }
 
     *outOptionalUsed = optionalUsed;
+    *outParamsExpanded = paramsExpanded;
     return bestConversionScore;
 }
 
@@ -392,17 +472,22 @@ static MethodOverloadResolutionResult FindBestMatchMethod(lua_State* L, const Me
     const MethodMarshalCtx* bestMethod = nullptr;
     ConversionScore bestConversionScore = {ConversionKind::NotConvertible, 0};
     int bestOptionalUsed = INT_MAX;
+    int bestParamsExpanded = INT_MAX;
+    int bestParamsKind = INT_MAX;
     int bestConversionCount = 0;
 
     for (size_t i = 0; i < methodCount; i++)
     {
         const MethodMarshalCtx* method = methods[i];
-        if (argCount < GetMinLuaArity(method) || argCount > method->luaArity)
+        if (argCount < GetMinLuaArity(method) || argCount > GetMaxLuaArity(method))
         {
             continue;
         }
         int optionalUsed = 0;
-        ConversionScore conversionScore = ComputeMethodConversionScore(L, argStart, argCount, method, &optionalUsed);
+        int paramsExpanded = 0;
+        int paramsKind = 0;
+        ConversionScore conversionScore =
+            ComputeMethodConversionScore(L, argStart, argCount, method, &optionalUsed, &paramsExpanded, &paramsKind);
         if (conversionScore.kind == ConversionKind::NotConvertible)
         {
             continue;
@@ -412,26 +497,34 @@ static MethodOverloadResolutionResult FindBestMatchMethod(lua_State* L, const Me
         const bool betterScore = conversionScore.kind == bestConversionScore.kind && conversionScore.score < bestConversionScore.score;
         const bool betterOptional = conversionScore.kind == bestConversionScore.kind && conversionScore.score == bestConversionScore.score
                                     && optionalUsed < bestOptionalUsed;
+        const bool betterParamsExpanded = conversionScore.kind == bestConversionScore.kind && conversionScore.score == bestConversionScore.score
+                                          && optionalUsed == bestOptionalUsed && paramsExpanded < bestParamsExpanded;
+        const bool betterParamsKind = conversionScore.kind == bestConversionScore.kind && conversionScore.score == bestConversionScore.score
+                                      && optionalUsed == bestOptionalUsed && paramsExpanded == bestParamsExpanded
+                                      && paramsKind < bestParamsKind;
 
-        if (bestMethod == nullptr || betterKind || betterScore || betterOptional)
+        if (bestMethod == nullptr || betterKind || betterScore || betterOptional || betterParamsExpanded || betterParamsKind)
         {
             bestConversionScore = conversionScore;
             bestOptionalUsed = optionalUsed;
+            bestParamsExpanded = paramsExpanded;
+            bestParamsKind = paramsKind;
             bestMethod = method;
             bestConversionCount = 1;
         }
         else if (conversionScore.kind == bestConversionScore.kind && conversionScore.score == bestConversionScore.score
-                 && optionalUsed == bestOptionalUsed)
+                 && optionalUsed == bestOptionalUsed && paramsExpanded == bestParamsExpanded && paramsKind == bestParamsKind)
         {
             bestConversionCount++;
         }
     }
     if (bestMethod != nullptr)
     {
-        return MethodOverloadResolutionResult{bestConversionCount == 1 ? MethodOverloadResolutionKind::BestMatch : MethodOverloadResolutionKind::Ambiguous,
-                                              bestMethod};
+        return MethodOverloadResolutionResult{
+            bestMethod,
+            bestConversionCount == 1 ? MethodOverloadResolutionKind::BestMatch : MethodOverloadResolutionKind::Ambiguous};
     }
-    return MethodOverloadResolutionResult{MethodOverloadResolutionKind::None, nullptr};
+    return MethodOverloadResolutionResult{nullptr, MethodOverloadResolutionKind::None};
 }
 
 bool MethodOverloadResolver::IsApplicable(lua_State* L, const MethodMarshalCtx* method, int32_t argStart, int32_t argCount)
@@ -450,11 +543,11 @@ MethodOverloadResolutionResult MethodOverloadResolver::Resolve(lua_State* L, con
         const MethodGroup* group = groups->smallArgCountMethodGroups[argCount];
         if (group == nullptr)
         {
-            return MethodOverloadResolutionResult{MethodOverloadResolutionKind::None, nullptr};
+            return MethodOverloadResolutionResult{nullptr, MethodOverloadResolutionKind::None};
         }
         if (group->methodCount == 1)
         {
-            return MethodOverloadResolutionResult{MethodOverloadResolutionKind::BestMatch, group->methods[0]};
+            return MethodOverloadResolutionResult{group->methods[0], MethodOverloadResolutionKind::BestMatch};
         }
         return FindBestMatchMethod(L, group->methods, group->methodCount, argStart, argCount);
     }
@@ -462,11 +555,11 @@ MethodOverloadResolutionResult MethodOverloadResolver::Resolve(lua_State* L, con
     if (groups->largeArgCountMethodCount == 1)
     {
         const MethodMarshalCtx* method = groups->largeArgCountMethods[0];
-        if (argCount < GetMinLuaArity(method) || argCount > method->luaArity)
+        if (argCount < GetMinLuaArity(method) || argCount > GetMaxLuaArity(method))
         {
-            return MethodOverloadResolutionResult{MethodOverloadResolutionKind::None, nullptr};
+            return MethodOverloadResolutionResult{nullptr, MethodOverloadResolutionKind::None};
         }
-        return MethodOverloadResolutionResult{MethodOverloadResolutionKind::BestMatch, method};
+        return MethodOverloadResolutionResult{method, MethodOverloadResolutionKind::BestMatch};
     }
 
     return FindBestMatchMethod(L, groups->largeArgCountMethods, groups->largeArgCountMethodCount, argStart, argCount);

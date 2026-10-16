@@ -45,13 +45,13 @@ enum class MetaKind : uint8_t
 /// Compact tagged entry for NameMetaMap. Field/Property payloads live on LuaMetadataAlloc.
 struct MetaInfo
 {
-    MetaKind kind;
     union
     {
         int closureRef; // Method
         FieldMarshalCtx* field;
         PropertyMarshalCtx* property;
     };
+    MetaKind kind;
 };
 
 typedef std::unordered_map<const char*, MetaInfo, CsStringHash, CsStringEqual> NameMetaMap;
@@ -69,8 +69,8 @@ enum class FastInstanceKind : uint8_t
 /// Slim ctx for lightuserdata upvalues. Field/Property point at the same heap ctx as NameMetaMap.
 struct FastMemberCtx
 {
-    FastInstanceKind kind;
     MetaInfo info;
+    FastInstanceKind kind;
 };
 #endif
 

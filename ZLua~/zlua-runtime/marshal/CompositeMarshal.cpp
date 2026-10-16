@@ -67,7 +67,7 @@ void WriteFieldMember(void* structAddress, const CompositeMember& member, void* 
         {
             il2cpp::gc::GarbageCollector::SetWriteBarrier(reinterpret_cast<void**>(dest), static_cast<size_t>(memberMeta->size));
         }
-        else if (!memberMeta->typeKlass->is_blittable)
+        else if (memberMeta->typeKlass->has_references)
         {
             il2cpp::gc::GarbageCollector::SetWriteBarrier(reinterpret_cast<void**>(dest), static_cast<size_t>(memberMeta->size));
         }
@@ -152,11 +152,8 @@ void PopTableIntoStruct(lua_State* L, int valueIdx, void* address, Il2CppClass* 
 {
     if (!lua_istable(L, valueIdx))
     {
-        LuaException::ThrowFormat(
-            "zlua: expected table for LuaMarshalType.Table (%s.%s), got %s",
-            structKlass->namespaze,
-            structKlass->name,
-            lua_typename(L, lua_type(L, valueIdx)));
+        LuaException::ThrowFormat("zlua: expected table for LuaMarshalType.Table (%s.%s), got %s", structKlass->namespaze, structKlass->name,
+                                  lua_typename(L, lua_type(L, valueIdx)));
     }
 
     ZeroInitStruct(address, structKlass);
@@ -169,11 +166,7 @@ void PopTableIntoStruct(lua_State* L, int valueIdx, void* address, Il2CppClass* 
             lua_pop(L, 1);
             if (member.optional)
                 continue;
-            LuaException::ThrowFormat(
-                "zlua: missing table key '%s' for %s.%s",
-                member.clrName,
-                structKlass->namespaze,
-                structKlass->name);
+            LuaException::ThrowFormat("zlua: missing table key '%s' for %s.%s", member.clrName, structKlass->namespaze, structKlass->name);
         }
 
         PopOneMember(L, -1, address, member);

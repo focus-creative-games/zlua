@@ -25,11 +25,11 @@ namespace ZLua
 {
     public sealed class LuaMethod : IDisposable
     {
-        private bool _disposed;
         private readonly IntPtr _L;
-        private readonly int _refIndex;
         // Set from native when binding a Lua function to a closed delegate (MethodMarshalCtx*).
         private IntPtr _methodMarshalCtx;
+        private readonly int _refIndex;
+        private bool _disposed;
 
         internal LuaMethod(IntPtr L, int refIndex)
         {

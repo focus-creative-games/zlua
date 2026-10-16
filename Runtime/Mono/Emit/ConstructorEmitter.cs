@@ -125,7 +125,7 @@ namespace ZLua.Emit
             for (int i = 0; i < ctors.Count; i++)
             {
                 int min = DefaultParameterUtil.GetMinLuaArity(ctors[i]);
-                int max = InterpretedMethodInvoker.GetLuaArity(ctors[i]);
+                int max = InterpretedMethodInvoker.GetMaxLuaArity(ctors[i]);
                 if (arity >= min && arity <= max)
                 {
                     return true;
@@ -230,6 +230,7 @@ namespace ZLua.Emit
         {
             Func<IntPtr, int> core = InterpretedMethodInvoker.NeedsInterpreted(ctor)
                 || DefaultParameterUtil.HasOptionalDefaults(ctor)
+                || ParamsArrayUtil.HasParamsArray(ctor)
                 ? InterpretedMethodInvoker.CompileConstructor(ctor, type)
                 : BuildDirectCore(ctor, type);
             return Wrap(core);
@@ -291,11 +292,20 @@ namespace ZLua.Emit
             bool includeDefaultStruct)
         {
             var byArity = new Dictionary<int, List<ConstructorInfo>>();
+            var paramsCtors = new List<ConstructorInfo>();
             for (int i = 0; i < ctors.Count; i++)
             {
                 ConstructorInfo ctor = ctors[i];
-                int maxArity = InterpretedMethodInvoker.GetLuaArity(ctor);
+                bool hasParams = ParamsArrayUtil.HasParamsArray(ctor);
+                if (hasParams)
+                {
+                    paramsCtors.Add(ctor);
+                }
+
                 int minArity = DefaultParameterUtil.GetMinLuaArity(ctor);
+                int maxArity = hasParams
+                    ? ParamsArrayUtil.MaxExpandArityBucket
+                    : InterpretedMethodInvoker.GetLuaArity(ctor);
                 for (int arity = minArity; arity <= maxArity; arity++)
                 {
                     if (!byArity.TryGetValue(arity, out List<ConstructorInfo> list))
@@ -316,6 +326,7 @@ namespace ZLua.Emit
                     ConstructorInfo only = kv.Value[0];
                     cores[kv.Key] = InterpretedMethodInvoker.NeedsInterpreted(only)
                         || DefaultParameterUtil.HasOptionalDefaults(only)
+                        || ParamsArrayUtil.HasParamsArray(only)
                         ? InterpretedMethodInvoker.CompileConstructor(only, type)
                         : BuildDirectCore(only, type);
                 }
@@ -323,6 +334,16 @@ namespace ZLua.Emit
                 {
                     cores[kv.Key] = BuildSameArityDispatchCore(kv.Value, type);
                 }
+            }
+
+            Func<IntPtr, int> paramsOverflowCore = null;
+            if (paramsCtors.Count == 1)
+            {
+                paramsOverflowCore = InterpretedMethodInvoker.CompileConstructor(paramsCtors[0], type);
+            }
+            else if (paramsCtors.Count > 1)
+            {
+                paramsOverflowCore = BuildSameArityDispatchCore(paramsCtors, type);
             }
 
             if (includeDefaultStruct && !cores.ContainsKey(0))
@@ -353,8 +374,15 @@ namespace ZLua.Emit
 
                         if (!cores.TryGetValue(actual, out Func<IntPtr, int> core))
                         {
-                            LuaCallbackBoundary.Throw(
-                                $"zlua: no constructor for {TypeRegistry.GetLuaFullName(type)} with {actual} argument(s)");
+                            if (paramsOverflowCore != null && actual > ParamsArrayUtil.MaxExpandArityBucket)
+                            {
+                                core = paramsOverflowCore;
+                            }
+                            else
+                            {
+                                LuaCallbackBoundary.Throw(
+                                    $"zlua: no constructor for {TypeRegistry.GetLuaFullName(type)} with {actual} argument(s)");
+                            }
                         }
 
                         return core(L);

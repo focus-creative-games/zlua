@@ -23,6 +23,7 @@
 
 #include "ArrayMarshal.h"
 
+#include "../mt/InstanceTarget.h"
 #include "../utils/LuaException.h"
 #include "../utils/MetadataUtil.h"
 #include "ObjectRegistry.h"
@@ -32,6 +33,7 @@
 
 #include "gc/GarbageCollector.h"
 #include "vm/Array.h"
+#include "vm/Class.h"
 
 namespace zlua
 {
@@ -278,7 +280,7 @@ Il2CppArray* ArrayMarshal::PopFromTable(lua_State* L, int arrayIndex, Il2CppClas
     {
         const int elementSize = il2cpp_array_element_size(klass);
         Il2CppArray* newArray = (Il2CppArray*)il2cpp::vm::Array::NewSpecific(klass, (il2cpp_array_size_t)length);
-        const bool needsWriteBarrier = !elementKlass->byval_arg.valuetype || !elementKlass->is_blittable;
+        const bool needsWriteBarrier = !elementKlass->byval_arg.valuetype || elementKlass->has_references;
         for (int32_t i = 0; i < length; ++i)
         {
             lua_rawgeti(L, arrayIndex, i + 1);
@@ -309,6 +311,94 @@ Il2CppArray* ArrayMarshal::PopFromArrayObjectOrTable(lua_State* L, int arrayInde
         return PopFromArrayObject(L, arrayIndex, klass);
     default:
         LuaException::ThrowFormat("zlua argument mismatch: expected array or table, got: %s", lua_typename(L, type));
+    }
+}
+
+bool ArrayMarshal::LooksLikeArrayUserData(lua_State* L, int index, Il2CppClass* arrayKlass)
+{
+    IL2CPP_ASSERT(arrayKlass != nullptr);
+    if (arrayKlass->rank != 1)
+        return false;
+    if (lua_type(L, index) != LUA_TUSERDATA)
+        return false;
+
+    UserDataInfo info = InstanceTarget::GetUserDataInfo(L, index);
+    if (info.klass == nullptr)
+        return false;
+    return info.klass == arrayKlass || il2cpp::vm::Class::IsAssignableFrom(arrayKlass, info.klass);
+}
+
+template <typename T, bool kNeedsWriteBarrier>
+static Il2CppArray* PopParamsExpandPrimitive(lua_State* L, int firstSlot, int count, Il2CppClass* klass)
+{
+    Il2CppArray* newArray = (Il2CppArray*)il2cpp::vm::Array::NewSpecific(klass, (il2cpp_array_size_t)count);
+    T* startAddr = (T*)il2cpp_array_addr(newArray, T, 0);
+    for (int i = 0; i < count; ++i)
+        startAddr[i] = DefaultTypedMarshal<T>::Pop(L, firstSlot + i);
+    if (kNeedsWriteBarrier && count > 0)
+    {
+        il2cpp::gc::GarbageCollector::SetWriteBarrier(
+            reinterpret_cast<void**>(startAddr), (size_t)count * sizeof(T));
+    }
+    return newArray;
+}
+
+Il2CppArray* ArrayMarshal::PopParamsExpand(lua_State* L, int firstSlot, int count, Il2CppClass* arrayKlass)
+{
+    IL2CPP_ASSERT(arrayKlass != nullptr && arrayKlass->rank == 1);
+    IL2CPP_ASSERT(arrayKlass->byval_arg.type == IL2CPP_TYPE_SZARRAY);
+    IL2CPP_ASSERT(count >= 0);
+
+    if (count == 0)
+        return (Il2CppArray*)il2cpp::vm::Array::NewSpecific(arrayKlass, 0);
+
+    Il2CppClass* elementKlass = arrayKlass->element_class;
+    const Il2CppType* elementType = &elementKlass->byval_arg;
+    switch (elementType->type)
+    {
+    case IL2CPP_TYPE_BOOLEAN:
+        return PopParamsExpandPrimitive<bool, false>(L, firstSlot, count, arrayKlass);
+    case IL2CPP_TYPE_CHAR:
+        return PopParamsExpandPrimitive<uint16_t, false>(L, firstSlot, count, arrayKlass);
+    case IL2CPP_TYPE_I1:
+        return PopParamsExpandPrimitive<int8_t, false>(L, firstSlot, count, arrayKlass);
+    case IL2CPP_TYPE_U1:
+        return PopParamsExpandPrimitive<uint8_t, false>(L, firstSlot, count, arrayKlass);
+    case IL2CPP_TYPE_I2:
+        return PopParamsExpandPrimitive<int16_t, false>(L, firstSlot, count, arrayKlass);
+    case IL2CPP_TYPE_U2:
+        return PopParamsExpandPrimitive<uint16_t, false>(L, firstSlot, count, arrayKlass);
+    case IL2CPP_TYPE_I4:
+        return PopParamsExpandPrimitive<int32_t, false>(L, firstSlot, count, arrayKlass);
+    case IL2CPP_TYPE_U4:
+        return PopParamsExpandPrimitive<uint32_t, false>(L, firstSlot, count, arrayKlass);
+    case IL2CPP_TYPE_I8:
+        return PopParamsExpandPrimitive<int64_t, false>(L, firstSlot, count, arrayKlass);
+    case IL2CPP_TYPE_U8:
+        return PopParamsExpandPrimitive<uint64_t, false>(L, firstSlot, count, arrayKlass);
+    case IL2CPP_TYPE_R4:
+        return PopParamsExpandPrimitive<float, false>(L, firstSlot, count, arrayKlass);
+    case IL2CPP_TYPE_R8:
+        return PopParamsExpandPrimitive<double, false>(L, firstSlot, count, arrayKlass);
+    case IL2CPP_TYPE_STRING:
+        return PopParamsExpandPrimitive<Il2CppString*, true>(L, firstSlot, count, arrayKlass);
+    default:
+    {
+        const int elementSize = il2cpp_array_element_size(arrayKlass);
+        Il2CppArray* newArray = (Il2CppArray*)il2cpp::vm::Array::NewSpecific(arrayKlass, (il2cpp_array_size_t)count);
+        const bool needsWriteBarrier = !elementKlass->byval_arg.valuetype || elementKlass->has_references;
+        for (int i = 0; i < count; ++i)
+        {
+            void* valueAddr = il2cpp_array_addr_with_size(newArray, i, elementSize);
+            TypedMarshal::PopByType(L, firstSlot + i, valueAddr, elementType);
+            if (needsWriteBarrier)
+            {
+                il2cpp::gc::GarbageCollector::SetWriteBarrier(
+                    reinterpret_cast<void**>(valueAddr), (size_t)elementSize);
+            }
+        }
+        return newArray;
+    }
     }
 }
 

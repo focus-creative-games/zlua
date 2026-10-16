@@ -97,7 +97,8 @@ namespace ZLua.Emit
         }
 
         /// <summary>
-        /// Lua arity for matching / exact-count. Extension methods omit CLR param 0 (this).
+        /// Lua arity treating <c>params T[]</c> as one logical slot for min/default math
+        /// (runtime expand uses <see cref="GetMaxLuaArity"/>). Extension methods omit CLR param 0 (this).
         /// </summary>
         internal static int GetLuaArity(MethodBase method)
         {
@@ -114,6 +115,19 @@ namespace ZLua.Emit
             }
 
             return slots;
+        }
+
+        /// <summary>
+        /// Inclusive max Lua arg count for validate / GTAP. Unbounded when the method has params.
+        /// </summary>
+        internal static int GetMaxLuaArity(MethodBase method)
+        {
+            if (ParamsArrayUtil.HasParamsArray(method))
+            {
+                return int.MaxValue;
+            }
+
+            return GetLuaArity(method);
         }
 
         internal static Func<IntPtr, int> CompileMethod(MethodInfo method, bool isStatic, bool isByVal)
@@ -134,9 +148,10 @@ namespace ZLua.Emit
 
             bool isExtension = ExtensionMethodUtil.IsExtensionMethod(method);
             int argStart = isStatic ? 1 : 2;
-            int maxArgs = GetLuaArity(method);
+            int maxArgs = GetMaxLuaArity(method);
             int minArgs = DefaultParameterUtil.GetMinLuaArity(method);
             object[] cachedDefaults = DefaultParameterUtil.HasOptionalDefaults(method)
+                || ParamsArrayUtil.HasParamsArray(method)
                 ? DefaultParameterUtil.GetCachedDefaults(method)
                 : null;
             Type declaringType = method.DeclaringType;
@@ -184,9 +199,10 @@ namespace ZLua.Emit
             }
 
             const int argStart = 2;
-            int maxArgs = GetLuaArity(ctor);
+            int maxArgs = GetMaxLuaArity(ctor);
             int minArgs = DefaultParameterUtil.GetMinLuaArity(ctor);
             object[] cachedDefaults = DefaultParameterUtil.HasOptionalDefaults(ctor)
+                || ParamsArrayUtil.HasParamsArray(ctor)
                 ? DefaultParameterUtil.GetCachedDefaults(ctor)
                 : null;
 
@@ -214,7 +230,7 @@ namespace ZLua.Emit
             int top = LuaDll.lua_gettop(L);
             for (int i = 1; i < parameters.Length; i++)
             {
-                args[i] = PopOne(L, ref slot, top, parameters[i].ParameterType, bindings[i], cachedDefaults, i);
+                args[i] = PopOne(L, ref slot, top, parameters, bindings, cachedDefaults, i);
             }
 
             return args;
@@ -232,7 +248,7 @@ namespace ZLua.Emit
             int top = LuaDll.lua_gettop(L);
             for (int i = 0; i < parameters.Length; i++)
             {
-                args[i] = PopOne(L, ref slot, top, parameters[i].ParameterType, bindings[i], cachedDefaults, i);
+                args[i] = PopOne(L, ref slot, top, parameters, bindings, cachedDefaults, i);
             }
 
             return args;
@@ -242,11 +258,20 @@ namespace ZLua.Emit
             IntPtr L,
             ref int slot,
             int top,
-            Type paramType,
-            LuaMarshalBinding binding,
+            ParameterInfo[] parameters,
+            LuaMarshalBinding[] bindings,
             object[] cachedDefaults,
             int paramIndex)
         {
+            ParameterInfo parameter = parameters[paramIndex];
+            Type paramType = parameter.ParameterType;
+            LuaMarshalBinding binding = bindings[paramIndex];
+
+            if (ParamsArrayUtil.IsParamsParameter(parameter))
+            {
+                return PopParamsArray(L, ref slot, top, paramType);
+            }
+
             int need = binding.StackSlots > 0 ? binding.StackSlots : 1;
             int available = top >= slot ? top - slot + 1 : 0;
             if (available >= need)
@@ -266,6 +291,38 @@ namespace ZLua.Emit
             LuaCallbackBoundary.Throw(
                 $"zlua argument mismatch: missing argument for parameter {paramIndex}");
             return null;
+        }
+
+        private static object PopParamsArray(
+            IntPtr L,
+            ref int slot,
+            int top,
+            Type arrayType)
+        {
+            int available = top >= slot ? top - slot + 1 : 0;
+            Type elementType = arrayType.GetElementType();
+            if (available == 0)
+            {
+                return Array.CreateInstance(elementType, 0);
+            }
+
+            // Single matching szarray userdata → pass through as whole T[] (not table / nil).
+            if (available == 1 && ParamsArrayUtil.LooksLikeArrayUserDataArg(L, slot, arrayType))
+            {
+                Array existing = ArrayMarshal.PopSzArray(L, slot, arrayType);
+                slot += 1;
+                return existing;
+            }
+
+            // Expand: each Lua arg is one T element (nil → null element, not null T[]).
+            Array packed = Array.CreateInstance(elementType, available);
+            for (int i = 0; i < available; i++)
+            {
+                ArrayMarshal.SetElement1D(L, packed, i, slot, elementType);
+                slot++;
+            }
+
+            return packed;
         }
     }
 }

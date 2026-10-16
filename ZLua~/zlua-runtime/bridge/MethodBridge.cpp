@@ -21,6 +21,7 @@
 #include "MethodBridge.h"
 
 #include "../generated/MethodBridgeStub.h"
+#include "../marshal/ArrayMarshal.h"
 #include "../utils/CsStringHash.h"
 #include "../utils/MetadataUtil.h"
 
@@ -82,6 +83,31 @@ int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStar
         IL2CPP_ASSERT(!paramMeta->passByValue || paramMeta->size == sizeof(void*));
         void* tempStorage = nullptr;
         void* storage = paramMeta->passByValue ? &tempStorage : alloca(paramMeta->size);
+
+        if (ctx->paramsParamIndex >= 0 && static_cast<int32_t>(i) == ctx->paramsParamIndex)
+        {
+            // params T[]: expand remaining slots, or pass through matching szarray userdata.
+            IL2CPP_ASSERT(paramMeta->passByValue);
+            IL2CPP_ASSERT(paramMeta->typeKlass != nullptr && paramMeta->typeKlass->rank == 1);
+            const int available = top >= slot ? top - slot + 1 : 0;
+            Il2CppArray* packed = nullptr;
+            if (available == 0)
+            {
+                packed = ArrayMarshal::PopParamsExpand(L, slot, 0, paramMeta->typeKlass);
+            }
+            else if (available == 1 && ArrayMarshal::LooksLikeArrayUserData(L, slot, paramMeta->typeKlass))
+            {
+                packed = ArrayMarshal::PopFromArrayObject(L, slot, paramMeta->typeKlass);
+                slot += 1;
+            }
+            else
+            {
+                packed = ArrayMarshal::PopParamsExpand(L, slot, available, paramMeta->typeKlass);
+                slot += available;
+            }
+            params[i] = packed;
+            continue;
+        }
 
         const int need = paramMeta->stackSlots > 0 ? paramMeta->stackSlots : 1;
         const int available = top >= slot ? top - slot + 1 : 0;

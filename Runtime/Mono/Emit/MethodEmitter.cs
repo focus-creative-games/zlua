@@ -427,7 +427,7 @@ namespace ZLua.Emit
                 }
 
                 int minArity = DefaultParameterUtil.GetMinLuaArity(closed);
-                int maxArity = InterpretedMethodInvoker.GetLuaArity(closed);
+                int maxArity = InterpretedMethodInvoker.GetMaxLuaArity(closed);
                 if (valueArgCount < minArity || valueArgCount > maxArity)
                 {
                     continue;
@@ -510,6 +510,7 @@ namespace ZLua.Emit
         {
             Func<IntPtr, int> core = InterpretedMethodInvoker.NeedsInterpreted(method)
                 || DefaultParameterUtil.HasOptionalDefaults(method)
+                || ParamsArrayUtil.HasParamsArray(method)
                 ? InterpretedMethodInvoker.CompileMethod(method, isStatic, isByVal)
                 : BuildDirectCore(method, isStatic, isByVal);
             return Wrap(core);
@@ -818,11 +819,20 @@ namespace ZLua.Emit
         private static LuaCSFunction CompileOverloadDispatch(List<MethodInfo> methods, bool isStatic, bool isByVal, string name)
         {
             var byArity = new Dictionary<int, List<MethodInfo>>();
+            var paramsMethods = new List<MethodInfo>();
             for (int i = 0; i < methods.Count; i++)
             {
                 MethodInfo method = methods[i];
-                int maxArity = InterpretedMethodInvoker.GetLuaArity(method);
+                bool hasParams = ParamsArrayUtil.HasParamsArray(method);
+                if (hasParams)
+                {
+                    paramsMethods.Add(method);
+                }
+
                 int minArity = DefaultParameterUtil.GetMinLuaArity(method);
+                int maxArity = hasParams
+                    ? ParamsArrayUtil.MaxExpandArityBucket
+                    : InterpretedMethodInvoker.GetLuaArity(method);
                 for (int arity = minArity; arity <= maxArity; arity++)
                 {
                     if (!byArity.TryGetValue(arity, out List<MethodInfo> list))
@@ -844,6 +854,7 @@ namespace ZLua.Emit
                 {
                     cores[kv.Key] = InterpretedMethodInvoker.NeedsInterpreted(first)
                         || DefaultParameterUtil.HasOptionalDefaults(first)
+                        || ParamsArrayUtil.HasParamsArray(first)
                         ? InterpretedMethodInvoker.CompileMethod(first, isStatic, isByVal)
                         : BuildDirectCore(first, isStatic, isByVal);
                 }
@@ -851,6 +862,17 @@ namespace ZLua.Emit
                 {
                     cores[kv.Key] = BuildScoredOverloadCore(group, isStatic, isByVal, name);
                 }
+            }
+
+            Func<IntPtr, int> paramsOverflowCore = null;
+            if (paramsMethods.Count == 1)
+            {
+                paramsOverflowCore = InterpretedMethodInvoker.CompileMethod(
+                    paramsMethods[0], isStatic, isByVal);
+            }
+            else if (paramsMethods.Count > 1)
+            {
+                paramsOverflowCore = BuildScoredOverloadCore(paramsMethods, isStatic, isByVal, name);
             }
 
             int argStart = isStatic ? 1 : 2;
@@ -871,7 +893,14 @@ namespace ZLua.Emit
 
                         if (!cores.TryGetValue(actual, out Func<IntPtr, int> core))
                         {
-                            LuaCallbackBoundary.Throw($"zlua: no overload of {name} with {actual} argument(s)");
+                            if (paramsOverflowCore != null && actual > ParamsArrayUtil.MaxExpandArityBucket)
+                            {
+                                core = paramsOverflowCore;
+                            }
+                            else
+                            {
+                                LuaCallbackBoundary.Throw($"zlua: no overload of {name} with {actual} argument(s)");
+                            }
                         }
 
                         int nrets = core(L);

@@ -129,7 +129,9 @@ namespace ZLua.Emit
             int omitSlots = 0;
             for (int i = parameters.Length - 1; i >= paramStart; i--)
             {
-                if (!TryGetDefaultValue(parameters[i], out _))
+                // params T[] may be omitted (empty array). Defaults before params remain omitable.
+                if (!ParamsArrayUtil.IsParamsParameter(parameters[i])
+                    && !TryGetDefaultValue(parameters[i], out _))
                 {
                     break;
                 }

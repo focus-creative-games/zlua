@@ -59,7 +59,7 @@ void StructRegistry::Register(ByValUserDataHeader* header)
     IL2CPP_ASSERT(header->klass != nullptr);
     // Intentional: each non-blittable ByVal payload needs its own GC root so embedded
     // references remain visible. Blittable structs must not reach here.
-    IL2CPP_ASSERT(!header->klass->is_blittable);
+    IL2CPP_ASSERT(header->klass->has_references);
     IL2CPP_ASSERT(s_byValUserDataSet.find(header) == s_byValUserDataSet.end());
 
     const size_t payloadSize = (size_t)MetadataUtil::GetInstanceSizeWithoutHeader(header->klass);
@@ -81,7 +81,7 @@ int StructRegistry::OnReleaseByValUserData(lua_State* L)
 {
     ByValUserDataHeader* userdata = StructMarshal::GetByValHeaderUnchecked(L, 1);
     IL2CPP_ASSERT(userdata != nullptr);
-    IL2CPP_ASSERT(!userdata->klass->is_blittable);
+    IL2CPP_ASSERT(userdata->klass->has_references);
     Unregister(userdata);
     return 0;
 }
