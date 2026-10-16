@@ -27,15 +27,29 @@ namespace ZLua
     /// <summary>
     /// LuaExtension XML registry: load rules; resolve extension classes on Bind (spec 13 §2).
     /// </summary>
-    public static class LuaExtensionXmlRegistry
+    public sealed class LuaExtensionXmlRegistry
     {
-        private static readonly object s_gate = new object();
-        private static List<LuaExtensionXmlRule> s_rules = new List<LuaExtensionXmlRule>();
-        private static Dictionary<string, List<LuaExtensionXmlRule>> s_rulesByTargetKey =
-            new Dictionary<string, List<LuaExtensionXmlRule>>(StringComparer.Ordinal);
-        private static bool s_loaded;
+        /// <summary>
+        /// Process-wide registry. Null until the first <see cref="LoadCurrent"/>.
+        /// Each load publishes a new instance and leaves the previous one unchanged.
+        /// </summary>
+        public static LuaExtensionXmlRegistry Current { get; private set; }
 
-        public static bool IsLoaded
+        /// <summary>Load XML into a new registry and publish it as <see cref="Current"/>.</summary>
+        public static void LoadCurrent(IEnumerable<string> configuredPaths, string projectRoot)
+        {
+            var registry = new LuaExtensionXmlRegistry();
+            registry.Load(configuredPaths, projectRoot);
+            Current = registry;
+        }
+
+        private readonly object s_gate = new object();
+        private List<LuaExtensionXmlRule> s_rules = new List<LuaExtensionXmlRule>();
+        private Dictionary<string, List<LuaExtensionXmlRule>> s_rulesByTargetKey =
+            new Dictionary<string, List<LuaExtensionXmlRule>>(StringComparer.Ordinal);
+        private bool s_loaded;
+
+        public bool IsLoaded
         {
             get
             {
@@ -46,7 +60,7 @@ namespace ZLua
             }
         }
 
-        public static IReadOnlyList<LuaExtensionXmlRule> Rules
+        public IReadOnlyList<LuaExtensionXmlRule> Rules
         {
             get
             {
@@ -57,7 +71,7 @@ namespace ZLua
             }
         }
 
-        public static void Clear()
+        public void Clear()
         {
             lock (s_gate)
             {
@@ -67,9 +81,9 @@ namespace ZLua
             }
         }
 
-        public static void Load(IEnumerable<string> configuredPaths, string projectRoot)
+        public void Load(IEnumerable<string> configuredPaths, string projectRoot)
         {
-            List<LuaExtensionXmlRule> rules = LuaExtensionXmlLoader.LoadFromConfiguredPaths(configuredPaths, projectRoot);
+            List<LuaExtensionXmlRule> rules = new LuaExtensionXmlLoader().LoadFromConfiguredPaths(configuredPaths, projectRoot);
             var byKey = new Dictionary<string, List<LuaExtensionXmlRule>>(StringComparer.Ordinal);
             for (int i = 0; i < rules.Count; i++)
             {
@@ -95,7 +109,7 @@ namespace ZLua
         /// <summary>
         /// Generate-time hard validation: target + extension types must resolve (spec 13).
         /// </summary>
-        public static void ValidateAllLoadedAssemblies()
+        public void ValidateAllLoadedAssemblies()
         {
             List<LuaExtensionXmlRule> rules;
             lock (s_gate)
@@ -120,7 +134,7 @@ namespace ZLua
         /// Resolves extension classes configured for <paramref name="targetType"/> (exact type only).
         /// Unresolvable extension class → hard failure.
         /// </summary>
-        public static bool TryGetExtensionTypes(Type targetType, out Type[] extensionTypes)
+        public bool TryGetExtensionTypes(Type targetType, out Type[] extensionTypes)
         {
             extensionTypes = Array.Empty<Type>();
             if (targetType == null)
@@ -165,7 +179,7 @@ namespace ZLua
             return extensionTypes.Length > 0;
         }
 
-        private static Type ResolveTypeOnAssembly(string assemblyName, string typeFullName, string role, string sourcePath)
+        private Type ResolveTypeOnAssembly(string assemblyName, string typeFullName, string role, string sourcePath)
         {
             Assembly assembly = FindAssembly(assemblyName);
             if (assembly == null)
@@ -187,18 +201,18 @@ namespace ZLua
             return type;
         }
 
-        private static Type ResolveExtensionType(LuaExtensionXmlRule rule)
+        private Type ResolveExtensionType(LuaExtensionXmlRule rule)
         {
             return ResolveTypeOnAssembly(
                 rule.ExtensionAssemblyName, rule.ExtensionTypeFullName, "extension", rule.SourcePath);
         }
 
-        private static string TargetKey(string assemblyName, string typeFullName)
+        private string TargetKey(string assemblyName, string typeFullName)
         {
             return assemblyName + "|" + typeFullName;
         }
 
-        private static Assembly FindAssembly(string assemblyName)
+        private Assembly FindAssembly(string assemblyName)
         {
             Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
             for (int i = 0; i < assemblies.Length; i++)

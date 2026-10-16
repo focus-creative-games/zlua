@@ -29,9 +29,9 @@ namespace ZLua
     /// Loads and merges MarshalAs XML files (spec marshal/02-MARSHAL-AS §9).
     /// Duplicate target keys are a hard failure.
     /// </summary>
-    public static class LuaMarshalAsXmlLoader
+    public sealed class LuaMarshalAsXmlLoader
     {
-        public static List<LuaMarshalAsXmlRule> LoadFromConfiguredPaths(IEnumerable<string> configuredPaths, string projectRoot)
+        public List<LuaMarshalAsXmlRule> LoadFromConfiguredPaths(IEnumerable<string> configuredPaths, string projectRoot)
         {
             var files = ExpandToXmlFiles(configuredPaths, projectRoot);
             var rules = new List<LuaMarshalAsXmlRule>();
@@ -44,7 +44,7 @@ namespace ZLua
             return rules;
         }
 
-        public static List<string> ExpandToXmlFiles(IEnumerable<string> configuredPaths, string projectRoot)
+        public List<string> ExpandToXmlFiles(IEnumerable<string> configuredPaths, string projectRoot)
         {
             return ExpandToXmlFiles(configuredPaths, projectRoot, "MarshalAs");
         }
@@ -52,7 +52,7 @@ namespace ZLua
         /// <summary>
         /// Shared path expansion for MarshalAs / LuaAlias XML Settings lists.
         /// </summary>
-        public static List<string> ExpandToXmlFiles(IEnumerable<string> configuredPaths, string projectRoot, string pathLabel)
+        public List<string> ExpandToXmlFiles(IEnumerable<string> configuredPaths, string projectRoot, string pathLabel)
         {
             var files = new List<string>();
             if (configuredPaths == null)
@@ -116,7 +116,7 @@ namespace ZLua
             return files;
         }
 
-        private static void LoadFile(string filePath, List<LuaMarshalAsXmlRule> rules, Dictionary<string, string> seen)
+        private void LoadFile(string filePath, List<LuaMarshalAsXmlRule> rules, Dictionary<string, string> seen)
         {
             var doc = new XmlDocument();
             try
@@ -175,7 +175,7 @@ namespace ZLua
             }
         }
 
-        private static void ParseType(
+        private void ParseType(
             string filePath,
             string assemblyName,
             XmlElement typeEl,
@@ -219,7 +219,7 @@ namespace ZLua
             }
         }
 
-        private static void ParseMethod(
+        private void ParseMethod(
             string filePath,
             string assemblyName,
             string typeFullName,
@@ -288,7 +288,7 @@ namespace ZLua
             }
         }
 
-        private static XmlElement RequireSingleMarshalAs(XmlElement parent, string filePath)
+        private XmlElement RequireSingleMarshalAs(XmlElement parent, string filePath)
         {
             XmlElement found = null;
             foreach (XmlNode child in parent.ChildNodes)
@@ -322,7 +322,7 @@ namespace ZLua
             return found;
         }
 
-        private static LuaMarshalAsXmlRule BuildRule(
+        private LuaMarshalAsXmlRule BuildRule(
             string filePath,
             string assemblyName,
             string typeFullName,
@@ -378,7 +378,7 @@ namespace ZLua
             };
         }
 
-        private static string[] SplitMembers(string membersAttr)
+        private string[] SplitMembers(string membersAttr)
         {
             if (string.IsNullOrWhiteSpace(membersAttr))
             {
@@ -394,7 +394,7 @@ namespace ZLua
             return parts;
         }
 
-        private static void AddRule(
+        private void AddRule(
             List<LuaMarshalAsXmlRule> rules,
             Dictionary<string, string> seen,
             LuaMarshalAsXmlRule rule)
@@ -412,7 +412,7 @@ namespace ZLua
             rules.Add(rule);
         }
 
-        private static string RequireAttr(XmlElement el, string name, string filePath)
+        private string RequireAttr(XmlElement el, string name, string filePath)
         {
             string value = el.GetAttribute(name);
             if (string.IsNullOrWhiteSpace(value))

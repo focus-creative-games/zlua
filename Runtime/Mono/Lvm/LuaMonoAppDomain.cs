@@ -108,9 +108,9 @@ namespace ZLua
                     return;
                 }
 
-                EditorSettingsAccess.TryGetField(settings, settingsType, "marshalAsXmlPaths", out string[] paths);
+                EditorSettingsAccess.TryGetProperty(settings, settingsType, "MarshalAsXmlPaths", out string[] paths);
                 string projectRoot = Path.GetDirectoryName(Application.dataPath);
-                LuaMarshalAsXmlRegistry.Load(paths, projectRoot);
+                LuaMarshalAsXmlRegistry.LoadCurrent(paths, projectRoot);
             }
             catch (Exception ex)
             {
@@ -128,9 +128,9 @@ namespace ZLua
                     return;
                 }
 
-                EditorSettingsAccess.TryGetField(settings, settingsType, "luaAliasXmlPaths", out string[] paths);
+                EditorSettingsAccess.TryGetProperty(settings, settingsType, "LuaAliasXmlPaths", out string[] paths);
                 string projectRoot = Path.GetDirectoryName(Application.dataPath);
-                LuaAliasXmlRegistry.Load(paths, projectRoot);
+                LuaAliasXmlRegistry.Current.Load(paths, projectRoot);
             }
             catch (Exception ex)
             {
@@ -150,7 +150,7 @@ namespace ZLua
 
                 EditorSettingsAccess.TryGetField(settings, settingsType, "luaExtensionXmlPaths", out string[] paths);
                 string projectRoot = Path.GetDirectoryName(Application.dataPath);
-                LuaExtensionXmlRegistry.Load(paths, projectRoot);
+                LuaExtensionXmlRegistry.LoadCurrent(paths, projectRoot);
             }
             catch (Exception ex)
             {

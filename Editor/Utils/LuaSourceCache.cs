@@ -10,7 +10,7 @@ using Debug = UnityEngine.Debug;
 namespace ZLua.Utils
 {
     /// <summary>
-    /// Resolves PUC-Rio Lua / LuaJIT trees under <see cref="CommonDirs.LuaSrcCacheDir"/>.
+    /// Resolves PUC-Rio Lua / LuaJIT trees under <see cref="CommonPaths.LuaSrcCacheDir"/>.
     /// PUC-Rio: download from https://www.lua.org/ftp/ when missing
     /// (lua-X.Y.Z.tar.gz; for ≤5.1 with patch 0 the archive is lua-X.Y.tar.gz).
     /// LuaJIT: clone the requested branch into a staging dir, then move into the cache folder.
@@ -70,7 +70,7 @@ namespace ZLua.Utils
                 throw new InvalidOperationException($"Invalid luaVersionId: {versionId}");
             }
 
-            return Path.Combine(CommonDirs.LuaSrcCacheDir, folder);
+            return Path.Combine(CommonPaths.LuaSrcCacheDir, folder);
         }
 
         /// <summary>
@@ -147,13 +147,13 @@ namespace ZLua.Utils
             }
 
             string branch = GetLuaJitBranchName(info.Id);
-            string stageRoot = Path.Combine(CommonDirs.InstallRootDir, "tmp-luajit-stage");
+            string stageRoot = Path.Combine(CommonPaths.InstallRootDir, "tmp-luajit-stage");
             DirectoryUtil.RecreateDir(stageRoot);
             string stageDir = Path.Combine(stageRoot, $"{info.Id}-{Guid.NewGuid():N}");
 
             try
             {
-                Directory.CreateDirectory(CommonDirs.LuaSrcCacheDir);
+                Directory.CreateDirectory(CommonPaths.LuaSrcCacheDir);
                 CloneGitRepository(
                     "https://github.com/LuaJIT/LuaJIT.git",
                     branch,
@@ -236,7 +236,7 @@ namespace ZLua.Utils
             // Cache / Settings keep lua-X.Y.Z; ftp archive may drop trailing .0 for ≤5.1.
             string archiveVer = GetPucRioArchiveVersion(major, minor, patch);
             string url = $"https://www.lua.org/ftp/lua-{archiveVer}.tar.gz";
-            string downloads = Path.Combine(CommonDirs.LuaSrcCacheDir, "downloads");
+            string downloads = Path.Combine(CommonPaths.LuaSrcCacheDir, "downloads");
             Directory.CreateDirectory(downloads);
             string tarball = Path.Combine(downloads, $"lua-{archiveVer}.tar.gz");
 
@@ -270,7 +270,7 @@ namespace ZLua.Utils
                 Debug.Log($"[ZLua] Reusing downloaded archive: {tarball}");
             }
 
-            string extractParent = CommonDirs.LuaSrcCacheDir;
+            string extractParent = CommonPaths.LuaSrcCacheDir;
             Directory.CreateDirectory(extractParent);
             if (Directory.Exists(cacheDir))
             {

@@ -27,9 +27,21 @@ namespace ZLua
     /// <summary>
     /// Shared MARSHAL_SPEC §6.2–§6.3 rules for Mono binding and Editor codegen.
     /// </summary>
-    public static class LuaMarshalAsValidation
+    public sealed class LuaMarshalAsValidation
     {
-        public static LuaMarshalBinding ResolveParameterBinding(
+        /// <summary>Validation against <see cref="LuaMarshalAsXmlRegistry.Current"/>, including after it is replaced.</summary>
+        public static LuaMarshalAsValidation Current { get; } = new LuaMarshalAsValidation(null);
+
+        private readonly LuaMarshalAsXmlRegistry _registry;
+
+        public LuaMarshalAsValidation(LuaMarshalAsXmlRegistry registry)
+        {
+            _registry = registry;
+        }
+
+        private LuaMarshalAsXmlRegistry ActiveRegistry => _registry ?? LuaMarshalAsXmlRegistry.Current;
+
+        public LuaMarshalBinding ResolveParameterBinding(
             ParameterInfo parameter,
             MethodBase method,
             LuaMarshalDirection direction,
@@ -54,7 +66,9 @@ namespace ZLua
                 return binding;
             }
 
-            if (LuaMarshalAsXmlRegistry.TryGetParameterRule(parameter, method, out LuaMarshalAsXmlRule paramRule)
+            LuaMarshalAsXmlRegistry registry = ActiveRegistry;
+            if (registry != null
+                && registry.TryGetParameterRule(parameter, method, out LuaMarshalAsXmlRule paramRule)
                 && TryGetDeclaredBinding(
                     paramRule.ToAttribute(),
                     parameter,
@@ -81,7 +95,8 @@ namespace ZLua
                 return binding;
             }
 
-            if (LuaMarshalAsXmlRegistry.TryGetTypeRule(clrType, out LuaMarshalAsXmlRule typeRule)
+            if (registry != null
+                && registry.TryGetTypeRule(clrType, out LuaMarshalAsXmlRule typeRule)
                 && TryGetDeclaredBinding(
                     typeRule.ToAttribute(),
                     parameter,
@@ -104,7 +119,7 @@ namespace ZLua
             return LuaMarshalBinding.Default;
         }
 
-        public static LuaMarshalBinding ResolveReturnBinding(MethodInfo method, LuaMarshalDirection direction)
+        public LuaMarshalBinding ResolveReturnBinding(MethodInfo method, LuaMarshalDirection direction)
         {
             if (method == null || method.ReturnType == typeof(void))
             {
@@ -127,7 +142,9 @@ namespace ZLua
                 }
             }
 
-            if (LuaMarshalAsXmlRegistry.TryGetReturnRule(method, out LuaMarshalAsXmlRule returnRule)
+            LuaMarshalAsXmlRegistry registry = ActiveRegistry;
+            if (registry != null
+                && registry.TryGetReturnRule(method, out LuaMarshalAsXmlRule returnRule)
                 && TryGetDeclaredBinding(
                     returnRule.ToAttribute(),
                     method.ReturnParameter,
@@ -156,7 +173,8 @@ namespace ZLua
                 return binding;
             }
 
-            if (LuaMarshalAsXmlRegistry.TryGetTypeRule(method.ReturnType, out LuaMarshalAsXmlRule typeRule)
+            if (registry != null
+                && registry.TryGetTypeRule(method.ReturnType, out LuaMarshalAsXmlRule typeRule)
                 && TryGetDeclaredBinding(
                     typeRule.ToAttribute(),
                     method.ReturnParameter,
@@ -173,7 +191,7 @@ namespace ZLua
             return LuaMarshalBinding.Default;
         }
 
-        public static void ValidateMethodConfiguration(MethodBase method)
+        public void ValidateMethodConfiguration(MethodBase method)
         {
             if (method == null)
             {

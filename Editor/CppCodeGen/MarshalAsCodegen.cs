@@ -24,9 +24,10 @@ namespace ZLua.CppCodeGen
             try
             {
                 // Load + validate against Editor-loaded assemblies (name resolve; not final AOT tokens).
-                LuaMarshalAsXmlRegistry.Load(Settings.Instance.marshalAsXmlPaths, projectRoot);
-                LuaMarshalAsXmlRegistry.ValidateAllLoadedAssemblies();
-                rules = new List<LuaMarshalAsXmlRule>(LuaMarshalAsXmlRegistry.Rules);
+                var registry = new LuaMarshalAsXmlRegistry();
+                registry.Load(Settings.Instance.MarshalAsXmlPaths, projectRoot);
+                registry.ValidateAllLoadedAssemblies();
+                rules = new List<LuaMarshalAsXmlRule>(registry.Rules);
             }
             catch (Exception ex)
             {

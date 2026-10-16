@@ -62,7 +62,7 @@ namespace ZLua.BuildProcessors
             // In HybridCLR mode CommonDirs.LocalIl2CppPath already resolves to
             // HybridCLR's tree (the single shared tree carrying both overlays), so
             // setting it here is what both packages need.
-            string runtimeDir = CommonDirs.LocalIl2CppPath;
+            string runtimeDir = CommonPaths.LocalIl2CppPath;
             Environment.SetEnvironmentVariable("UNITY_IL2CPP_PATH", runtimeDir);
             Debug.Log(
                 $"[SetupIl2CppEnv] set UNITY_IL2CPP_PATH='{runtimeDir}'"

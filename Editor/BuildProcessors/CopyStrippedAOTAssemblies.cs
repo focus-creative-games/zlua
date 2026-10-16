@@ -122,7 +122,7 @@ namespace ZLua.BuildProcessors
             }
             Debug.Log($"[CopyStrippedAOTAssemblies] CopyScripDlls. src:{srcStripDllPath} target:{target}");
 
-            var dstPath = CommonDirs.GetManagedStrippedDuplicatePath(target);
+            var dstPath = CommonPaths.GetManagedStrippedDuplicatePath(target);
 
             Directory.CreateDirectory(dstPath);
 
@@ -167,7 +167,7 @@ namespace ZLua.BuildProcessors
                 return;
             }
             BuildTarget target = report.summary.platform;
-            var dstPath = CommonDirs.GetManagedStrippedDuplicatePath(target);
+            var dstPath = CommonPaths.GetManagedStrippedDuplicatePath(target);
             DirectoryUtil.RecreateDir(dstPath);
         }
     }

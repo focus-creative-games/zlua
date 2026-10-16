@@ -96,6 +96,14 @@ namespace ZLua
                             continue;
                         }
 
+                        if (prop.name == "enableUnityOptimizations")
+                        {
+                            EditorGUILayout.PropertyField(prop, new GUIContent(
+                                "Unity Optimizations",
+                                prop.tooltip));
+                            continue;
+                        }
+
                         EditorGUILayout.PropertyField(prop, true);
                     }
                     while (prop.NextVisible(false));
@@ -118,7 +126,7 @@ namespace ZLua
             EditorGUILayout.HelpBox(
                 "PUC-Rio versions are downloaded on Install from https://www.lua.org/ftp/ "
                 + "(lua-X.Y.Z.tar.gz; ≤5.1 with patch 0 uses lua-X.Y.tar.gz, e.g. lua-5.1.0 → lua-5.1.tar.gz) "
-                + $"into {CommonDirs.LuaSrcCacheDir}.\n"
+                + $"into {CommonPaths.LuaSrcCacheDir}.\n"
                 + "LuaJIT: clone into LuaSrcCache/luajit-{major}.{minor} (e.g. luajit-2.1).\n"
                 + $"Default when empty: {LuaSourceCache.DefaultPucRioVersionId}.\n"
                 + "Editor plugin DLL (lua53/lua54/…) must be replaced by you under Packages/.../Plugins.",

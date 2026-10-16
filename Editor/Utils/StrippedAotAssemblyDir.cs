@@ -50,7 +50,7 @@ namespace ZLua.Utils
         /// <returns>True when the directory holds at least one dll afterwards.</returns>
         public static bool EnsurePopulated(BuildTarget target)
         {
-            string zluaDir = CommonDirs.GetManagedStrippedDuplicatePath(target);
+            string zluaDir = CommonPaths.GetManagedStrippedDuplicatePath(target);
             if (HasDlls(zluaDir))
             {
                 return true;

@@ -56,7 +56,7 @@ namespace ZLua.Commands
                 StrippedAotAssemblyGenrator.Generate(target);
             }
 
-            string strippedAotAssemblyDir = CommonDirs.GetManagedStrippedDuplicatePath(target);
+            string strippedAotAssemblyDir = CommonPaths.GetManagedStrippedDuplicatePath(target);
 
             // With HybridCLR present ZLua's StripAssembliesTo hook stands down (both
             // packages patch the same native method), so on Unity 2021.1-2022 this
@@ -79,7 +79,7 @@ namespace ZLua.Commands
                 AssemblyCache = new AssemblyCache(new PathAssemblyResolver(strippedAotAssemblyDir)),
                 AssemblyNames = assemblyNames,
                 Development = EditorUserBuildSettings.development,
-                OutputDir = CommonDirs.GeneratedZLuaPath,
+                OutputDir = CommonPaths.GeneratedZLuaPath,
             };
 
             var generator = new CodeGenerator(optons);

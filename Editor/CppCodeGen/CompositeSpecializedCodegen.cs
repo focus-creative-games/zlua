@@ -40,6 +40,7 @@ namespace ZLua.CppCodeGen
         private readonly AssemblyCache _assemblyCache;
         private readonly List<string> _assemblyNames;
         private readonly string _outputDir;
+        private LuaMarshalAsXmlRegistry _marshalAsXml;
 
         public CompositeSpecializedCodegen(AssemblyCache assemblyCache, List<string> assemblyNames, string outputDir)
         {
@@ -53,7 +54,8 @@ namespace ZLua.CppCodeGen
             string projectRoot = Path.GetDirectoryName(Application.dataPath);
             try
             {
-                LuaMarshalAsXmlRegistry.Load(Settings.Instance.marshalAsXmlPaths, projectRoot);
+                _marshalAsXml = new LuaMarshalAsXmlRegistry();
+                _marshalAsXml.Load(Settings.Instance.MarshalAsXmlPaths, projectRoot);
             }
             catch (Exception ex)
             {
@@ -96,7 +98,7 @@ namespace ZLua.CppCodeGen
                 }
             }
 
-            IReadOnlyList<LuaMarshalAsXmlRule> rules = LuaMarshalAsXmlRegistry.Rules;
+            IReadOnlyList<LuaMarshalAsXmlRule> rules = _marshalAsXml.Rules;
             for (int i = 0; i < rules.Count; i++)
             {
                 LuaMarshalAsXmlRule rule = rules[i];

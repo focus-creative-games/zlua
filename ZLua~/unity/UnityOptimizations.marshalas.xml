@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Built-in when Settings.enableUnityOptimizations is on. Facade = runtime type. -->
+<ZLuaMarshalAs version="1">
+  <Assembly name="UnityEngine.CoreModule">
+    <Type fullName="UnityEngine.GameObject">
+      <Method name="GetComponent" signature="()">
+        <Return>
+          <MarshalAs type="ActualTypeUserData" />
+        </Return>
+      </Method>
+      <Method name="GetComponent" signature="(System.Type)">
+        <Return>
+          <MarshalAs type="ActualTypeUserData" />
+        </Return>
+      </Method>
+      <Method name="GetComponent" signature="(System.String)">
+        <Return>
+          <MarshalAs type="ActualTypeUserData" />
+        </Return>
+      </Method>
+    </Type>
+    <Type fullName="UnityEngine.Component">
+      <Method name="GetComponent" signature="()">
+        <Return>
+          <MarshalAs type="ActualTypeUserData" />
+        </Return>
+      </Method>
+      <Method name="GetComponent" signature="(System.Type)">
+        <Return>
+          <MarshalAs type="ActualTypeUserData" />
+        </Return>
+      </Method>
+      <Method name="GetComponent" signature="(System.String)">
+        <Return>
+          <MarshalAs type="ActualTypeUserData" />
+        </Return>
+      </Method>
+    </Type>
+  </Assembly>
+</ZLuaMarshalAs>

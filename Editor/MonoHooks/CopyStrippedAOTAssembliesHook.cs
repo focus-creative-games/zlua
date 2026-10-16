@@ -76,7 +76,7 @@ namespace ZLua.MonoHook
                 return false;
             }
             UnityEngine.Debug.Log($"== StripAssembliesTo outputDir:{outputFolder}");
-            string outputStrippedDir = CommonDirs.GetManagedStrippedDuplicatePath(EditorUserBuildSettings.activeBuildTarget);
+            string outputStrippedDir = CommonPaths.GetManagedStrippedDuplicatePath(EditorUserBuildSettings.activeBuildTarget);
             Directory.CreateDirectory(outputStrippedDir);
             foreach (var aotDll in Directory.GetFiles(outputFolder, "*.dll"))
             {

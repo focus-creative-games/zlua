@@ -31,8 +31,22 @@ namespace ZLua
     /// - Param / Return: Assembly → (methodDefToken, index) → Rule
     ///   (param index >= 0; return index = -1). ParamDef tokens are not required.
     /// </summary>
-    public static class LuaMarshalAsXmlRegistry
+    public sealed class LuaMarshalAsXmlRegistry
     {
+        /// <summary>
+        /// Process-wide registry. Null until the first <see cref="LoadCurrent"/>.
+        /// Each load publishes a new instance and leaves the previous one unchanged.
+        /// </summary>
+        public static LuaMarshalAsXmlRegistry Current { get; private set; }
+
+        /// <summary>Load XML into a new registry and publish it as <see cref="Current"/>.</summary>
+        public static void LoadCurrent(IEnumerable<string> configuredPaths, string projectRoot)
+        {
+            var registry = new LuaMarshalAsXmlRegistry();
+            registry.Load(configuredPaths, projectRoot);
+            Current = registry;
+        }
+
         private readonly struct MethodSlotKey : IEquatable<MethodSlotKey>
         {
             public readonly int MethodToken;
@@ -71,16 +85,16 @@ namespace ZLua
                 new Dictionary<MethodSlotKey, LuaMarshalAsXmlRule>();
         }
 
-        private static readonly object s_gate = new object();
-        private static List<LuaMarshalAsXmlRule> s_rules = new List<LuaMarshalAsXmlRule>();
-        private static Dictionary<string, List<LuaMarshalAsXmlRule>> s_rulesByAssemblyName =
+        private readonly object s_gate = new object();
+        private List<LuaMarshalAsXmlRule> s_rules = new List<LuaMarshalAsXmlRule>();
+        private Dictionary<string, List<LuaMarshalAsXmlRule>> s_rulesByAssemblyName =
             new Dictionary<string, List<LuaMarshalAsXmlRule>>(StringComparer.Ordinal);
         /// <summary>Key present (even empty maps) means this Assembly was already initialized.</summary>
-        private static Dictionary<Assembly, BoundMaps> s_boundByAssembly =
+        private Dictionary<Assembly, BoundMaps> s_boundByAssembly =
             new Dictionary<Assembly, BoundMaps>();
-        private static bool s_loaded;
+        private bool s_loaded;
 
-        public static bool IsLoaded
+        public bool IsLoaded
         {
             get
             {
@@ -91,7 +105,7 @@ namespace ZLua
             }
         }
 
-        public static IReadOnlyList<LuaMarshalAsXmlRule> Rules
+        public IReadOnlyList<LuaMarshalAsXmlRule> Rules
         {
             get
             {
@@ -102,7 +116,7 @@ namespace ZLua
             }
         }
 
-        public static void Clear()
+        public void Clear()
         {
             lock (s_gate)
             {
@@ -116,9 +130,9 @@ namespace ZLua
         /// <summary>
         /// Parse XML only (duplicate-key checks). Metadata bind + validation are lazy per Assembly.
         /// </summary>
-        public static void Load(IEnumerable<string> configuredPaths, string projectRoot)
+        public void Load(IEnumerable<string> configuredPaths, string projectRoot)
         {
-            List<LuaMarshalAsXmlRule> rules = LuaMarshalAsXmlLoader.LoadFromConfiguredPaths(configuredPaths, projectRoot);
+            List<LuaMarshalAsXmlRule> rules = new LuaMarshalAsXmlLoader().LoadFromConfiguredPaths(configuredPaths, projectRoot);
             var byName = new Dictionary<string, List<LuaMarshalAsXmlRule>>(StringComparer.Ordinal);
             for (int i = 0; i < rules.Count; i++)
             {
@@ -144,7 +158,7 @@ namespace ZLua
         /// <summary>
         /// Eagerly bind and validate every assembly named in loaded rules (Editor Generate / tests).
         /// </summary>
-        public static void ValidateAllLoadedAssemblies()
+        public void ValidateAllLoadedAssemblies()
         {
             lock (s_gate)
             {
@@ -170,7 +184,7 @@ namespace ZLua
         /// <summary>
         /// Force bind+validate for one assembly (tests / diagnostics).
         /// </summary>
-        public static void EnsureBound(Assembly assembly)
+        public void EnsureBound(Assembly assembly)
         {
             if (assembly == null)
             {
@@ -183,7 +197,7 @@ namespace ZLua
             }
         }
 
-        public static bool TryGetTypeRule(Type type, out LuaMarshalAsXmlRule rule)
+        public bool TryGetTypeRule(Type type, out LuaMarshalAsXmlRule rule)
         {
             rule = null;
             Type keyType = UnwrapType(type);
@@ -195,7 +209,7 @@ namespace ZLua
             return TryGetMember(keyType.Assembly, keyType.MetadataToken, out rule);
         }
 
-        public static bool TryGetFieldRule(FieldInfo field, out LuaMarshalAsXmlRule rule)
+        public bool TryGetFieldRule(FieldInfo field, out LuaMarshalAsXmlRule rule)
         {
             rule = null;
             if (field == null)
@@ -206,7 +220,7 @@ namespace ZLua
             return TryGetMember(field.Module.Assembly, field.MetadataToken, out rule);
         }
 
-        public static bool TryGetPropertyRule(PropertyInfo property, out LuaMarshalAsXmlRule rule)
+        public bool TryGetPropertyRule(PropertyInfo property, out LuaMarshalAsXmlRule rule)
         {
             rule = null;
             if (property == null)
@@ -217,7 +231,7 @@ namespace ZLua
             return TryGetMember(property.Module.Assembly, property.MetadataToken, out rule);
         }
 
-        public static bool TryGetParameterRule(ParameterInfo parameter, MethodBase method, out LuaMarshalAsXmlRule rule)
+        public bool TryGetParameterRule(ParameterInfo parameter, MethodBase method, out LuaMarshalAsXmlRule rule)
         {
             rule = null;
             if (parameter == null)
@@ -234,7 +248,7 @@ namespace ZLua
             return TryGetMethodSlot(defMethod.Module.Assembly, defMethod.MetadataToken, parameter.Position, out rule);
         }
 
-        public static bool TryGetReturnRule(MethodInfo method, out LuaMarshalAsXmlRule rule)
+        public bool TryGetReturnRule(MethodInfo method, out LuaMarshalAsXmlRule rule)
         {
             rule = null;
             MethodBase defMethod = ToDefinitionMethod(method);
@@ -352,7 +366,7 @@ namespace ZLua
             return type.FullName ?? type.Name;
         }
 
-        private static bool TryGetMember(Assembly assembly, int token, out LuaMarshalAsXmlRule rule)
+        private bool TryGetMember(Assembly assembly, int token, out LuaMarshalAsXmlRule rule)
         {
             rule = null;
             if (assembly == null || token == 0)
@@ -367,7 +381,7 @@ namespace ZLua
             }
         }
 
-        private static bool TryGetMethodSlot(Assembly assembly, int methodToken, int index, out LuaMarshalAsXmlRule rule)
+        private bool TryGetMethodSlot(Assembly assembly, int methodToken, int index, out LuaMarshalAsXmlRule rule)
         {
             rule = null;
             if (assembly == null || methodToken == 0)
@@ -382,7 +396,7 @@ namespace ZLua
             }
         }
 
-        private static BoundMaps EnsureBoundUnlocked(Assembly assembly)
+        private BoundMaps EnsureBoundUnlocked(Assembly assembly)
         {
             if (s_boundByAssembly.TryGetValue(assembly, out BoundMaps existing))
             {
@@ -405,7 +419,7 @@ namespace ZLua
             return maps;
         }
 
-        private static void BindRule(LuaMarshalAsXmlRule rule, Assembly expectedAssembly, BoundMaps maps)
+        private void BindRule(LuaMarshalAsXmlRule rule, Assembly expectedAssembly, BoundMaps maps)
         {
             Type type = ResolveTypeOnAssembly(expectedAssembly, rule.TypeFullName, rule.SourcePath);
             if (type.IsGenericType && !type.IsGenericTypeDefinition)
@@ -498,7 +512,7 @@ namespace ZLua
             }
         }
 
-        private static void PutMember(BoundMaps maps, int token, LuaMarshalAsXmlRule rule)
+        private void PutMember(BoundMaps maps, int token, LuaMarshalAsXmlRule rule)
         {
             if (maps.ByMemberToken.ContainsKey(token))
             {
@@ -510,7 +524,7 @@ namespace ZLua
             maps.ByMemberToken[token] = rule;
         }
 
-        private static void PutMethodSlot(BoundMaps maps, int methodToken, int index, LuaMarshalAsXmlRule rule)
+        private void PutMethodSlot(BoundMaps maps, int methodToken, int index, LuaMarshalAsXmlRule rule)
         {
             var key = new MethodSlotKey(methodToken, index);
             if (maps.ByMethodSlot.ContainsKey(key))

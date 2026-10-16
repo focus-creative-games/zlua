@@ -15,10 +15,10 @@ namespace ZLua.Utils
         public const string FileName = "ZLuaConf.inc";
 
         public static string LocalConfPath =>
-            Path.Combine(CommonDirs.GeneratedZLuaPath, FileName);
+            Path.Combine(CommonPaths.GeneratedZLuaPath, FileName);
 
         public static string PackageStubPath =>
-            Path.Combine(CommonDirs.PackageGeneratedZLuaPath, FileName);
+            Path.Combine(CommonPaths.PackageGeneratedZLuaPath, FileName);
 
         public sealed class ConfValues
         {
@@ -79,7 +79,7 @@ namespace ZLua.Utils
         public static void WriteLocal(LuaVersionInfo luaInfo, string unityVersionStr = null)
         {
             ConfValues values = Build(luaInfo, unityVersionStr);
-            string dir = CommonDirs.GeneratedZLuaPath;
+            string dir = CommonPaths.GeneratedZLuaPath;
             Directory.CreateDirectory(dir);
             string path = Path.Combine(dir, FileName);
             File.WriteAllText(path, FormatInc(values), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -92,7 +92,7 @@ namespace ZLua.Utils
         /// </summary>
         public static void WriteOrRefreshLocalFromSettings()
         {
-            if (!Directory.Exists(CommonDirs.LocalZluaPath))
+            if (!Directory.Exists(CommonPaths.LocalZluaPath))
             {
                 throw new InvalidOperationException(
                     "[ZLua] Local zlua missing; run ZLua Install before Generate/All.");

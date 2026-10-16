@@ -151,7 +151,9 @@ namespace ZLua.DelegateImpl
                 return NormalizeMarshalType(attr.LuaMarshalType, declared);
             }
 
-            if (LuaMarshalAsXmlRegistry.TryGetParameterRule(parameter, parameter.Member as MethodBase, out LuaMarshalAsXmlRule paramRule)
+            LuaMarshalAsXmlRegistry marshalAsXml = LuaMarshalAsXmlRegistry.Current;
+            if (marshalAsXml != null
+                && marshalAsXml.TryGetParameterRule(parameter, parameter.Member as MethodBase, out LuaMarshalAsXmlRule paramRule)
                 && paramRule.MarshalType != LuaMarshalType.Default)
             {
                 return NormalizeMarshalType(paramRule.MarshalType, declared);
@@ -163,7 +165,8 @@ namespace ZLua.DelegateImpl
                 return NormalizeMarshalType(typeAttr.LuaMarshalType, declared);
             }
 
-            if (LuaMarshalAsXmlRegistry.TryGetTypeRule(declared, out LuaMarshalAsXmlRule typeRule)
+            if (marshalAsXml != null
+                && marshalAsXml.TryGetTypeRule(declared, out LuaMarshalAsXmlRule typeRule)
                 && typeRule.MarshalType != LuaMarshalType.Default)
             {
                 return NormalizeMarshalType(typeRule.MarshalType, declared);
@@ -181,7 +184,9 @@ namespace ZLua.DelegateImpl
                 return NormalizeMarshalType(attr.LuaMarshalType, invokeMethod.ReturnType);
             }
 
-            if (LuaMarshalAsXmlRegistry.TryGetReturnRule(invokeMethod, out LuaMarshalAsXmlRule returnRule)
+            LuaMarshalAsXmlRegistry marshalAsXml = LuaMarshalAsXmlRegistry.Current;
+            if (marshalAsXml != null
+                && marshalAsXml.TryGetReturnRule(invokeMethod, out LuaMarshalAsXmlRule returnRule)
                 && returnRule.MarshalType != LuaMarshalType.Default)
             {
                 return NormalizeMarshalType(returnRule.MarshalType, invokeMethod.ReturnType);
@@ -193,7 +198,8 @@ namespace ZLua.DelegateImpl
                 return NormalizeMarshalType(typeAttr.LuaMarshalType, invokeMethod.ReturnType);
             }
 
-            if (LuaMarshalAsXmlRegistry.TryGetTypeRule(invokeMethod.ReturnType, out LuaMarshalAsXmlRule typeRule)
+            if (marshalAsXml != null
+                && marshalAsXml.TryGetTypeRule(invokeMethod.ReturnType, out LuaMarshalAsXmlRule typeRule)
                 && typeRule.MarshalType != LuaMarshalType.Default)
             {
                 return NormalizeMarshalType(typeRule.MarshalType, invokeMethod.ReturnType);

@@ -32,11 +32,11 @@ namespace ZLua.Utils
     public static class InstallFingerprint
     {
         public static string Path =>
-            System.IO.Path.Combine(CommonDirs.InstallRootDir, "install_fingerprint.json");
+            System.IO.Path.Combine(CommonPaths.InstallRootDir, "install_fingerprint.json");
 
         public static void Write(InstallFingerprintData data)
         {
-            Directory.CreateDirectory(CommonDirs.InstallRootDir);
+            Directory.CreateDirectory(CommonPaths.InstallRootDir);
             string json = JsonUtility.ToJson(data, true);
             File.WriteAllText(Path, json, Encoding.UTF8);
         }

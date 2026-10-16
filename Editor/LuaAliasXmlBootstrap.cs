@@ -22,8 +22,8 @@ namespace ZLua
         private static void ReloadMenu()
         {
             string projectRoot = Path.GetDirectoryName(Application.dataPath);
-            LuaAliasXmlRegistry.Load(Settings.Instance.luaAliasXmlPaths, projectRoot);
-            Debug.Log("[ZLua] LuaAlias XML loaded: " + LuaAliasXmlRegistry.Rules.Count + " rule(s).");
+            LuaAliasXmlRegistry.Current.Load(Settings.Instance.LuaAliasXmlPaths, projectRoot);
+            Debug.Log("[ZLua] LuaAlias XML loaded: " + LuaAliasXmlRegistry.Current.Rules.Count + " rule(s).");
         }
 
         internal static void TryLoad(bool logSuccess)
@@ -31,10 +31,10 @@ namespace ZLua
             try
             {
                 string projectRoot = Path.GetDirectoryName(Application.dataPath);
-                LuaAliasXmlRegistry.Load(Settings.Instance.luaAliasXmlPaths, projectRoot);
+                LuaAliasXmlRegistry.Current.Load(Settings.Instance.LuaAliasXmlPaths, projectRoot);
                 if (logSuccess)
                 {
-                    Debug.Log("[ZLua] LuaAlias XML loaded: " + LuaAliasXmlRegistry.Rules.Count + " rule(s).");
+                    Debug.Log("[ZLua] LuaAlias XML loaded: " + LuaAliasXmlRegistry.Current.Rules.Count + " rule(s).");
                 }
             }
             catch (Exception ex)

@@ -29,14 +29,14 @@ namespace ZLua
     /// Loads and merges LuaAlias XML files (spec 04-METHOD-OVERLOAD §5.4).
     /// Duplicate (assembly, type, method, signature) keys are a hard failure.
     /// </summary>
-    public static class LuaAliasXmlLoader
+    public sealed class LuaAliasXmlLoader
     {
-        public static List<LuaAliasXmlRule> LoadFromConfiguredPaths(IEnumerable<string> configuredPaths, string projectRoot)
+        public List<LuaAliasXmlRule> LoadFromConfiguredPaths(IEnumerable<string> configuredPaths, string projectRoot)
         {
             List<string> files;
             try
             {
-                files = LuaMarshalAsXmlLoader.ExpandToXmlFiles(configuredPaths, projectRoot, "LuaAlias");
+                files = new LuaMarshalAsXmlLoader().ExpandToXmlFiles(configuredPaths, projectRoot, "LuaAlias");
             }
             catch (LuaMarshalAsConfigurationException ex)
             {
@@ -53,7 +53,7 @@ namespace ZLua
             return rules;
         }
 
-        private static void LoadFile(string filePath, List<LuaAliasXmlRule> rules, Dictionary<string, string> seen)
+        private void LoadFile(string filePath, List<LuaAliasXmlRule> rules, Dictionary<string, string> seen)
         {
             var doc = new XmlDocument();
             try
@@ -112,7 +112,7 @@ namespace ZLua
             }
         }
 
-        private static void ParseType(
+        private void ParseType(
             string filePath,
             string assemblyName,
             XmlElement typeEl,
@@ -177,7 +177,7 @@ namespace ZLua
             }
         }
 
-        private static string RequireAttr(XmlElement el, string attrName, string filePath)
+        private string RequireAttr(XmlElement el, string attrName, string filePath)
         {
             if (!el.HasAttribute(attrName) || string.IsNullOrWhiteSpace(el.GetAttribute(attrName)))
             {

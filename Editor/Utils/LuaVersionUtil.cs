@@ -30,7 +30,7 @@ namespace ZLua.Utils
 
         public static IReadOnlyList<string> ListCachedVersionIds()
         {
-            string root = CommonDirs.LuaSrcCacheDir;
+            string root = CommonPaths.LuaSrcCacheDir;
             if (!Directory.Exists(root))
             {
                 return Array.Empty<string>();
@@ -78,7 +78,7 @@ namespace ZLua.Utils
                     ApiFamilyDefine = "ZLUA_USE_LUAJIT",
                     DllLogicalName = $"luajit{major}{minor}",
                     IsLuaJit = true,
-                    SourceDir = Path.Combine(CommonDirs.LuaSrcCacheDir, jitFolder),
+                    SourceDir = Path.Combine(CommonPaths.LuaSrcCacheDir, jitFolder),
                 };
                 return true;
             }
@@ -195,7 +195,7 @@ namespace ZLua.Utils
                 return false;
             }
 
-            string seriesDir = Path.Combine(CommonDirs.LuaPatchesPathInPackage, series);
+            string seriesDir = Path.Combine(CommonPaths.LuaPatchesPathInPackage, series);
             if (!Directory.Exists(seriesDir))
             {
                 return false;

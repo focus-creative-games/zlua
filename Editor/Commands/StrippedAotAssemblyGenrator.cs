@@ -80,7 +80,7 @@ namespace ZLua.Commands
 
         public static void Generate(BuildTarget target)
         {
-            string outputPath = CommonDirs.GetTempAotProjectOutputDir(target);
+            string outputPath = CommonPaths.GetTempAotProjectOutputDir(target);
             DirectoryUtil.RemoveDir(outputPath);
 
             var buildOptions = GetBuildPlayerOptions(target);

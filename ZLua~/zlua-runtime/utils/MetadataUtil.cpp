@@ -320,20 +320,49 @@ std::string MetadataUtil::GetSignatureTypeName(Il2CppClass* klass)
     return GetLuaFullName(&klass->byval_arg);
 }
 
+static void AppendMethodGenericArguments(std::string& name, const MethodInfo* method)
+{
+    const Il2CppGenericInst* methodInst = nullptr;
+    if (method->is_inflated && method->genericMethod != nullptr)
+        methodInst = method->genericMethod->context.method_inst;
+
+    if (methodInst != nullptr && methodInst->type_argc > 0)
+    {
+        name += '<';
+        for (uint32_t i = 0; i < methodInst->type_argc; ++i)
+        {
+            if (i != 0)
+                name += ',';
+            name += MetadataUtil::GetLuaFullName(methodInst->type_argv[i]);
+        }
+        name += '>';
+        return;
+    }
+
+    if (!method->is_generic)
+        return;
+
+    const int32_t genericArgumentCount = MetadataUtil::GetMethodGenericParameterCount(method);
+    if (genericArgumentCount <= 0)
+        return;
+
+    Il2CppMetadataGenericContainerHandle container = method->genericContainerHandle;
+    name += '<';
+    for (int32_t i = 0; i < genericArgumentCount; ++i)
+    {
+        if (i != 0)
+            name += ',';
+        Il2CppMetadataGenericParameterHandle param =
+            il2cpp::vm::MetadataCache::GetGenericParameterFromIndex(container, i);
+        name += il2cpp::vm::MetadataCache::GetGenericParameterName(param);
+    }
+    name += '>';
+}
+
 std::string MetadataUtil::CreateMethodNameWithParametersAndGenericArguments(const MethodInfo* method)
 {
     std::string name = method->name;
-    if (method->is_generic)
-    {
-        name += "<";
-        int32_t genericArgumentCount = MetadataUtil::GetMethodGenericParameterCount(method);
-        IL2CPP_ASSERT(genericArgumentCount > 0);
-        for (int32_t i = 1; i < genericArgumentCount; i++)
-        {
-            name += ',';
-        }
-        name += ">";
-    }
+    AppendMethodGenericArguments(name, method);
     name += "(";
     const int paramStart = IsExtensionMethod(method) ? 1 : 0;
     bool first = true;

@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+using System;
 using System.IO;
 using UnityEditor;
 using UnityEditorInternal;
@@ -38,11 +39,22 @@ namespace ZLua
         [Tooltip("MarshalAs XML files or directories (relative to project root or absolute). See spec marshal/02-MARSHAL-AS §9.")]
         public string[] marshalAsXmlPaths;
 
+        /// <summary>User <see cref="marshalAsXmlPaths"/> plus built-in Unity optimization MarshalAs XML when that switch is on.</summary>
+        public string[] MarshalAsXmlPaths =>
+            MergeUnityOptimizationPath(marshalAsXmlPaths, CommonPaths.UnityMarshalAsXmlPathInPackage);
+
         [Tooltip("LuaAlias XML files or directories (relative to project root or absolute). Root element ZLuaAlias. See spec 04-METHOD-OVERLOAD §5.4.")]
         public string[] luaAliasXmlPaths;
 
+        /// <summary>User <see cref="luaAliasXmlPaths"/> plus built-in Unity optimization alias XML when that switch is on.</summary>
+        public string[] LuaAliasXmlPaths =>
+            MergeUnityOptimizationPath(luaAliasXmlPaths, CommonPaths.UnityAliasXmlPathInPackage);
+
         [Tooltip("LuaExtension XML files or directories (relative to project root or absolute). Root element ZLuaExtensions. See spec 13-EXTENSION-METHODS §2.2.")]
         public string[] luaExtensionXmlPaths;
+
+        [Tooltip("Unity-specific binding adjustments shipped with ZLua. Currently: GameObject/Component GetComponent aliases and runtime-type returns. On by default. See spec 15-UNITY-OPTIMIZATIONS.")]
+        public bool enableUnityOptimizations = true;
 
         [Tooltip("Editor Mono only: inject EmmyLua emmy_core after Initialize. Windows ships lua51–lua55 and luajit under Plugins/emmylua/; other OS currently lua55 only (self-build otherwise). Spec build/04-EMMYLUA-DEBUGGER.")]
         public bool enableDebugger = false;
@@ -59,7 +71,25 @@ namespace ZLua
 
         public static string GetPreservedLinkXmlPath()
         {
-            return Path.GetFullPath($"{CommonDirs.ZLuaDataPathInPackage}/link.xml");
+            return Path.GetFullPath($"{CommonPaths.ZLuaDataPathInPackage}/link.xml");
+        }
+
+        private string[] MergeUnityOptimizationPath(string[] userPaths, string builtinRelativePath)
+        {
+            if (!enableUnityOptimizations)
+            {
+                return userPaths;
+            }
+
+            if (userPaths == null || userPaths.Length == 0)
+            {
+                return new[] { builtinRelativePath };
+            }
+
+            var merged = new string[userPaths.Length + 1];
+            merged[0] = builtinRelativePath;
+            Array.Copy(userPaths, 0, merged, 1, userPaths.Length);
+            return merged;
         }
 
 

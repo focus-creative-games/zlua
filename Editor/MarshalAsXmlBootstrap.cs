@@ -22,8 +22,8 @@ namespace ZLua
         private static void ReloadMenu()
         {
             string projectRoot = Path.GetDirectoryName(Application.dataPath);
-            LuaMarshalAsXmlRegistry.Load(Settings.Instance.marshalAsXmlPaths, projectRoot);
-            Debug.Log("[ZLua] MarshalAs XML loaded: " + LuaMarshalAsXmlRegistry.Rules.Count + " rule(s).");
+            LuaMarshalAsXmlRegistry.LoadCurrent(Settings.Instance.MarshalAsXmlPaths, projectRoot);
+            Debug.Log("[ZLua] MarshalAs XML loaded: " + LuaMarshalAsXmlRegistry.Current.Rules.Count + " rule(s).");
         }
 
         internal static void TryLoad(bool logSuccess)
@@ -31,10 +31,10 @@ namespace ZLua
             try
             {
                 string projectRoot = Path.GetDirectoryName(Application.dataPath);
-                LuaMarshalAsXmlRegistry.Load(Settings.Instance.marshalAsXmlPaths, projectRoot);
+                LuaMarshalAsXmlRegistry.LoadCurrent(Settings.Instance.MarshalAsXmlPaths, projectRoot);
                 if (logSuccess)
                 {
-                    Debug.Log("[ZLua] MarshalAs XML loaded: " + LuaMarshalAsXmlRegistry.Rules.Count + " rule(s).");
+                    Debug.Log("[ZLua] MarshalAs XML loaded: " + LuaMarshalAsXmlRegistry.Current.Rules.Count + " rule(s).");
                 }
             }
             catch (Exception ex)

@@ -56,7 +56,7 @@ namespace ZLua.BuildProcessors
                 return;
             }
 
-            string generatedDir = CommonDirs.GeneratedZLuaPath;
+            string generatedDir = CommonPaths.GeneratedZLuaPath;
             if (!Directory.Exists(generatedDir))
             {
                 throw new BuildFailedException(

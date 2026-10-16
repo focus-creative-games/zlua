@@ -145,7 +145,7 @@ namespace ZLua.Emit
             int slot = argStart;
             for (int i = paramStart; i < parameters.Length; i++)
             {
-                LuaMarshalBinding binding = LuaMarshalAsValidation.ResolveParameterBinding(
+                LuaMarshalBinding binding = LuaMarshalAsValidation.Current.ResolveParameterBinding(
                     parameters[i],
                     method,
                     LuaMarshalDirection.LuaToCSharp);

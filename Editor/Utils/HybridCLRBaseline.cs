@@ -65,7 +65,7 @@ namespace ZLua.Utils
 
         private static string ReadBaselineStamp()
         {
-            string path = CommonDirs.HybridCLRBaselineStampPath;
+            string path = CommonPaths.HybridCLRBaselineStampPath;
             if (!File.Exists(path))
             {
                 return null;
@@ -83,7 +83,7 @@ namespace ZLua.Utils
 
         private static bool BaselineExists()
         {
-            string baseline = CommonDirs.HybridCLRBaselineLibil2cppDir;
+            string baseline = CommonPaths.HybridCLRBaselineLibil2cppDir;
             return Directory.Exists(baseline)
                    && File.Exists(RuntimeCppPath(baseline))
                    && Directory.Exists(Path.Combine(baseline, "hybridclr"));
@@ -115,7 +115,7 @@ namespace ZLua.Utils
                 Debug.Log(
                     $"[ZLua] HybridCLR baseline is stale (baseline='{baselineVersion}', "
                     + $"installed='{currentVersion}'); discarding and re-snapshotting.");
-                DirectoryUtil.RemoveDir(CommonDirs.HybridCLRBaselineDir, true);
+                DirectoryUtil.RemoveDir(CommonPaths.HybridCLRBaselineDir, true);
                 haveBaseline = false;
             }
 
@@ -124,7 +124,7 @@ namespace ZLua.Utils
                 // The live tree may or may not be overlaid; restoring is correct either
                 // way and is the only way to drop a previous overlay.
                 Debug.Log($"[ZLua] Restoring HybridCLR libil2cpp from baseline ({currentVersion}).");
-                DirectoryUtil.CopyDir(CommonDirs.HybridCLRBaselineLibil2cppDir, libil2cpp, true);
+                DirectoryUtil.CopyDir(CommonPaths.HybridCLRBaselineLibil2cppDir, libil2cpp, true);
                 return libil2cpp;
             }
 
@@ -142,11 +142,11 @@ namespace ZLua.Utils
 
             Debug.Log(
                 $"[ZLua] Snapshotting pristine HybridCLR libil2cpp ({currentVersion}) to "
-                + CommonDirs.HybridCLRBaselineDir);
-            Directory.CreateDirectory(CommonDirs.HybridCLRBaselineDir);
-            DirectoryUtil.CopyDir(libil2cpp, CommonDirs.HybridCLRBaselineLibil2cppDir, true);
+                + CommonPaths.HybridCLRBaselineDir);
+            Directory.CreateDirectory(CommonPaths.HybridCLRBaselineDir);
+            DirectoryUtil.CopyDir(libil2cpp, CommonPaths.HybridCLRBaselineLibil2cppDir, true);
             File.WriteAllText(
-                CommonDirs.HybridCLRBaselineStampPath,
+                CommonPaths.HybridCLRBaselineStampPath,
                 currentVersion,
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
@@ -159,9 +159,9 @@ namespace ZLua.Utils
         /// </summary>
         public static void Clear()
         {
-            if (Directory.Exists(CommonDirs.HybridCLRBaselineDir))
+            if (Directory.Exists(CommonPaths.HybridCLRBaselineDir))
             {
-                DirectoryUtil.RemoveDir(CommonDirs.HybridCLRBaselineDir, true);
+                DirectoryUtil.RemoveDir(CommonPaths.HybridCLRBaselineDir, true);
                 Debug.Log("[ZLua] Cleared HybridCLR baseline snapshot.");
             }
         }

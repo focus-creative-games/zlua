@@ -620,7 +620,8 @@ namespace ZLua.Mt
                     }
                 }
 
-                if (LuaExtensionXmlRegistry.TryGetExtensionTypes(walk, out Type[] xmlTypes))
+                LuaExtensionXmlRegistry extensionXml = LuaExtensionXmlRegistry.Current;
+                if (extensionXml != null && extensionXml.TryGetExtensionTypes(walk, out Type[] xmlTypes))
                 {
                     for (int i = 0; i < xmlTypes.Length; i++)
                     {
@@ -789,7 +790,7 @@ namespace ZLua.Mt
                 return alias.Alias;
             }
 
-            if (LuaAliasXmlRegistry.TryGetAlias(method, out string xmlAlias)
+            if (LuaAliasXmlRegistry.Current.TryGetAlias(method, out string xmlAlias)
                 && !string.IsNullOrEmpty(xmlAlias))
             {
                 return xmlAlias;

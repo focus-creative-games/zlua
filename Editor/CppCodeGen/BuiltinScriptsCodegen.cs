@@ -17,8 +17,8 @@ namespace ZLua.CppCodeGen
         public void Generate()
         {
 
-            string globalsPath = CommonDirs.GetLuaLibScriptPath("globals.lua");
-            string libPath = CommonDirs.GetLuaLibScriptPath("zlualib.lua");
+            string globalsPath = CommonPaths.GetLuaLibScriptPath("globals.lua");
+            string libPath = CommonPaths.GetLuaLibScriptPath("zlualib.lua");
 
             var writer = new CodeWriter();
             writer.WriteLine(EmbedLua("kZLuaGlobalsLua", File.Exists(globalsPath) ? File.ReadAllText(globalsPath, Encoding.UTF8) : string.Empty));

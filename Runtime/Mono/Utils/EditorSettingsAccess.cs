@@ -68,5 +68,34 @@ namespace ZLua.Utils
 
             return false;
         }
+
+        internal static bool TryGetProperty<T>(object settings, Type settingsType, string propertyName, out T value)
+        {
+            value = default;
+            if (settings == null || settingsType == null)
+            {
+                return false;
+            }
+
+            PropertyInfo property = settingsType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+            if (property == null || !property.CanRead)
+            {
+                return false;
+            }
+
+            object raw = property.GetValue(settings);
+            if (raw == null)
+            {
+                return true;
+            }
+
+            if (raw is T typed)
+            {
+                value = typed;
+                return true;
+            }
+
+            return false;
+        }
     }
 }

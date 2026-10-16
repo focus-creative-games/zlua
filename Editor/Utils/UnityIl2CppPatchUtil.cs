@@ -22,7 +22,7 @@ namespace ZLua.Utils
         /// Series dirs tried: <c>major.minor</c> then <c>major</c> when <c>major &gt;= 6000</c>.
         /// </summary>
         /// <param name="patchRoot">
-        /// Patch tree to search. Defaults to <see cref="CommonDirs.ActiveLibil2cppPatchesPath"/>,
+        /// Patch tree to search. Defaults to <see cref="CommonPaths.ActiveLibil2cppPatchesPath"/>,
         /// which selects the HybridCLR-anchored patches when that integration is on.
         /// </param>
         public static bool TryResolvePatchFile(
@@ -30,7 +30,7 @@ namespace ZLua.Utils
         {
             patchFile = null;
             patchKey = null;
-            string root = patchRoot ?? CommonDirs.ActiveLibil2cppPatchesPath;
+            string root = patchRoot ?? CommonPaths.ActiveLibil2cppPatchesPath;
             if (!Directory.Exists(root))
             {
                 return false;

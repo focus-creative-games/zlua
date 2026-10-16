@@ -136,7 +136,7 @@ namespace ZLua.Emit
                     break;
                 }
 
-                LuaMarshalBinding binding = LuaMarshalAsValidation.ResolveParameterBinding(
+                LuaMarshalBinding binding = LuaMarshalAsValidation.Current.ResolveParameterBinding(
                     parameters[i],
                     method,
                     LuaMarshalDirection.LuaToCSharp);

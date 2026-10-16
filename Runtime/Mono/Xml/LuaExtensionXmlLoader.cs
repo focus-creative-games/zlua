@@ -28,16 +28,16 @@ namespace ZLua
     /// Loads and merges LuaExtension XML files (spec 13-EXTENSION-METHODS §2.2).
     /// Duplicate (target, extension-class) keys are a hard failure.
     /// </summary>
-    public static class LuaExtensionXmlLoader
+    public sealed class LuaExtensionXmlLoader
     {
-        public static List<LuaExtensionXmlRule> LoadFromConfiguredPaths(
+        public List<LuaExtensionXmlRule> LoadFromConfiguredPaths(
             IEnumerable<string> configuredPaths,
             string projectRoot)
         {
             List<string> files;
             try
             {
-                files = LuaMarshalAsXmlLoader.ExpandToXmlFiles(configuredPaths, projectRoot, "LuaExtension");
+                files = new LuaMarshalAsXmlLoader().ExpandToXmlFiles(configuredPaths, projectRoot, "LuaExtension");
             }
             catch (LuaMarshalAsConfigurationException ex)
             {
@@ -54,7 +54,7 @@ namespace ZLua
             return rules;
         }
 
-        private static void LoadFile(string filePath, List<LuaExtensionXmlRule> rules, Dictionary<string, string> seen)
+        private void LoadFile(string filePath, List<LuaExtensionXmlRule> rules, Dictionary<string, string> seen)
         {
             var doc = new XmlDocument();
             try
@@ -113,7 +113,7 @@ namespace ZLua
             }
         }
 
-        private static void ParseType(
+        private void ParseType(
             string filePath,
             string assemblyName,
             XmlElement typeEl,
@@ -171,7 +171,7 @@ namespace ZLua
             }
         }
 
-        private static string RequireAttr(XmlElement el, string attrName, string filePath)
+        private string RequireAttr(XmlElement el, string attrName, string filePath)
         {
             if (!el.HasAttribute(attrName) || string.IsNullOrWhiteSpace(el.GetAttribute(attrName)))
             {

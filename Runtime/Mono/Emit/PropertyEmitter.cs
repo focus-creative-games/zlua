@@ -132,7 +132,7 @@ namespace ZLua.Emit
 
         private static LuaCSFunction CompileGetter(PropertyInfo property, MethodInfo getter, bool isStatic, bool isByVal)
         {
-            LuaMarshalBinding returnBinding = LuaMarshalAsValidation.ResolveReturnBinding(
+            LuaMarshalBinding returnBinding = LuaMarshalAsValidation.Current.ResolveReturnBinding(
                 getter,
                 LuaMarshalDirection.CSharpToLua);
             if (returnBinding.MarshalType == LuaMarshalType.ActualTypeUserData || returnBinding.IsComposite)

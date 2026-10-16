@@ -41,7 +41,7 @@ namespace ZLua.Emit
             ParameterInfo[] parameters = method.GetParameters();
             for (int i = 0; i < parameters.Length; i++)
             {
-                LuaMarshalBinding binding = LuaMarshalAsValidation.ResolveParameterBinding(
+                LuaMarshalBinding binding = LuaMarshalAsValidation.Current.ResolveParameterBinding(
                     parameters[i],
                     method,
                     LuaMarshalDirection.LuaToCSharp);
@@ -53,7 +53,7 @@ namespace ZLua.Emit
 
             if (method is MethodInfo methodInfo && methodInfo.ReturnType != typeof(void))
             {
-                LuaMarshalBinding ret = LuaMarshalAsValidation.ResolveReturnBinding(
+                LuaMarshalBinding ret = LuaMarshalAsValidation.Current.ResolveReturnBinding(
                     methodInfo,
                     LuaMarshalDirection.CSharpToLua);
                 if (ret.IsComposite || ret.MarshalType == LuaMarshalType.ActualTypeUserData)
@@ -107,7 +107,7 @@ namespace ZLua.Emit
             int slots = 0;
             for (int i = start; i < parameters.Length; i++)
             {
-                LuaMarshalBinding binding = LuaMarshalAsValidation.ResolveParameterBinding(
+                LuaMarshalBinding binding = LuaMarshalAsValidation.Current.ResolveParameterBinding(
                     parameters[i],
                     method,
                     LuaMarshalDirection.LuaToCSharp);
@@ -136,7 +136,7 @@ namespace ZLua.Emit
             var paramBindings = new LuaMarshalBinding[parameters.Length];
             for (int i = 0; i < parameters.Length; i++)
             {
-                paramBindings[i] = LuaMarshalAsValidation.ResolveParameterBinding(
+                paramBindings[i] = LuaMarshalAsValidation.Current.ResolveParameterBinding(
                     parameters[i],
                     method,
                     LuaMarshalDirection.LuaToCSharp);
@@ -144,7 +144,7 @@ namespace ZLua.Emit
 
             LuaMarshalBinding returnBinding = method.ReturnType == typeof(void)
                 ? LuaMarshalBinding.Default
-                : LuaMarshalAsValidation.ResolveReturnBinding(method, LuaMarshalDirection.CSharpToLua);
+                : LuaMarshalAsValidation.Current.ResolveReturnBinding(method, LuaMarshalDirection.CSharpToLua);
 
             bool isExtension = ExtensionMethodUtil.IsExtensionMethod(method);
             int argStart = isStatic ? 1 : 2;
@@ -192,7 +192,7 @@ namespace ZLua.Emit
             var paramBindings = new LuaMarshalBinding[parameters.Length];
             for (int i = 0; i < parameters.Length; i++)
             {
-                paramBindings[i] = LuaMarshalAsValidation.ResolveParameterBinding(
+                paramBindings[i] = LuaMarshalAsValidation.Current.ResolveParameterBinding(
                     parameters[i],
                     ctor,
                     LuaMarshalDirection.LuaToCSharp);

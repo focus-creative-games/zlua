@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Built-in when Settings.enableUnityOptimizations is on. Alias replaces the CLR name. -->
+<ZLuaAlias version="1">
+  <Assembly name="UnityEngine.CoreModule">
+    <Type fullName="UnityEngine.GameObject">
+      <Method name="GetComponent" signature="()" alias="GetComponentT"/>
+      <Method name="GetComponent" signature="(System.String)" alias="GetComponentN"/>
+    </Type>
+    <Type fullName="UnityEngine.Component">
+      <Method name="GetComponent" signature="()" alias="GetComponentT"/>
+      <Method name="GetComponent" signature="(System.String)" alias="GetComponentN"/>
+    </Type>
+  </Assembly>
+</ZLuaAlias>

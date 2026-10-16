@@ -99,9 +99,9 @@ namespace ZLua
 
         public bool HasInstalledToLocal()
         {
-            return Directory.Exists(CommonDirs.LocalLibil2cppPath)
-                   && Directory.Exists(CommonDirs.LocalZluaPath)
-                   && Directory.Exists(CommonDirs.LocalLuaSrcPath);
+            return Directory.Exists(CommonPaths.LocalLibil2cppPath)
+                   && Directory.Exists(CommonPaths.LocalZluaPath)
+                   && Directory.Exists(CommonPaths.LocalLuaSrcPath);
         }
 
         public bool NeedReinstallAfterUpdatePackage()
@@ -225,10 +225,10 @@ namespace ZLua
                 throw new InvalidOperationException($"Editor il2cpp path not found: {editorIl2cppPath}");
             }
 
-            if (!Directory.Exists(CommonDirs.ZluaRuntimePathInPackage))
+            if (!Directory.Exists(CommonPaths.ZluaRuntimePathInPackage))
             {
                 throw new InvalidOperationException(
-                    $"zlua-runtime missing: {CommonDirs.ZluaRuntimePathInPackage}");
+                    $"zlua-runtime missing: {CommonPaths.ZluaRuntimePathInPackage}");
             }
 
             bool hybridclrMode = HybridCLRIntegration.Enabled;
@@ -254,7 +254,7 @@ namespace ZLua
             LuaSourceCache.EnsureAvailable(luaInfo);
             WarnIfEditorPluginMissing(luaInfo);
 
-            Directory.CreateDirectory(CommonDirs.InstallRootDir);
+            Directory.CreateDirectory(CommonPaths.InstallRootDir);
 
             if (hybridclrMode)
             {
@@ -268,7 +268,7 @@ namespace ZLua
             }
             else
             {
-                string localIl2CppDataDir = CommonDirs.LocalIl2CppDataPath;
+                string localIl2CppDataDir = CommonPaths.LocalIl2CppDataPath;
                 DirectoryUtil.RecreateDir(localIl2CppDataDir);
 
 #if !NEW_IL2CPP_PATH
@@ -277,7 +277,7 @@ namespace ZLua
                     $"{localIl2CppDataDir}/MonoBleedingEdge",
                     true);
 #endif
-                DirectoryUtil.CopyDir(editorIl2cppPath, CommonDirs.LocalIl2CppPath, true);
+                DirectoryUtil.CopyDir(editorIl2cppPath, CommonPaths.LocalIl2CppPath, true);
 #if NEW_IL2CPP_PATH
                 string buildDir = $"{CommonDirs.LocalIl2CppPath}/build";
                 if (RuntimeInformation.ProcessArchitecture == Architecture.Arm
@@ -300,14 +300,14 @@ namespace ZLua
                     $"[ZLua] No libil2cpp patch for Unity {Application.unityVersion}"
                     + (hybridclrMode ? " (HybridCLR mode)" : string.Empty) + ". "
                     + $"Expected a floor patch X.Y.Z.patch (greatest version <= Editor) under "
-                    + Path.Combine(CommonDirs.ActiveLibil2cppPatchesPath, series ?? "?"));
+                    + Path.Combine(CommonPaths.ActiveLibil2cppPatchesPath, series ?? "?"));
             }
 
             Debug.Log($"[ZLua] Applying libil2cpp patch {il2cppPatchKey}: {il2cppPatchFile}");
             // Patch paths are libil2cpp/... — apply with cwd = LocalIl2CppPath.
-            PatchApplier.Apply(il2cppPatchFile, CommonDirs.LocalIl2CppPath, stripComponents: 1);
+            PatchApplier.Apply(il2cppPatchFile, CommonPaths.LocalIl2CppPath, stripComponents: 1);
 
-            DirectoryUtil.CopyDir(CommonDirs.ZluaRuntimePathInPackage, CommonDirs.LocalZluaPath, true);
+            DirectoryUtil.CopyDir(CommonPaths.ZluaRuntimePathInPackage, CommonPaths.LocalZluaPath, true);
 
             string luaPatchKey = InstallLuaSources(luaInfo);
 
@@ -356,7 +356,7 @@ namespace ZLua
 
         private static string InstallLuaSources(LuaVersionInfo luaInfo)
         {
-            string stagingRoot = Path.Combine(CommonDirs.InstallRootDir, "tmp-lua-stage");
+            string stagingRoot = Path.Combine(CommonPaths.InstallRootDir, "tmp-lua-stage");
             DirectoryUtil.RecreateDir(stagingRoot);
             string stagedVersion = Path.Combine(stagingRoot, luaInfo.Id);
             DirectoryUtil.CopyDir(luaInfo.SourceDir, stagedVersion, true);
@@ -386,7 +386,7 @@ namespace ZLua
                     throw new InvalidOperationException(
                         $"[ZLua] No Lua patch for {luaInfo.Id} (series {luaInfo.Series}). "
                         + "Expected a floor patch X.Y.Z.patch (greatest version <= requested) under "
-                        + Path.Combine(CommonDirs.LuaPatchesPathInPackage, luaInfo.Series));
+                        + Path.Combine(CommonPaths.LuaPatchesPathInPackage, luaInfo.Series));
                 }
 
                 Debug.Log($"[ZLua] Applying Lua patch {luaPatchKey}: {luaPatchFile}");
@@ -406,22 +406,22 @@ namespace ZLua
             }
 
             string stagedSrc = Path.Combine(stagedVersion, "src");
-            DirectoryUtil.RecreateDir(CommonDirs.LocalLuaSrcPath);
+            DirectoryUtil.RecreateDir(CommonPaths.LocalLuaSrcPath);
 
             if (luaInfo.IsLuaJit)
             {
                 // Spec build/02-LUAJIT: Il2Cpp gets public headers only; .a from Plugins.
-                InstallLuaJitHeadersOnly(stagedSrc, CommonDirs.LocalLuaSrcPath);
+                InstallLuaJitHeadersOnly(stagedSrc, CommonPaths.LocalLuaSrcPath);
             }
             else
             {
-                DirectoryUtil.CopyDir(stagedSrc, CommonDirs.LocalLuaSrcPath, true);
+                DirectoryUtil.CopyDir(stagedSrc, CommonPaths.LocalLuaSrcPath, true);
 
                 // Standalone interpreter / compiler must not enter Il2Cpp (duplicate main, unused tools).
-                RemoveLuaStandaloneSources(CommonDirs.LocalLuaSrcPath);
+                RemoveLuaStandaloneSources(CommonPaths.LocalLuaSrcPath);
 
                 // iOS/tvOS/watchOS: system(3) is unavailable; enable Lua's IOS profile (+ fallback).
-                EnsureAppleMobileLuaOsProfile(CommonDirs.LocalLuaSrcPath);
+                EnsureAppleMobileLuaOsProfile(CommonPaths.LocalLuaSrcPath);
 
                 // Lua 5.1/5.2: luai_num* / number tricks / luai_hashnum gated on LUA_CORE / ltable_c;
                 // Il2Cpp lumps many .c into one TU so the first header include wins (include guard).
@@ -429,26 +429,26 @@ namespace ZLua
                 int family = EngineVersionUtil.EncodeLuaApiFamily(luaInfo);
                 if (family < 503)
                 {
-                    EnsureLuaiNumMacrosForIl2CppLump(CommonDirs.LocalLuaSrcPath);
-                    EnsureLuaiHashnumMacrosForIl2CppLump(CommonDirs.LocalLuaSrcPath);
+                    EnsureLuaiNumMacrosForIl2CppLump(CommonPaths.LocalLuaSrcPath);
+                    EnsureLuaiHashnumMacrosForIl2CppLump(CommonPaths.LocalLuaSrcPath);
                 }
 
                 if (family < 502)
                 {
-                    EnsureLuaTmpnamMacrosForIl2CppLump(CommonDirs.LocalLuaSrcPath);
-                    EnsureLoadlibAnsiApisForWin32(CommonDirs.LocalLuaSrcPath);
+                    EnsureLuaTmpnamMacrosForIl2CppLump(CommonPaths.LocalLuaSrcPath);
+                    EnsureLoadlibAnsiApisForWin32(CommonPaths.LocalLuaSrcPath);
                     // Android NDK stdio.h declares POSIX getline(); Lua 5.1's macro clashes.
-                    EnsureGetlineRenamedForAndroidNdk(CommonDirs.LocalLuaSrcPath);
+                    EnsureGetlineRenamedForAndroidNdk(CommonPaths.LocalLuaSrcPath);
                 }
             }
 
             if (!LuaVersionUtil.SupportsFastMetatable(luaInfo))
             {
-                EnsureFastMetatableDisabled(CommonDirs.LocalLuaSrcPath);
+                EnsureFastMetatableDisabled(CommonPaths.LocalLuaSrcPath);
             }
             else
             {
-                EnsureFastMetatableEnabled(CommonDirs.LocalLuaSrcPath);
+                EnsureFastMetatableEnabled(CommonPaths.LocalLuaSrcPath);
             }
 
             DirectoryUtil.RemoveDir(stagingRoot, true);
@@ -963,7 +963,7 @@ namespace ZLua
 #else
             string fileName = luaInfo.DllLogicalName;
 #endif
-            string pluginsRoot = CommonDirs.PackagePluginsRoot;
+            string pluginsRoot = CommonPaths.PackagePluginsRoot;
             bool found = Directory.Exists(pluginsRoot)
                          && Directory.EnumerateFiles(pluginsRoot, fileName, SearchOption.AllDirectories).Any();
             if (!found)
@@ -1048,7 +1048,7 @@ namespace ZLua
 
         private static void ValidateLocalTree(LuaVersionInfo luaInfo)
         {
-            if (!File.Exists(Path.Combine(CommonDirs.LocalLibil2cppPath, "vm", "Runtime.cpp")))
+            if (!File.Exists(Path.Combine(CommonPaths.LocalLibil2cppPath, "vm", "Runtime.cpp")))
             {
                 throw new InvalidOperationException("[ZLua] Local libil2cpp incomplete after install.");
             }
@@ -1057,7 +1057,7 @@ namespace ZLua
             {
                 // The overlay must never clobber HybridCLR: both must be present in the
                 // shared tree for the interpreter and Lua to coexist.
-                if (!Directory.Exists(Path.Combine(CommonDirs.LocalLibil2cppPath, "hybridclr")))
+                if (!Directory.Exists(Path.Combine(CommonPaths.LocalLibil2cppPath, "hybridclr")))
                 {
                     throw new InvalidOperationException(
                         "[ZLua] HybridCLR's libil2cpp/hybridclr is missing after the ZLua overlay. "
@@ -1065,7 +1065,7 @@ namespace ZLua
                 }
 
                 string runtimeCppText = File.ReadAllText(
-                    Path.Combine(CommonDirs.LocalLibil2cppPath, "vm", "Runtime.cpp"), Encoding.UTF8);
+                    Path.Combine(CommonPaths.LocalLibil2cppPath, "vm", "Runtime.cpp"), Encoding.UTF8);
                 if (!runtimeCppText.Contains("hybridclr::Runtime::Initialize"))
                 {
                     throw new InvalidOperationException(
@@ -1084,25 +1084,25 @@ namespace ZLua
                 }
             }
 
-            if (!Directory.Exists(CommonDirs.LocalZluaPath))
+            if (!Directory.Exists(CommonPaths.LocalZluaPath))
             {
                 throw new InvalidOperationException("[ZLua] Local zlua missing after install.");
             }
 
-            if (!File.Exists(Path.Combine(CommonDirs.LocalLuaSrcPath, "lua.h")))
+            if (!File.Exists(Path.Combine(CommonPaths.LocalLuaSrcPath, "lua.h")))
             {
                 throw new InvalidOperationException("[ZLua] Local lua sources missing after install.");
             }
 
             if (luaInfo.IsLuaJit
-                && !File.Exists(Path.Combine(CommonDirs.LocalLuaSrcPath, "luajit.h")))
+                && !File.Exists(Path.Combine(CommonPaths.LocalLuaSrcPath, "luajit.h")))
             {
                 throw new InvalidOperationException(
                     "[ZLua] Local LuaJIT headers incomplete after install (luajit.h missing).");
             }
 
             if (luaInfo.IsLuaJit
-                && Directory.EnumerateFiles(CommonDirs.LocalLuaSrcPath, "*.c", SearchOption.TopDirectoryOnly).Any())
+                && Directory.EnumerateFiles(CommonPaths.LocalLuaSrcPath, "*.c", SearchOption.TopDirectoryOnly).Any())
             {
                 throw new InvalidOperationException(
                     "[ZLua] LuaJIT install must not place .c sources under libil2cpp/lua "
@@ -1117,7 +1117,7 @@ namespace ZLua
 
             // Minimal post-patch anchors.
             string runtimeCpp = File.ReadAllText(
-                Path.Combine(CommonDirs.LocalLibil2cppPath, "vm", "Runtime.cpp"), Encoding.UTF8);
+                Path.Combine(CommonPaths.LocalLibil2cppPath, "vm", "Runtime.cpp"), Encoding.UTF8);
             if (!runtimeCpp.Contains("zlua::LuaAppDomain::Initialize")
                 && !runtimeCpp.Contains("LuaAppDomain::Initialize"))
             {
@@ -1126,8 +1126,8 @@ namespace ZLua
             }
 
             if (LuaVersionUtil.UsesLuaVmPatches(luaInfo)
-                && !File.Exists(Path.Combine(CommonDirs.LocalLuaSrcPath, "zlua_fastmt.c"))
-                && !File.Exists(Path.Combine(CommonDirs.LocalLuaSrcPath, "zlua_fastmt.h")))
+                && !File.Exists(Path.Combine(CommonPaths.LocalLuaSrcPath, "zlua_fastmt.c"))
+                && !File.Exists(Path.Combine(CommonPaths.LocalLuaSrcPath, "zlua_fastmt.h")))
             {
                 Debug.LogWarning(
                     "[ZLua] zlua_fastmt.* not found under local lua; ensure the Lua patch applied if fast-mt is required.");
@@ -1142,7 +1142,7 @@ namespace ZLua
                 return packageInfo.resolvedPath;
             }
 
-            return Path.GetFullPath(Path.Combine("Packages", CommonDirs.PackageName));
+            return Path.GetFullPath(Path.Combine("Packages", CommonPaths.PackageName));
         }
 
         private static string ComputePackageContentStamp()
@@ -1173,7 +1173,7 @@ namespace ZLua
                 return;
             }
 
-            string path = Path.Combine(CommonDirs.InstallRootDir, "installed_package_max_mtime_utc_ticks.txt");
+            string path = Path.Combine(CommonPaths.InstallRootDir, "installed_package_max_mtime_utc_ticks.txt");
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             File.WriteAllText(path, ticks.ToString(), Encoding.UTF8);
         }

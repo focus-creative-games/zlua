@@ -23,9 +23,10 @@ namespace ZLua.CppCodeGen
             List<LuaExtensionXmlRule> rules;
             try
             {
-                LuaExtensionXmlRegistry.Load(Settings.Instance.luaExtensionXmlPaths, projectRoot);
-                LuaExtensionXmlRegistry.ValidateAllLoadedAssemblies();
-                rules = new List<LuaExtensionXmlRule>(LuaExtensionXmlRegistry.Rules);
+                var registry = new LuaExtensionXmlRegistry();
+                registry.Load(Settings.Instance.luaExtensionXmlPaths, projectRoot);
+                registry.ValidateAllLoadedAssemblies();
+                rules = new List<LuaExtensionXmlRule>(registry.Rules);
             }
             catch (Exception ex)
             {

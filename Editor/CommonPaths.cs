@@ -25,7 +25,7 @@ using ZLua.Utils;
 
 namespace ZLua
 {
-    public static class CommonDirs
+    public static class CommonPaths
     {
         public static string PackageName => "com.code-philosophy.zlua";
 
@@ -46,6 +46,14 @@ namespace ZLua
             Path.Combine(HybridCLRBaselineDir, "baseline_version.txt");
 
         public static string ZLuaDataPathInPackage => $"Packages/{PackageName}/ZLua~";
+
+        public static string UnityOptimizationsDirInPackage => $"{ZLuaDataPathInPackage}/unity";
+
+        public static string UnityAliasXmlPathInPackage =>
+            $"{UnityOptimizationsDirInPackage}/UnityOptimizations.alias.xml";
+
+        public static string UnityMarshalAsXmlPathInPackage =>
+            $"{UnityOptimizationsDirInPackage}/UnityOptimizations.marshalas.xml";
 
         public static string LuaLibPathInPackage => $"{ZLuaDataPathInPackage}/lualib";
 

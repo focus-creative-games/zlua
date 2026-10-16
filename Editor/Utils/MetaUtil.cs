@@ -186,7 +186,7 @@ public static class MetaUtil
 
     public static IAssemblyResolver CreateAOTAssemblyResolver(BuildTarget target)
     {
-        return new PathAssemblyResolver(CommonDirs.GetManagedStrippedDuplicatePath(target));
+        return new PathAssemblyResolver(CommonPaths.GetManagedStrippedDuplicatePath(target));
     }
 
     public static List<TypeSig> CreateDefaultGenericParams(ModuleDef module, int genericParamCount)

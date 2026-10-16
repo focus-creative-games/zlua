@@ -27,17 +27,20 @@ namespace ZLua
     /// <summary>
     /// LuaAlias XML registry: load by assembly name; bind lazily to MethodInfo metadata token.
     /// </summary>
-    public static class LuaAliasXmlRegistry
+    public sealed class LuaAliasXmlRegistry
     {
-        private static readonly object s_gate = new object();
-        private static List<LuaAliasXmlRule> s_rules = new List<LuaAliasXmlRule>();
-        private static Dictionary<string, List<LuaAliasXmlRule>> s_rulesByAssemblyName =
-            new Dictionary<string, List<LuaAliasXmlRule>>(StringComparer.Ordinal);
-        private static Dictionary<Assembly, Dictionary<int, string>> s_aliasByMethodToken =
-            new Dictionary<Assembly, Dictionary<int, string>>();
-        private static bool s_loaded;
+        /// <summary>Process-wide registry used by the Mono runtime. Tests construct their own instance.</summary>
+        public static LuaAliasXmlRegistry Current { get; } = new LuaAliasXmlRegistry();
 
-        public static bool IsLoaded
+        private readonly object s_gate = new object();
+        private List<LuaAliasXmlRule> s_rules = new List<LuaAliasXmlRule>();
+        private Dictionary<string, List<LuaAliasXmlRule>> s_rulesByAssemblyName =
+            new Dictionary<string, List<LuaAliasXmlRule>>(StringComparer.Ordinal);
+        private Dictionary<Assembly, Dictionary<int, string>> s_aliasByMethodToken =
+            new Dictionary<Assembly, Dictionary<int, string>>();
+        private bool s_loaded;
+
+        public bool IsLoaded
         {
             get
             {
@@ -48,7 +51,7 @@ namespace ZLua
             }
         }
 
-        public static IReadOnlyList<LuaAliasXmlRule> Rules
+        public IReadOnlyList<LuaAliasXmlRule> Rules
         {
             get
             {
@@ -59,7 +62,7 @@ namespace ZLua
             }
         }
 
-        public static void Clear()
+        public void Clear()
         {
             lock (s_gate)
             {
@@ -70,9 +73,9 @@ namespace ZLua
             }
         }
 
-        public static void Load(IEnumerable<string> configuredPaths, string projectRoot)
+        public void Load(IEnumerable<string> configuredPaths, string projectRoot)
         {
-            List<LuaAliasXmlRule> rules = LuaAliasXmlLoader.LoadFromConfiguredPaths(configuredPaths, projectRoot);
+            List<LuaAliasXmlRule> rules = new LuaAliasXmlLoader().LoadFromConfiguredPaths(configuredPaths, projectRoot);
             var byName = new Dictionary<string, List<LuaAliasXmlRule>>(StringComparer.Ordinal);
             for (int i = 0; i < rules.Count; i++)
             {
@@ -95,7 +98,7 @@ namespace ZLua
             }
         }
 
-        public static void ValidateAllLoadedAssemblies()
+        public void ValidateAllLoadedAssemblies()
         {
             lock (s_gate)
             {
@@ -118,7 +121,7 @@ namespace ZLua
             }
         }
 
-        public static void EnsureBound(Assembly assembly)
+        public void EnsureBound(Assembly assembly)
         {
             if (assembly == null)
             {
@@ -131,7 +134,7 @@ namespace ZLua
             }
         }
 
-        public static bool TryGetAlias(MethodInfo method, out string alias)
+        public bool TryGetAlias(MethodInfo method, out string alias)
         {
             alias = null;
             MethodBase defMethod = LuaMarshalAsXmlRegistry.ToDefinitionMethod(method);
@@ -154,7 +157,7 @@ namespace ZLua
             }
         }
 
-        private static Dictionary<int, string> EnsureBoundUnlocked(Assembly assembly)
+        private Dictionary<int, string> EnsureBoundUnlocked(Assembly assembly)
         {
             if (s_aliasByMethodToken.TryGetValue(assembly, out Dictionary<int, string> existing))
             {
@@ -177,7 +180,7 @@ namespace ZLua
             return map;
         }
 
-        private static void BindRule(LuaAliasXmlRule rule, Assembly expectedAssembly, Dictionary<int, string> map)
+        private void BindRule(LuaAliasXmlRule rule, Assembly expectedAssembly, Dictionary<int, string> map)
         {
             Type type = expectedAssembly.GetType(rule.TypeFullName, throwOnError: false, ignoreCase: false);
             if (type == null)
@@ -206,7 +209,7 @@ namespace ZLua
             map[token] = rule.Alias;
         }
 
-        private static MethodBase ResolveMethod(Type type, string methodName, string signature, string sourcePath)
+        private MethodBase ResolveMethod(Type type, string methodName, string signature, string sourcePath)
         {
             const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic
                                        | BindingFlags.Instance | BindingFlags.Static
@@ -244,7 +247,7 @@ namespace ZLua
                 + type.FullName + " in " + sourcePath);
         }
 
-        private static Assembly FindAssembly(string assemblyName)
+        private Assembly FindAssembly(string assemblyName)
         {
             Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
             for (int i = 0; i < assemblies.Length; i++)
