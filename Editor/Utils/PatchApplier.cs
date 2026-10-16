@@ -135,32 +135,95 @@ namespace ZLua.Utils
             }
         }
 
+        private const string PatchExecutableEnvVar = "ZLUA_PATCH_PATH";
+
         private static string ResolvePatchExecutable()
         {
+            string configured = Environment.GetEnvironmentVariable(PatchExecutableEnvVar);
+            if (!string.IsNullOrWhiteSpace(configured))
+            {
+                configured = configured.Trim().Trim('"');
+                if (!File.Exists(configured))
+                {
+                    throw new InvalidOperationException(
+                        $"[ZLua] {PatchExecutableEnvVar} is set but patch executable was not found: {configured}");
+                }
+
+                return configured;
+            }
+
+            // GNU patch first. /usr/bin/patch on macOS is BSD patch and does not accept the flags we pass.
             string[] candidates =
             {
                 @"C:\Program Files\Git\usr\bin\patch.exe",
                 @"C:\Program Files (x86)\Git\usr\bin\patch.exe",
-                "/usr/bin/patch",
                 "/opt/homebrew/bin/gpatch",
-                "patch",
+                "/usr/local/bin/gpatch",
+                "/opt/local/bin/gpatch",
+                "/usr/bin/gpatch",
             };
 
             foreach (string c in candidates)
             {
-                if (c == "patch")
-                {
-                    return c;
-                }
-
                 if (File.Exists(c))
                 {
                     return c;
                 }
             }
 
+            string[] pathNames = IsWindows()
+                ? new[] { "patch.exe", "patch" }
+                : new[] { "gpatch", "patch" };
+            string fromPath = FindOnPath(pathNames);
+            if (fromPath != null)
+            {
+                return fromPath;
+            }
+
             throw new InvalidOperationException(
-                "[ZLua] GNU patch not found. Install Git for Windows (includes usr\\bin\\patch.exe) or a patch utility.");
+                "[ZLua] GNU patch not found. Set ZLUA_PATCH_PATH to the patch executable, install Git for Windows (includes usr\\bin\\patch.exe), or put patch/gpatch on PATH.");
+        }
+
+        private static bool IsWindows()
+        {
+            PlatformID platform = Environment.OSVersion.Platform;
+            return platform == PlatformID.Win32NT
+                || platform == PlatformID.Win32Windows
+                || platform == PlatformID.Win32S;
+        }
+
+        /// <summary>
+        /// Editor <c>Process.Start</c> with <c>UseShellExecute = false</c> does not search PATH on Windows.
+        /// Resolve to an absolute path here so a non-default install still works.
+        /// </summary>
+        private static string FindOnPath(string[] fileNames)
+        {
+            string pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (string.IsNullOrEmpty(pathEnv))
+            {
+                return null;
+            }
+
+            string[] dirs = pathEnv.Split(Path.PathSeparator);
+            for (int i = 0; i < dirs.Length; i++)
+            {
+                string dir = dirs[i].Trim().Trim('"');
+                if (dir.Length == 0)
+                {
+                    continue;
+                }
+
+                for (int n = 0; n < fileNames.Length; n++)
+                {
+                    string full = Path.Combine(dir, fileNames[n]);
+                    if (File.Exists(full))
+                    {
+                        return full;
+                    }
+                }
+            }
+
+            return null;
         }
     }
 }
