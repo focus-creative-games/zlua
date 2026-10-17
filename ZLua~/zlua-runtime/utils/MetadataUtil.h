@@ -83,6 +83,13 @@ class MetadataUtil
     static bool TryReadLuaExtensionTypes(Il2CppClass* klass, std::vector<Il2CppClass*>& outExtensionClasses);
     static bool IsExtensionMethod(const MethodInfo* method);
     static bool MethodParameterHasParamArrayAttribute(const MethodInfo* method, int parameterIndex);
+
+    /// Lua→C# out: omitted from arity / Pop; pushed as multi-return after Invoke (spec 03-BYREF §5).
+    static bool IsOutParameter(const MethodInfo* method, uint8_t paramIndex)
+    {
+        const Il2CppType* type = method->parameters[paramIndex];
+        return type->byref && (type->attrs & PARAM_ATTRIBUTE_OUT) != 0;
+    }
     static bool IsDelegateClass(Il2CppClass* klass);
 
     static LuaMarshalType ResolveParameterMarshalType(const MethodInfo* method, int paramIndex);

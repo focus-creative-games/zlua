@@ -145,6 +145,12 @@ namespace ZLua.Emit
             int slot = argStart;
             for (int i = paramStart; i < parameters.Length; i++)
             {
+                // out: 0 Lua slots (spec 03-BYREF §5 / 04-METHOD-OVERLOAD §3.3).
+                if (InterpretedMethodInvoker.IsOutParameter(parameters[i]))
+                {
+                    continue;
+                }
+
                 LuaMarshalBinding binding = LuaMarshalAsValidation.Current.ResolveParameterBinding(
                     parameters[i],
                     method,

@@ -21,6 +21,7 @@
 using System;
 using System.Linq.Expressions;
 using System.Reflection;
+using ZLua.Marshaling;
 using ZLua.Utils;
 
 namespace ZLua.Emit
@@ -54,6 +55,16 @@ namespace ZLua.Emit
                     field.Name,
                     CreateLazyAccessor(setterTableRef, field.Name, () => CompileSetter(field, isStatic, isByVal)));
             }
+        }
+
+        private static LuaMarshalBinding ResolveFieldBinding(FieldInfo field, LuaMarshalDirection direction)
+        {
+            // Type-level / XML type rules (field-level attrs use the same clrType path).
+            return LuaMarshalAsValidation.Current.ResolveParameterBinding(
+                null,
+                null,
+                direction,
+                field.FieldType);
         }
 
         private sealed class LazyAccessorBind
@@ -112,6 +123,12 @@ namespace ZLua.Emit
 
         private static LuaCSFunction CompileGetter(FieldInfo field, bool isStatic, bool isByVal)
         {
+            LuaMarshalBinding binding = ResolveFieldBinding(field, LuaMarshalDirection.CSharpToLua);
+            if (binding.IsComposite || binding.MarshalType == LuaMarshalType.ActualTypeUserData)
+            {
+                return CompileGetterInterpreted(field, isStatic, isByVal, binding);
+            }
+
             Type declaringType = field.DeclaringType;
             Type fieldType = field.FieldType;
             ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
@@ -154,8 +171,43 @@ namespace ZLua.Emit
             return Wrap(core);
         }
 
+        private static LuaCSFunction CompileGetterInterpreted(
+            FieldInfo field,
+            bool isStatic,
+            bool isByVal,
+            LuaMarshalBinding binding)
+        {
+            Type declaringType = field.DeclaringType;
+            Type fieldType = field.FieldType;
+            return Wrap(L =>
+            {
+                object value;
+                if (isStatic)
+                {
+                    value = field.GetValue(null);
+                }
+                else if (isByVal && declaringType != null && declaringType.IsValueType)
+                {
+                    value = ByValInstanceOps.GetField(L, 1, declaringType, field);
+                }
+                else
+                {
+                    object target = BridgeMarshaling.PopTarget(L, 1, declaringType, isByVal: false);
+                    value = field.GetValue(target);
+                }
+
+                return CompositeMarshal.Push(L, value, fieldType, binding);
+            });
+        }
+
         private static LuaCSFunction CompileSetter(FieldInfo field, bool isStatic, bool isByVal)
         {
+            LuaMarshalBinding binding = ResolveFieldBinding(field, LuaMarshalDirection.LuaToCSharp);
+            if (binding.IsComposite || binding.MarshalType == LuaMarshalType.ActualTypeUserData)
+            {
+                return CompileSetterInterpreted(field, isStatic, isByVal, binding);
+            }
+
             Type declaringType = field.DeclaringType;
             Type fieldType = field.FieldType;
             ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
@@ -204,6 +256,35 @@ namespace ZLua.Emit
 
             Func<IntPtr, int> core = Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
             return Wrap(core);
+        }
+
+        private static LuaCSFunction CompileSetterInterpreted(
+            FieldInfo field,
+            bool isStatic,
+            bool isByVal,
+            LuaMarshalBinding binding)
+        {
+            Type declaringType = field.DeclaringType;
+            Type fieldType = field.FieldType;
+            return Wrap(L =>
+            {
+                object value = CompositeMarshal.Pop(L, 2, fieldType, binding);
+                if (isStatic)
+                {
+                    field.SetValue(null, value);
+                }
+                else if (isByVal && declaringType != null && declaringType.IsValueType)
+                {
+                    ByValInstanceOps.SetField(L, 1, declaringType, field, value);
+                }
+                else
+                {
+                    object target = BridgeMarshaling.PopTarget(L, 1, declaringType, isByVal: false);
+                    field.SetValue(target, value);
+                }
+
+                return 0;
+            });
         }
 
         private static LuaCSFunction Wrap(Func<IntPtr, int> core)

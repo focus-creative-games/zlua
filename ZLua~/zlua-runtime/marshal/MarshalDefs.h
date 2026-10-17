@@ -162,6 +162,14 @@ static inline bool HasParamsArray(const MethodMarshalCtx* ctx)
     return ctx->paramsParamIndex >= 0;
 }
 
+/// Stack slots pushed for one <c>out</c> after Invoke (arity uses stackSlots==0).
+static inline int OutPushSlotCount(const MarshalMetaInfo* paramMeta)
+{
+    if (paramMeta->marshalType == LuaMarshalType::UnpackedValues)
+        return paramMeta->memberCount > 0 ? paramMeta->memberCount : 1;
+    return 1;
+}
+
 static inline int32_t GetMaxLuaArity(const MethodMarshalCtx* ctx)
 {
     return HasParamsArray(ctx) ? INT32_MAX : ctx->luaArity;

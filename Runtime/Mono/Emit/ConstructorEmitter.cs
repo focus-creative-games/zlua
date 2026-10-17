@@ -170,8 +170,18 @@ namespace ZLua.Emit
                 ParameterInfo[] parameters = ctor.GetParameters();
                 for (int i = 0; i < parameters.Length; i++)
                 {
-                    if (parameters[i].ParameterType.IsByRef
-                        || PointerMarshal.IsPointerLikeType(parameters[i].ParameterType))
+                    Type paramType = parameters[i].ParameterType;
+                    if (paramType.IsByRef)
+                    {
+                        if (!InterpretedMethodInvoker.IsOutParameter(parameters[i]))
+                        {
+                            return false;
+                        }
+
+                        paramType = paramType.GetElementType();
+                    }
+
+                    if (PointerMarshal.IsPointerLikeType(paramType))
                     {
                         return false;
                     }

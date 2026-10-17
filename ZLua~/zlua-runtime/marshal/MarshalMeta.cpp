@@ -1238,12 +1238,45 @@ static MarshalMetaInfo* CreateForValueType(const Il2CppType* type, Il2CppClass**
     return meta;
 }
 
+/// Lua→C# <c>out A</c>: exclusive meta (not interned). stackSlots=0; storage is A; Push uses A writers.
+static MarshalMetaInfo* CreateOutParamMeta(const MethodInfo* method, int argIndex)
+{
+    const Il2CppType* byrefType = method->parameters[argIndex];
+    IL2CPP_ASSERT(byrefType->byref && (byrefType->attrs & PARAM_ATTRIBUTE_OUT) != 0);
+
+    Il2CppType bare = *byrefType;
+    bare.byref = false;
+
+    Il2CppClass* klass = il2cpp::vm::Class::FromIl2CppType(&bare);
+    il2cpp::vm::Class::Init(klass);
+
+    LuaMarshalAsData marshalAs;
+    const uint32_t token = MetadataUtil::GetParameterToken(method, argIndex);
+    LuaMarshalAsResolveKind resolveKind =
+        TryResolveLuaMarshalAsDataForMethodSlot(method->klass->image, token, method, argIndex, klass, marshalAs);
+
+    MarshalMetaInfo* meta = AllocMarshalMeta(byrefType);
+    ApplySizeAndPassByValueAndKlass(meta, &klass->byval_arg, klass);
+    ApplyResolvedOrDefaultWriters(meta, &klass->byval_arg, klass, resolveKind, marshalAs,
+                                  /*requireWrite*/ false, /*requireRead*/ true, /*allowUnpacked*/ true);
+    // Out: no Lua arity slot; invoker receives address of element alloca buffer.
+    // Re-apply after writers (Table/Unpacked may set stackSlots to memberCount).
+    meta->passByValue = false;
+    meta->stackSlots = 0;
+    return meta;
+}
+
 MarshalMetaInfo* MarshalMeta::Create(lua_State* L, const MethodInfo* method, int argIndex)
 {
     (void)L;
     const Il2CppType* type = argIndex >= 0 ? method->parameters[argIndex] : method->return_type;
     if (type->byref)
+    {
+        // out → multi-return (spec 03-BYREF §5). ref/in stay OpaqueValue.
+        if (argIndex >= 0 && (type->attrs & PARAM_ATTRIBUTE_OUT) != 0)
+            return CreateOutParamMeta(method, argIndex);
         return GetOrCreateDefaultMarshalMeta(type);
+    }
 
     Il2CppClass* klass = nullptr;
     LuaMarshalAsData marshalAs;

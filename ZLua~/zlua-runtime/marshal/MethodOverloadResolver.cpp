@@ -417,6 +417,10 @@ static ConversionScore ComputeMethodConversionScore(lua_State* L, int32_t argSta
             continue;
         }
 
+        // out: 0 Lua slots (spec 03-BYREF §5 / 04-METHOD-OVERLOAD §3.3).
+        if (MetadataUtil::IsOutParameter(method->method, j) || paramMeta->stackSlots == 0)
+            continue;
+
         const int need = paramMeta->stackSlots > 0 ? paramMeta->stackSlots : 1;
         if (slotsLeft >= need)
         {

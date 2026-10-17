@@ -221,6 +221,17 @@ namespace ZLua.Emit
 
         private static LuaCSFunction CompileSetter(PropertyInfo property, MethodInfo setter, bool isStatic, bool isByVal)
         {
+            ParameterInfo[] setterParams = setter.GetParameters();
+            ParameterInfo valueParam = setterParams[setterParams.Length - 1];
+            LuaMarshalBinding valueBinding = LuaMarshalAsValidation.Current.ResolveParameterBinding(
+                valueParam,
+                setter,
+                LuaMarshalDirection.LuaToCSharp);
+            if (valueBinding.IsComposite || valueBinding.MarshalType == LuaMarshalType.ActualTypeUserData)
+            {
+                return CompileSetterInterpreted(property, setter, isStatic, isByVal, valueBinding);
+            }
+
             Type declaringType = property.DeclaringType;
             Type propertyType = property.PropertyType;
             ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
@@ -267,6 +278,36 @@ namespace ZLua.Emit
 
             Func<IntPtr, int> core = Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
             return Wrap(core);
+        }
+
+        private static LuaCSFunction CompileSetterInterpreted(
+            PropertyInfo property,
+            MethodInfo setter,
+            bool isStatic,
+            bool isByVal,
+            LuaMarshalBinding valueBinding)
+        {
+            Type declaringType = property.DeclaringType;
+            Type propertyType = property.PropertyType;
+            return Wrap(L =>
+            {
+                object value = CompositeMarshal.Pop(L, 2, propertyType, valueBinding);
+                if (isStatic)
+                {
+                    setter.Invoke(null, new[] { value });
+                }
+                else if (isByVal && declaringType != null && declaringType.IsValueType)
+                {
+                    ByValInstanceOps.InvokePropertySetter(L, 1, declaringType, setter, value);
+                }
+                else
+                {
+                    object target = BridgeMarshaling.PopTarget(L, 1, declaringType, isByVal: false);
+                    setter.Invoke(target, new[] { value });
+                }
+
+                return 0;
+            });
         }
 
         private static LuaCSFunction Wrap(Func<IntPtr, int> core)

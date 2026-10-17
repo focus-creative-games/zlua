@@ -182,8 +182,8 @@ static bool TryMaterializeDefaultParam(const MethodInfo* method, int paramIndex,
 
 MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const MethodInfo* method, bool isByVal)
 {
-    // paramsMeta / retMeta / defaults / luaArity / invoker / isExtension 与 byVal 无关，按 MethodInfo* 共享。
-    // byVal / resolveThis / sealed 仍每份 MethodMarshalCtx 独立（struct byobj+byval 双建时只分叉薄壳）。
+    // paramsMeta / retMeta / defaults / luaArity / invoker / isExtension are independent of byVal and shared per MethodInfo*.
+    // byVal / resolveThis / sealed stay per MethodMarshalCtx (struct byobj+byval only forks the thin shell).
     MethodMarshalShared* shared = nullptr;
     auto sharedIt = s_methodMarshalShared.find(method);
     if (sharedIt != s_methodMarshalShared.end())
@@ -210,8 +210,9 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
                 const MarshalMetaInfo* meta = MarshalMeta::Create(L, method, i);
                 shared->paramsMeta[i] = meta;
                 // Extension: luaArity excludes CLR param 0 (this) — matches IMT argStart=2.
+                // out: stackSlots == 0 (spec 03-BYREF §5 / 04-METHOD-OVERLOAD §3.3).
                 if (!shared->isExtension || i >= 1)
-                    luaArity += meta->stackSlots > 0 ? meta->stackSlots : 1;
+                    luaArity += meta->stackSlots;
             }
 
             // params is always the last CLR parameter (C# rule). Attribute check once at Bind.
@@ -223,7 +224,7 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
 
         // params expand cannot use specialized stubs (they assume a single array slot).
         if (shared->paramsParamIndex >= 0)
-            shared->lua2CsInvoker = MethodBridge::DefaultInvokeLuaMethod;
+            shared->lua2CsInvoker = MethodBridge::SelectDefaultInvoker(method);
 
         // Trailing C# defaults → dense MethodDefaultArgs (Il2Cpp perf: no blob parse on call).
         // params T[] is always omitable (empty array); continue scanning defaults before it.
@@ -260,7 +261,7 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
                 {
                     if (MetadataUtil::MethodParameterHasParamArrayAttribute(method, i))
                     {
-                        omitSlots += shared->paramsMeta[i]->stackSlots > 0 ? shared->paramsMeta[i]->stackSlots : 1;
+                        omitSlots += shared->paramsMeta[i]->stackSlots;
                         continue;
                     }
 
@@ -274,7 +275,7 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
                     tempObjects[i] = objectSlot;
                     if (shared->paramsMeta[i]->passByValue)
                         anyObjectDefault = true;
-                    omitSlots += shared->paramsMeta[i]->stackSlots > 0 ? shared->paramsMeta[i]->stackSlots : 1;
+                    omitSlots += shared->paramsMeta[i]->stackSlots;
                 }
 
                 IL2CPP_ASSERT(firstDefault >= 0);
@@ -301,7 +302,7 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
                 defaults->defaultValueSlots = valueSlots;
                 defaults->defaultObjectSlots = objectSlots;
                 shared->defaults = defaults;
-                shared->lua2CsInvoker = MethodBridge::DefaultInvokeLuaMethod;
+                shared->lua2CsInvoker = MethodBridge::SelectDefaultInvoker(method);
             }
         }
 
@@ -324,7 +325,7 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
             needsStackCursor = true;
         }
         if (needsStackCursor)
-            shared->lua2CsInvoker = MethodBridge::DefaultInvokeLuaMethod;
+            shared->lua2CsInvoker = MethodBridge::SelectDefaultInvoker(method);
 
         s_methodMarshalShared.insert({method, shared});
     }

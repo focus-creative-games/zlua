@@ -30,7 +30,12 @@ class MethodBridge
 {
 public:
     static void Initialize();
+    /// Generic Lua→C# invoker. containsOutParam is fixed at Bind so the no-out path
+    /// does not pay for out alloca / multi-return Push.
+    template <bool containsOutParam>
     static int DefaultInvokeLuaMethod(lua_State* L, void* target, int argStart, const MethodInfo* method, const MethodMarshalCtx* ctx);
+    /// Picks DefaultInvokeLuaMethod&lt;true/false&gt; from CLR out attrs.
+    static FnLua2CsInvoker SelectDefaultInvoker(const MethodInfo* method);
     static FnLua2CsInvoker ResolveMethodInvoker(const MethodInfo* method);
 
     static inline int InvokeLua2Cs(lua_State* L, void* target, int argStart, const MethodMarshalCtx* ctx)

@@ -71,6 +71,7 @@ static void FillDefaultParam(const MethodMarshalCtx* ctx, uint8_t paramIndex, vo
     *outParam = allocaStorage;
 }
 
+template <bool containsOutParam>
 int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStart, const MethodInfo* method, const MethodMarshalCtx* ctx)
 {
     void** params = (void**)alloca(method->parameters_count * sizeof(void*));
@@ -80,6 +81,21 @@ int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStar
     for (uint8_t i = 0; i < method->parameters_count; i++)
     {
         const MarshalMetaInfo* paramMeta = ctx->paramsMeta[i];
+
+        if (containsOutParam)
+        {
+            // out A: no Lua slot; alloca default(A), pass address (spec 03-BYREF §5).
+            if (MetadataUtil::IsOutParameter(method, i))
+            {
+                IL2CPP_ASSERT(paramMeta->stackSlots == 0);
+                IL2CPP_ASSERT(!paramMeta->passByValue);
+                void* outStorage = alloca(static_cast<size_t>(paramMeta->size));
+                std::memset(outStorage, 0, static_cast<size_t>(paramMeta->size));
+                params[i] = outStorage;
+                continue;
+            }
+        }
+
         IL2CPP_ASSERT(!paramMeta->passByValue || paramMeta->size == sizeof(void*));
         void* tempStorage = nullptr;
         void* storage = paramMeta->passByValue ? &tempStorage : alloca(paramMeta->size);
@@ -128,18 +144,59 @@ int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStar
     // vm::Runtime::InvokeWithThrow). No-op without HybridCLR, and for AOT methods.
     ZLuaEnsureInvokable(method);
 
-    if (ctx->retMeta != nullptr)
+    if (containsOutParam)
     {
-        void* ret = alloca(ctx->retMeta->size);
-        method->invoker_method(method->methodPointer, method, target, params, ret);
-        ctx->retMeta->cs2luaWriter(L, ret, ctx->retMeta);
-        return ctx->retMeta->stackSlots > 0 ? ctx->retMeta->stackSlots : 1;
+        int pushed = 0;
+        if (ctx->retMeta != nullptr)
+        {
+            void* ret = alloca(ctx->retMeta->size);
+            method->invoker_method(method->methodPointer, method, target, params, ret);
+            ctx->retMeta->cs2luaWriter(L, ret, ctx->retMeta);
+            pushed += ctx->retMeta->stackSlots > 0 ? ctx->retMeta->stackSlots : 1;
+        }
+        else
+        {
+            method->invoker_method(method->methodPointer, method, target, params, nullptr);
+        }
+
+        // Push outs in declaration order after return (spec 03-BYREF §5).
+        for (uint8_t i = 0; i < method->parameters_count; i++)
+        {
+            if (!MetadataUtil::IsOutParameter(method, i))
+                continue;
+            const MarshalMetaInfo* paramMeta = ctx->paramsMeta[i];
+            paramMeta->cs2luaWriter(L, params[i], paramMeta);
+            pushed += OutPushSlotCount(paramMeta);
+        }
+
+        return pushed;
     }
     else
     {
+        if (ctx->retMeta != nullptr)
+        {
+            void* ret = alloca(ctx->retMeta->size);
+            method->invoker_method(method->methodPointer, method, target, params, ret);
+            ctx->retMeta->cs2luaWriter(L, ret, ctx->retMeta);
+            return ctx->retMeta->stackSlots > 0 ? ctx->retMeta->stackSlots : 1;
+        }
+
         method->invoker_method(method->methodPointer, method, target, params, nullptr);
         return 0;
     }
+}
+
+template int MethodBridge::DefaultInvokeLuaMethod<false>(lua_State*, void*, int, const MethodInfo*, const MethodMarshalCtx*);
+template int MethodBridge::DefaultInvokeLuaMethod<true>(lua_State*, void*, int, const MethodInfo*, const MethodMarshalCtx*);
+
+FnLua2CsInvoker MethodBridge::SelectDefaultInvoker(const MethodInfo* method)
+{
+    for (uint8_t i = 0; i < method->parameters_count; i++)
+    {
+        if (MetadataUtil::IsOutParameter(method, i))
+            return &DefaultInvokeLuaMethod<true>;
+    }
+    return &DefaultInvokeLuaMethod<false>;
 }
 
 static std::string s_methodNameCache;
@@ -177,17 +234,17 @@ FnLua2CsInvoker MethodBridge::ResolveMethodInvoker(const MethodInfo* method)
     // unresolved stub; this call also initializes it.
     if (ZLuaRequiresGenericInvoke(method))
     {
-        return DefaultInvokeLuaMethod;
+        return SelectDefaultInvoker(method);
     }
 
     if (method->methodPointer == nullptr || ZLuaIsAnUnresolvedCallStubWasNotFound(method->methodPointer) || DoesAnyParameterOrReturnTypeHaveNotDefaultMarshal(method))
     {
-        return DefaultInvokeLuaMethod;
+        return SelectDefaultInvoker(method);
     }
 #if ZLUA_UNITY_VERSION < 20220000
     if (il2cpp::vm::Method::HasFullGenericSharingSignature(method))
     {
-        return DefaultInvokeLuaMethod;
+        return SelectDefaultInvoker(method);
     }
 #endif
     s_methodNameCache.clear();
@@ -197,7 +254,7 @@ FnLua2CsInvoker MethodBridge::ResolveMethodInvoker(const MethodInfo* method)
     {
         return it->second;
     }
-    return DefaultInvokeLuaMethod;
+    return SelectDefaultInvoker(method);
 }
 
 } // namespace zlua
