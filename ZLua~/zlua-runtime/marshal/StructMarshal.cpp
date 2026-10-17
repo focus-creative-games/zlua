@@ -85,7 +85,7 @@ void* StructMarshal::PushZeroedValue(lua_State* L, Il2CppClass* klass)
     return payload;
 }
 
-void StructMarshal::PopValue(lua_State* L, int index, Il2CppClass* klass, void* outDataAddr)
+void StructMarshal::PopValue(lua_State* L, int index, Il2CppClass* klass, void* outDataAddr, bool needsWriteBarrierOnWriteReference)
 {
     IL2CPP_ASSERT(!klass->enumtype && !klass->nullabletype);
     ByValUserDataHeader* header = GetByValHeader(L, index);
@@ -98,7 +98,7 @@ void StructMarshal::PopValue(lua_State* L, int index, Il2CppClass* klass, void* 
 
     const size_t payloadSize = MetadataUtil::GetInstanceSizeWithoutHeader(klass);
     std::memcpy(outDataAddr, header->Payload(), payloadSize);
-    if (klass->has_references)
+    if (klass->has_references && needsWriteBarrierOnWriteReference)
     {
         il2cpp::gc::GarbageCollector::SetWriteBarrier((void**)outDataAddr, payloadSize);
     }
@@ -130,7 +130,7 @@ void StructMarshal::PushNullableValue(lua_State* L, void* dataAddr, Il2CppClass*
     TypedMarshal::PushByType(L, ptr, &elementClass->byval_arg);
 }
 
-void StructMarshal::PopNullableValue(lua_State* L, int index, Il2CppClass* klass, void* outDataAddr)
+void StructMarshal::PopNullableValue(lua_State* L, int index, Il2CppClass* klass, void* outDataAddr, bool needsWriteBarrierOnWriteReference)
 {
     int type = lua_type(L, index);
     if (type == LUA_TNIL)
@@ -142,6 +142,11 @@ void StructMarshal::PopNullableValue(lua_State* L, int index, Il2CppClass* klass
     void* valueAddr = MetadataUtil::GetNullableValue(outDataAddr, klass);
     TypedMarshal::PopByType(L, index, valueAddr, elementClass->enumtype ? il2cpp::vm::Class::GetEnumBaseType(elementClass) : &elementClass->byval_arg);
     MetadataUtil::NullableSetHasValue(outDataAddr, klass);
+    if (needsWriteBarrierOnWriteReference && elementClass->has_references)
+    {
+        const size_t payloadSize = MetadataUtil::GetInstanceSizeWithoutHeader(elementClass);
+        il2cpp::gc::GarbageCollector::SetWriteBarrier((void**)valueAddr, payloadSize);
+    }
 }
 
 } // namespace zlua

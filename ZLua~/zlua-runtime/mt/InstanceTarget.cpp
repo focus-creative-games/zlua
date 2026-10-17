@@ -42,16 +42,13 @@ UserDataInfo InstanceTarget::GetUserDataInfo(lua_State* L, int index)
         ByValUserDataHeader* byValHeader = (ByValUserDataHeader*)header;
         return UserDataInfo{header->kind, byValHeader->klass};
     }
-    else if (header->kind == UserDataKind::ByObj)
+    if (header->kind == UserDataKind::ByObj)
     {
         // Overload / facade must use declared view, not runtime obj->klass (e.g. cast to object).
         ZLuaObjectUserData* ud = (ZLuaObjectUserData*)header;
         return UserDataInfo{header->kind, ud->viewKlass};
     }
-    else
-    {
-        LuaException::Throw("zlua: userdata must have a kind field");
-    }
+    LuaException::Throw("zlua: userdata must have a kind field");
 }
 
 FnResolveMethodThis InstanceTarget::GetResolveMethodThisFunc(Il2CppClass* klass, bool isStatic, bool isByVal)

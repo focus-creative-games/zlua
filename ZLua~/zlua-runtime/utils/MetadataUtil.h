@@ -255,5 +255,10 @@ class MetadataUtil
 
     static uint32_t GetParameterToken(const MethodInfo* method, int paramIndex /* -1 for return type */);
     static bool HasParameterMarshalAsAttribute(const Il2CppImage* image, uint32_t token);
+
+    static bool NeedsWriteBarrier(Il2CppClass* klass)
+    {
+        return il2cpp::vm::Type::IsReference(&klass->byval_arg) || klass->has_references;
+    }
 };
 } // namespace zlua

@@ -113,7 +113,7 @@ int MethodBridge::DefaultInvokeLuaMethod(lua_State* L, void* target, int argStar
         const int available = top >= slot ? top - slot + 1 : 0;
         if (available >= need)
         {
-            paramMeta->lua2csWriter(L, slot, storage, paramMeta);
+            paramMeta->lua2csWriter(L, slot, storage, false, paramMeta);
             params[i] = paramMeta->passByValue ? tempStorage : storage;
             slot += need;
         }

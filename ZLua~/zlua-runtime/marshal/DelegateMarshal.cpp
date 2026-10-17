@@ -76,26 +76,26 @@ std::unordered_map<const Il2CppClass*, const LuaDelegateCtorCache*> s_luaDelegat
 // Like HybridCLR InterpreterInvoke (Unity 2021+ InvokerMethod with __ret).
 // Not InterpreterDelegateInvoke — ZLua lua→delegate never carries a multicast
 // list.
-static void LuaDelegateInvoke(Il2CppMethodPointer, const MethodInfo* method, void* __this, void** __args, void* __ret)
-{
-    LuaMethod* luaMethod = reinterpret_cast<LuaMethod*>(__this);
-    Il2CppObject* targetObj = reinterpret_cast<Il2CppObject*>(luaMethod);
-    lua_State* L = LuaEnv::GetState();
-    OpaqueParameterScope opaqueScope;
-    const MethodMarshalCtx* ctx = luaMethod->methodMarshalCtx;
-    LuaStackGuard guard(L);
-    int errfunc = LuaEnv::PushErrorHandler();
-    LuaUtil::PushRef(L, luaMethod->funcRef);
+// static void LuaDelegateInvoke(Il2CppMethodPointer, const MethodInfo* method, void* __this, void** __args, void* __ret)
+// {
+//     LuaMethod* luaMethod = reinterpret_cast<LuaMethod*>(__this);
+//     Il2CppObject* targetObj = reinterpret_cast<Il2CppObject*>(luaMethod);
+//     lua_State* L = LuaEnv::GetState();
+//     OpaqueParameterScope opaqueScope;
+//     const MethodMarshalCtx* ctx = luaMethod->methodMarshalCtx;
+//     LuaStackGuard guard(L);
+//     int errfunc = LuaEnv::PushErrorHandler();
+//     LuaUtil::PushRef(L, luaMethod->funcRef);
 
-    const uint8_t paramCount = method->parameters_count;
-    for (uint8_t i = 0; i < paramCount; i++)
-        ctx->paramsMeta[i]->cs2luaWriter(L, __args[i], ctx->paramsMeta[i]);
+//     const uint8_t paramCount = method->parameters_count;
+//     for (uint8_t i = 0; i < paramCount; i++)
+//         ctx->paramsMeta[i]->cs2luaWriter(L, __args[i], ctx->paramsMeta[i]);
 
-    const bool hasRet = method->return_type->type != IL2CPP_TYPE_VOID;
-    LuaUtil::PCall(L, paramCount, hasRet ? 1 : 0, errfunc);
-    if (hasRet)
-        ctx->retMeta->lua2csWriter(L, -1, __ret, ctx->retMeta);
-}
+//     const bool hasRet = method->return_type->type != IL2CPP_TYPE_VOID;
+//     LuaUtil::PCall(L, paramCount, hasRet ? 1 : 0, errfunc);
+//     if (hasRet)
+//         ctx->retMeta->lua2csWriter(L, -1, __ret, false, ctx->retMeta);
+// }
 
 bool IsValueType(const Il2CppType* type)
 {
@@ -158,7 +158,7 @@ void FullGenericSharingReflectionInvoke(Il2CppMethodPointer, const MethodInfo* m
     const bool hasRet = method->return_type->type != IL2CPP_TYPE_VOID;
     LuaUtil::PCall(L, paramCount, hasRet ? 1 : 0, errfunc);
     if (hasRet)
-        ctx->retMeta->lua2csWriter(L, -1, __ret, ctx->retMeta);
+        ctx->retMeta->lua2csWriter(L, -1, __ret, false, ctx->retMeta);
 }
 
 static const MethodInfo* CreateFgsLuaDelegateInvokeMethod(const MethodInfo* invokeMethod)

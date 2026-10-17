@@ -145,6 +145,9 @@ void LuaEnv::Shutdown()
     IL2CPP_ASSERT(s_L != nullptr);
 
     ProcessPendingRefReleases();
+    // Drop the managed moduleLoader root before tearing down registries / lua_State.
+    // ResetFromManaged → ShutdownState → here, then SetModuleLoader installs the new loader.
+    LuaLoader::Clear();
     MetaTableCache::Shutdown(s_L);
     StructRegistry::Shutdown(s_L);
     ObjectRegistry::Shutdown(s_L);
@@ -163,7 +166,6 @@ void LuaEnv::Shutdown()
 
     lua_close(s_L);
     s_L = nullptr;
-    LuaLoader::Clear();
 }
 
 lua_State* LuaEnv::GetState()

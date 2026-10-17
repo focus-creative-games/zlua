@@ -82,6 +82,8 @@ struct MethodMarshalShared
     bool isExtension;
 };
 
+/// Process-lifetime cache (MethodInfo* → shared marshal layout). Not cleared in ShutdownState:
+/// entries point into LuaMetadataAlloc and are reused across Reset; see ShutdownState comment.
 static std::unordered_map<const MethodInfo*, MethodMarshalShared*> s_methodMarshalShared;
 
 static const char* CopyRuntimeAliasKey(const std::string& key)
@@ -1372,8 +1374,14 @@ bool MetaBinding::TryFindOpenGenericMethod(lua_State* L, Il2CppClass* ownerKlass
 
 void MetaBinding::ShutdownState()
 {
-    // Method MetaInfo.closureRef values are luaL_ref numbers for the closing state.
-    // Drop bindings so EnsureBinding rebuilds closures against the next lua_State.
+    // Method MetaInfo.closureRef values are luaL_ref numbers for the closing lua_State.
+    // Drop TypeBindings only so EnsureBinding rebuilds closures against the next state.
+    //
+    // Do not clear s_methodMarshalShared or free *MarshalCtx: they are process-level,
+    // keyed by stable MethodInfo*/metadata, allocated from LuaMetadataAlloc (bump pool with
+    // no per-object Free). Reset must keep them (01-HOST-API / 10-LIFETIME: Il2Cpp process
+    // Bridge/binding tables survive Reset). Pool chunks are released only when
+    // LuaMetadataAlloc::Shutdown runs at process teardown.
     for (auto& kv : s_bindings)
         delete kv.second;
     s_bindings.clear();

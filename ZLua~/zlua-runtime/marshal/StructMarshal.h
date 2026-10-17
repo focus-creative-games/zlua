@@ -34,9 +34,9 @@ class StructMarshal
         PushValue(L, dataAddr, klass, LUA_NOREF);
     }
     static void* PushZeroedValue(lua_State* L, Il2CppClass* klass);
-    static void PopValue(lua_State* L, int index, Il2CppClass* klass, void* outDataAddr);
+    static void PopValue(lua_State* L, int index, Il2CppClass* klass, void* outDataAddr, bool needsWriteBarrierOnWriteReference = false);
     static void PushNullableValue(lua_State* L, void* dataAddr, Il2CppClass* klass, int metatableRefIndex);
-    static void PopNullableValue(lua_State* L, int index, Il2CppClass* klass, void* outDataAddr);
+    static void PopNullableValue(lua_State* L, int index, Il2CppClass* klass, void* outDataAddr, bool needsWriteBarrierOnWriteReference = false);
 
     static ByValUserDataHeader* GetByValHeader(lua_State* L, int index);
 

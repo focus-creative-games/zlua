@@ -51,23 +51,20 @@ void* MemberAddress(void* structAddress, const CompositeMember& member)
     return reinterpret_cast<uint8_t*>(structAddress) + member.fieldOffset;
 }
 
-void WriteFieldMember(void* structAddress, const CompositeMember& member, void* valueStorage)
+void WriteFieldMember(void* structAddress, const CompositeMember& member, void* valueStorage, bool needsWriteBarrierOnWriteReference)
 {
     void* dest = MemberAddress(structAddress, member);
     const MarshalMetaInfo* memberMeta = member.memberMeta;
     if (memberMeta->passByValue)
     {
         *reinterpret_cast<void**>(dest) = *reinterpret_cast<void**>(valueStorage);
-        il2cpp::gc::GarbageCollector::SetWriteBarrier(reinterpret_cast<void**>(dest));
+        if (needsWriteBarrierOnWriteReference && memberMeta->needsWriteBarrier)
+            il2cpp::gc::GarbageCollector::SetWriteBarrier(reinterpret_cast<void**>(dest));
     }
     else
     {
         std::memcpy(dest, valueStorage, static_cast<size_t>(memberMeta->size));
-        if (!member.field->type->valuetype)
-        {
-            il2cpp::gc::GarbageCollector::SetWriteBarrier(reinterpret_cast<void**>(dest), static_cast<size_t>(memberMeta->size));
-        }
-        else if (memberMeta->typeKlass->has_references)
+        if (needsWriteBarrierOnWriteReference && memberMeta->needsWriteBarrier)
         {
             il2cpp::gc::GarbageCollector::SetWriteBarrier(reinterpret_cast<void**>(dest), static_cast<size_t>(memberMeta->size));
         }
@@ -76,6 +73,7 @@ void WriteFieldMember(void* structAddress, const CompositeMember& member, void* 
 
 void ReadFieldMember(void* structAddress, const CompositeMember& member, void* valueStorage)
 {
+    // we sure valueStorage is on stack, so we don't need to write barrier
     void* src = MemberAddress(structAddress, member);
     const MarshalMetaInfo* memberMeta = member.memberMeta;
     if (memberMeta->passByValue)
@@ -106,6 +104,7 @@ void WritePropertyMember(void* structAddress, const CompositeMember& member, voi
 
 void ReadPropertyMember(void* structAddress, const CompositeMember& member, void* valueStorage)
 {
+    // we sure valueStorage is on stack, so we don't need to write barrier
     const PropertyInfo* property = member.property;
     IL2CPP_ASSERT(property->get != nullptr);
     const MethodInfo* getter = property->get;
@@ -113,10 +112,10 @@ void ReadPropertyMember(void* structAddress, const CompositeMember& member, void
     getter->invoker_method(getter->methodPointer, getter, structAddress, nullptr, valueStorage);
 }
 
-void WriteMember(void* structAddress, const CompositeMember& member, void* valueStorage)
+void WriteMember(void* structAddress, const CompositeMember& member, void* valueStorage, bool needsWriteBarrierOnWriteReference)
 {
     if (member.isField)
-        WriteFieldMember(structAddress, member, valueStorage);
+        WriteFieldMember(structAddress, member, valueStorage, needsWriteBarrierOnWriteReference);
     else
         WritePropertyMember(structAddress, member, valueStorage);
 }
@@ -129,14 +128,14 @@ void ReadMember(void* structAddress, const CompositeMember& member, void* valueS
         ReadPropertyMember(structAddress, member, valueStorage);
 }
 
-void PopOneMember(lua_State* L, int valueIdx, void* structAddress, const CompositeMember& member)
+void PopOneMember(lua_State* L, int valueIdx, void* structAddress, const CompositeMember& member, bool needsWriteBarrierOnWriteReference)
 {
     const MarshalMetaInfo* memberMeta = member.memberMeta;
     void* tempStorage = nullptr;
     void* storage = memberMeta->passByValue ? &tempStorage : alloca(static_cast<size_t>(memberMeta->size));
-    memberMeta->lua2csWriter(L, valueIdx, storage, memberMeta);
+    memberMeta->lua2csWriter(L, valueIdx, storage, false, memberMeta);
     void* valuePtr = memberMeta->passByValue ? &tempStorage : storage;
-    WriteMember(structAddress, member, valuePtr);
+    WriteMember(structAddress, member, valuePtr, needsWriteBarrierOnWriteReference);
 }
 
 void PushOneMember(lua_State* L, void* structAddress, const CompositeMember& member)
@@ -148,7 +147,8 @@ void PushOneMember(lua_State* L, void* structAddress, const CompositeMember& mem
     memberMeta->cs2luaWriter(L, memberMeta->passByValue ? &tempStorage : storage, memberMeta);
 }
 
-void PopTableIntoStruct(lua_State* L, int valueIdx, void* address, Il2CppClass* structKlass, const MarshalMetaInfo* meta)
+void PopTableIntoStruct(lua_State* L, int valueIdx, void* address, Il2CppClass* structKlass, bool needsWriteBarrierOnWriteReference,
+                        const MarshalMetaInfo* meta)
 {
     if (!lua_istable(L, valueIdx))
     {
@@ -169,7 +169,7 @@ void PopTableIntoStruct(lua_State* L, int valueIdx, void* address, Il2CppClass* 
             LuaException::ThrowFormat("zlua: missing table key '%s' for %s.%s", member.clrName, structKlass->namespaze, structKlass->name);
         }
 
-        PopOneMember(L, -1, address, member);
+        PopOneMember(L, -1, address, member, needsWriteBarrierOnWriteReference);
         lua_pop(L, 1);
     }
 }
@@ -188,7 +188,7 @@ void PushTableFromStruct(lua_State* L, void* address, const MarshalMetaInfo* met
 
 } // namespace
 
-void CompositeMarshal::PopTable(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* meta)
+void CompositeMarshal::PopTable(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* meta)
 {
     Il2CppClass* klass = meta->typeKlass;
     if (klass->nullabletype)
@@ -200,12 +200,12 @@ void CompositeMarshal::PopTable(lua_State* L, int valueIdx, void* address, const
         }
 
         void* valueAddr = MetadataUtil::GetNullableValue(address, klass);
-        PopTableIntoStruct(L, valueIdx, valueAddr, klass->element_class, meta);
+        PopTableIntoStruct(L, valueIdx, valueAddr, klass->element_class, needsWriteBarrierOnWriteReference, meta);
         MetadataUtil::NullableSetHasValue(address, klass);
         return;
     }
 
-    PopTableIntoStruct(L, valueIdx, address, klass, meta);
+    PopTableIntoStruct(L, valueIdx, address, klass, needsWriteBarrierOnWriteReference, meta);
 }
 
 void CompositeMarshal::PushTable(lua_State* L, void* address, const MarshalMetaInfo* meta)
@@ -227,14 +227,14 @@ void CompositeMarshal::PushTable(lua_State* L, void* address, const MarshalMetaI
     PushTableFromStruct(L, address, meta);
 }
 
-void CompositeMarshal::PopUnpacked(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* meta)
+void CompositeMarshal::PopUnpacked(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* meta)
 {
     Il2CppClass* klass = meta->typeKlass;
     IL2CPP_ASSERT(!klass->nullabletype);
     ZeroInitStruct(address, klass);
     for (uint16_t i = 0; i < meta->memberCount; ++i)
     {
-        PopOneMember(L, valueIdx + static_cast<int>(i), address, meta->members[i]);
+        PopOneMember(L, valueIdx + static_cast<int>(i), address, meta->members[i], needsWriteBarrierOnWriteReference);
     }
 }
 
@@ -248,9 +248,9 @@ void CompositeMarshal::PushUnpacked(lua_State* L, void* address, const MarshalMe
     }
 }
 
-void CompositeMarshal::Lua2CSMarshalTable(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* meta)
+void CompositeMarshal::Lua2CSMarshalTable(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* meta)
 {
-    PopTable(L, valueIdx, address, meta);
+    PopTable(L, valueIdx, address, needsWriteBarrierOnWriteReference, meta);
 }
 
 void CompositeMarshal::CS2LuaMarshalTable(lua_State* L, void* address, const MarshalMetaInfo* meta)
@@ -258,9 +258,9 @@ void CompositeMarshal::CS2LuaMarshalTable(lua_State* L, void* address, const Mar
     PushTable(L, address, meta);
 }
 
-void CompositeMarshal::Lua2CSMarshalUnpacked(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* meta)
+void CompositeMarshal::Lua2CSMarshalUnpacked(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* meta)
 {
-    PopUnpacked(L, valueIdx, address, meta);
+    PopUnpacked(L, valueIdx, address, needsWriteBarrierOnWriteReference, meta);
 }
 
 void CompositeMarshal::CS2LuaMarshalUnpacked(lua_State* L, void* address, const MarshalMetaInfo* meta)

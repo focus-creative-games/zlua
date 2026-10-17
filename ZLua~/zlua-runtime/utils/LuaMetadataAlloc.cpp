@@ -28,11 +28,13 @@ namespace zlua
 
     void LuaMetadataAlloc::Initialize()
     {
+        // 1MB bump arena; grows as needed. Process-scoped — see class comment in header.
         s_memoryPool = new il2cpp::utils::MemoryPool(1024 * 1024 * 1);
     }
 
     void LuaMetadataAlloc::Shutdown()
     {
+        // Only process teardown (not MetaBinding::ShutdownState / Reset) deletes the pool.
         delete s_memoryPool;
         s_memoryPool = nullptr;
     }

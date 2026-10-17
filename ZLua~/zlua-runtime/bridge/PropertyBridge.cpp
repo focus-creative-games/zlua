@@ -65,60 +65,60 @@ void PropPushStructByValue(lua_State* L, T v, const PropertyMarshalCtx* ctx)
     StructMarshal::PushValue(L, &v, ctx->valueTypeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx->meta));
 }
 
-// Property set hot path: no ExpectLuaType (matches pre-6636bb1 direct lua_to*).
+// Property setters: share PrimitiveMarshal range / type checks (no silent truncation).
 bool PropPopBool(lua_State* L, int idx)
 {
-    return lua_toboolean(L, idx) != 0;
+    return PrimitiveMarshal::PopBool(L, idx);
 }
 
 int8_t PropPopInt8(lua_State* L, int idx)
 {
-    return (int8_t)lua_tointeger(L, idx);
+    return PrimitiveMarshal::PopInt8(L, idx);
 }
 
 uint8_t PropPopUInt8(lua_State* L, int idx)
 {
-    return (uint8_t)lua_tointeger(L, idx);
+    return PrimitiveMarshal::PopUInt8(L, idx);
 }
 
 int16_t PropPopInt16(lua_State* L, int idx)
 {
-    return (int16_t)lua_tointeger(L, idx);
+    return PrimitiveMarshal::PopInt16(L, idx);
 }
 
 uint16_t PropPopUInt16(lua_State* L, int idx)
 {
-    return (uint16_t)lua_tointeger(L, idx);
+    return PrimitiveMarshal::PopUInt16(L, idx);
 }
 
 int32_t PropPopInt32(lua_State* L, int idx)
 {
-    return (int32_t)lua_tointeger(L, idx);
+    return PrimitiveMarshal::PopInt32(L, idx);
 }
 
 uint32_t PropPopUInt32(lua_State* L, int idx)
 {
-    return (uint32_t)lua_tointeger(L, idx);
+    return PrimitiveMarshal::PopUInt32(L, idx);
 }
 
 int64_t PropPopInt64(lua_State* L, int idx)
 {
-    return zlua_to_int64(L, idx);
+    return PrimitiveMarshal::PopInt64(L, idx);
 }
 
 uint64_t PropPopUInt64(lua_State* L, int idx)
 {
-    return zlua_to_uint64(L, idx);
+    return PrimitiveMarshal::PopUInt64(L, idx);
 }
 
 float PropPopFloat(lua_State* L, int idx)
 {
-    return (float)lua_tonumber(L, idx);
+    return PrimitiveMarshal::PopFloat(L, idx);
 }
 
 double PropPopDouble(lua_State* L, int idx)
 {
-    return lua_tonumber(L, idx);
+    return PrimitiveMarshal::PopDouble(L, idx);
 }
 
 intptr_t PropPopIntPtr(lua_State* L, int idx)

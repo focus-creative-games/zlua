@@ -36,6 +36,14 @@
 #define ZLUA_DEBUG IL2CPP_DEBUG
 #define ZLUA_ASSERT(cond) IL2CPP_ASSERT(cond)
 
+#if defined(__GNUC__) || defined(__clang__)
+#define ZLUA_LIKELY(x) (__builtin_expect(!!(x), 1))
+#define ZLUA_UNLIKELY(x) (__builtin_expect(!!(x), 0))
+#else
+#define ZLUA_LIKELY(x) (x)
+#define ZLUA_UNLIKELY(x) (x)
+#endif
+
 #if defined(_MSC_VER)
 #define zlua_strdup _strdup
 #else

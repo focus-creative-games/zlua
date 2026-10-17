@@ -56,12 +56,15 @@ static int ArrayInstanceLen(lua_State* L)
 static bool TryReadIntIndex(lua_State* L, int keyIndex, int32_t* outIndex)
 {
     lua_Integer value;
-    if (LuaUtil::IsStrictLuaInteger(L, keyIndex, value))
+    if (!LuaUtil::IsStrictLuaInteger(L, keyIndex, value))
+        return false;
+    if (ZLUA_UNLIKELY(value < static_cast<lua_Integer>(INT32_MIN) || value > static_cast<lua_Integer>(INT32_MAX)))
     {
-        *outIndex = (int32_t)value;
-        return true;
+        luaL_error(L, "zlua: array index out of int32 range: %lld", static_cast<long long>(value));
+        return false;
     }
-    return false;
+    *outIndex = static_cast<int32_t>(value);
+    return true;
 }
 
 static il2cpp_array_size_t ResolveFlatIndex(lua_State* L, Il2CppArray* array, int indexStart, int indexCount)
@@ -219,8 +222,8 @@ static int SetArrayElement(lua_State* L, Il2CppArray* array, il2cpp_array_size_t
         return 0;
     default:
         TypedMarshal::PopByType(L, valueIndex, elementAddress, elementType);
-        if (il2cpp::vm::Type::IsReference(elementType))
-            il2cpp::gc::GarbageCollector::SetWriteBarrier((void**)elementAddress);
+        if (arrayClass->has_references)
+            il2cpp::gc::GarbageCollector::SetWriteBarrier((void**)elementAddress, elementSize);
         return 0;
     }
 }

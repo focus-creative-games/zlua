@@ -24,6 +24,14 @@
 
 namespace zlua
 {
+/// Process-lifetime bump arena for marshal / binding metadata (MethodMarshalShared,
+/// Field/Property/MethodMarshalCtx, MarshalMetaInfo, …).
+///
+/// - No Free: blocks are not returned to the pool individually.
+/// - Initialize once per process (LuaAppDomain::InitializeProcessOnce); Shutdown deletes the
+///   arena only on process teardown — **not** on lua_State Reset.
+/// - Reset reuses already-allocated metadata via process-level maps (e.g. s_methodMarshalShared);
+///   repeated Reset does not reclaim arena high-water, by design (avoid rebuild cost / no Free).
 class LuaMetadataAlloc
 {
   public:

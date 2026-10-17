@@ -23,6 +23,7 @@
 #include "LuaEnv.h"
 
 #include "../utils/LuaException.h"
+#include "../utils/MetadataUtil.h"
 
 #include "vm/Runtime.h"
 #include "vm/String.h"
@@ -37,6 +38,8 @@ static const MethodInfo* s_moduleLoaderInvoker = nullptr;
 
 void LuaLoader::RegisterRoots()
 {
+    // Process-lifetime GC root for the slot; Clear()/SetModuleLoader null or replace the pointer
+    // so the previous loader is not retained across Reset (see LuaEnv::Shutdown).
     il2cpp::gc::GarbageCollector::RegisterRoot((char*)&s_ModuleLoader, sizeof(Il2CppDelegate*));
 }
 
@@ -89,8 +92,18 @@ static void LoadModuleSource(const char* moduleName, std::string& source)
     }
     case IL2CPP_TYPE_SZARRAY:
     {
-        Il2CppArray* charArray = (Il2CppArray*)result;
-        source = std::string((char*)il2cpp::vm::Array::GetFirstElementAddress(charArray), charArray->max_length);
+        // Loader may return UTF-8 source as System.Byte[]; reject char[] / other element types.
+        Il2CppArray* byteArray = (Il2CppArray*)result;
+        if (!MetadataUtil::IsByteArrayClass(byteArray->klass))
+        {
+            LuaException::ThrowFormat(
+                "Lua module loader must return string or byte[], got %s.%s",
+                byteArray->klass->namespaze,
+                byteArray->klass->name);
+        }
+        source = std::string(
+            reinterpret_cast<const char*>(il2cpp::vm::Array::GetFirstElementAddress(byteArray)),
+            static_cast<size_t>(byteArray->max_length));
         return;
     }
     default:

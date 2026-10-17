@@ -280,7 +280,7 @@ Il2CppArray* ArrayMarshal::PopFromTable(lua_State* L, int arrayIndex, Il2CppClas
     {
         const int elementSize = il2cpp_array_element_size(klass);
         Il2CppArray* newArray = (Il2CppArray*)il2cpp::vm::Array::NewSpecific(klass, (il2cpp_array_size_t)length);
-        const bool needsWriteBarrier = !elementKlass->byval_arg.valuetype || elementKlass->has_references;
+        const bool needsWriteBarrier = klass->has_references;
         for (int32_t i = 0; i < length; ++i)
         {
             lua_rawgeti(L, arrayIndex, i + 1);
@@ -386,7 +386,7 @@ Il2CppArray* ArrayMarshal::PopParamsExpand(lua_State* L, int firstSlot, int coun
     {
         const int elementSize = il2cpp_array_element_size(arrayKlass);
         Il2CppArray* newArray = (Il2CppArray*)il2cpp::vm::Array::NewSpecific(arrayKlass, (il2cpp_array_size_t)count);
-        const bool needsWriteBarrier = !elementKlass->byval_arg.valuetype || elementKlass->has_references;
+        const bool needsWriteBarrier = arrayKlass->has_references;
         for (int i = 0; i < count; ++i)
         {
             void* valueAddr = il2cpp_array_addr_with_size(newArray, i, elementSize);

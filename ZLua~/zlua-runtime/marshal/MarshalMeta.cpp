@@ -38,6 +38,7 @@
 #include "../mt/MetaTableCache.h"
 
 #include "gc/GarbageCollector.h"
+#include "gc/WriteBarrier.h"
 #include "utils/StringUtils.h"
 #include "vm/Exception.h"
 #include "vm/Class.h"
@@ -59,8 +60,9 @@ namespace zlua
 /// Bumped on Reset; MarshalMetaInfo::luaMetatableRefEpoch must match for cached luaBy* refs.
 static int s_metatableRefEpoch = 1;
 
-static void Lua2CSMarshalVoid(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalVoid(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)L;
     (void)valueIdx;
     (void)address;
@@ -74,8 +76,9 @@ static void CS2LuaMarshalVoid(lua_State* L, void* address, const MarshalMetaInfo
     (void)ctx;
 }
 
-static void Lua2CSMarshalBool(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalBool(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(bool*)address = PrimitiveMarshal::PopBool(L, valueIdx);
 }
@@ -85,8 +88,9 @@ static void CS2LuaMarshalBool(lua_State* L, void* address, const MarshalMetaInfo
     PrimitiveMarshal::PushBool(L, *(bool*)address);
 }
 
-static void Lua2CSMarshalSByte(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalSByte(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(int8_t*)address = PrimitiveMarshal::PopInt8(L, valueIdx);
 }
@@ -96,8 +100,9 @@ static void CS2LuaMarshalSByte(lua_State* L, void* address, const MarshalMetaInf
     PrimitiveMarshal::PushInt8(L, *(int8_t*)address);
 }
 
-static void Lua2CSMarshalByte(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalByte(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(uint8_t*)address = PrimitiveMarshal::PopUInt8(L, valueIdx);
 }
@@ -108,8 +113,9 @@ static void CS2LuaMarshalByte(lua_State* L, void* address, const MarshalMetaInfo
     PrimitiveMarshal::PushUInt8(L, *(uint8_t*)address);
 }
 
-static void Lua2CSMarshalShort(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalShort(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(int16_t*)address = PrimitiveMarshal::PopInt16(L, valueIdx);
 }
@@ -120,8 +126,9 @@ static void CS2LuaMarshalShort(lua_State* L, void* address, const MarshalMetaInf
     PrimitiveMarshal::PushInt16(L, *(int16_t*)address);
 }
 
-static void Lua2CSMarshalUShort(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalUShort(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(uint16_t*)address = PrimitiveMarshal::PopUInt16(L, valueIdx);
 }
@@ -132,8 +139,9 @@ static void CS2LuaMarshalUShort(lua_State* L, void* address, const MarshalMetaIn
     PrimitiveMarshal::PushUInt16(L, *(uint16_t*)address);
 }
 
-static void Lua2CSMarshalInt(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalInt(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(int32_t*)address = PrimitiveMarshal::PopInt32(L, valueIdx);
 }
@@ -144,8 +152,9 @@ static void CS2LuaMarshalInt(lua_State* L, void* address, const MarshalMetaInfo*
     PrimitiveMarshal::PushInt32(L, *(int32_t*)address);
 }
 
-static void Lua2CSMarshalUInt(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalUInt(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(uint32_t*)address = PrimitiveMarshal::PopUInt32(L, valueIdx);
 }
@@ -156,8 +165,9 @@ static void CS2LuaMarshalUInt(lua_State* L, void* address, const MarshalMetaInfo
     PrimitiveMarshal::PushUInt32(L, *(uint32_t*)address);
 }
 
-static void Lua2CSMarshalLong(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalLong(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(int64_t*)address = PrimitiveMarshal::PopInt64(L, valueIdx);
 }
@@ -168,8 +178,9 @@ static void CS2LuaMarshalLong(lua_State* L, void* address, const MarshalMetaInfo
     PrimitiveMarshal::PushInt64(L, *(int64_t*)address);
 }
 
-static void Lua2CSMarshalULong(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalULong(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(uint64_t*)address = PrimitiveMarshal::PopUInt64(L, valueIdx);
 }
@@ -180,8 +191,9 @@ static void CS2LuaMarshalULong(lua_State* L, void* address, const MarshalMetaInf
     PrimitiveMarshal::PushUInt64(L, *(uint64_t*)address);
 }
 
-static void Lua2CSMarshalFloat(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalFloat(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(float*)address = PrimitiveMarshal::PopFloat(L, valueIdx);
 }
@@ -192,8 +204,9 @@ static void CS2LuaMarshalFloat(lua_State* L, void* address, const MarshalMetaInf
     PrimitiveMarshal::PushFloat(L, *(float*)address);
 }
 
-static void Lua2CSMarshalDouble(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalDouble(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(double*)address = PrimitiveMarshal::PopDouble(L, valueIdx);
 }
@@ -204,8 +217,9 @@ static void CS2LuaMarshalDouble(lua_State* L, void* address, const MarshalMetaIn
     PrimitiveMarshal::PushDouble(L, *(double*)address);
 }
 
-static void Lua2CSMarshalIntPtr(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalIntPtr(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(intptr_t*)address = PrimitiveMarshal::PopIntPtr(L, valueIdx);
 }
@@ -215,8 +229,9 @@ static void CS2LuaMarshalIntPtr(lua_State* L, void* address, const MarshalMetaIn
     PrimitiveMarshal::PushIntPtr(L, *(intptr_t*)address);
 }
 
-static void Lua2CSMarshalUIntPtr(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalUIntPtr(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(uintptr_t*)address = PrimitiveMarshal::PopUIntPtr(L, valueIdx);
 }
@@ -227,8 +242,9 @@ static void CS2LuaMarshalUIntPtr(lua_State* L, void* address, const MarshalMetaI
     PrimitiveMarshal::PushUIntPtr(L, *(uintptr_t*)address);
 }
 
-static void Lua2CSMarshalPointer(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalPointer(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     (void)ctx;
     *(void**)address = PrimitiveMarshal::PopPointer(L, valueIdx);
 }
@@ -238,11 +254,13 @@ static void CS2LuaMarshalPointer(lua_State* L, void* address, const MarshalMetaI
     PrimitiveMarshal::PushPointer(L, *(void**)address);
 }
 
-static void Lua2CSMarshalObject(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalObject(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
     Il2CppObject* value = ObjectMarshal::Pop(L, valueIdx, ctx->typeKlass);
-    *(Il2CppObject**)address = value;
-    // il2cpp::gc::WriteBarrier::GenericStore((Il2CppObject**)address, value);
+    if (needsWriteBarrierOnWriteReference)
+        il2cpp::gc::WriteBarrier::GenericStore((Il2CppObject**)address, value);
+    else
+        *(Il2CppObject**)address = value;
 }
 
 static void CS2LuaMarshalObject(lua_State* L, void* address, const MarshalMetaInfo* ctx)
@@ -250,9 +268,9 @@ static void CS2LuaMarshalObject(lua_State* L, void* address, const MarshalMetaIn
     ObjectMarshal::Push(L, *(Il2CppObject**)address, ctx);
 }
 
-static void Lua2CSMarshalNullable(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalNullable(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
-    StructMarshal::PopNullableValue(L, valueIdx, ctx->typeKlass, address);
+    StructMarshal::PopNullableValue(L, valueIdx, ctx->typeKlass, address, needsWriteBarrierOnWriteReference);
 }
 
 static void CS2LuaMarshalNullable(lua_State* L, void* address, const MarshalMetaInfo* ctx)
@@ -260,12 +278,14 @@ static void CS2LuaMarshalNullable(lua_State* L, void* address, const MarshalMeta
     StructMarshal::PushNullableValue(L, address, ctx->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx));
 }
 
-static void Lua2CSMarshalString(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalString(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
     (void)ctx;
     Il2CppString* value = StringMarshal::Pop(L, valueIdx);
-    *(Il2CppString**)address = value;
-    // il2cpp::gc::WriteBarrier::GenericStore((Il2CppString**)address, value);
+    if (needsWriteBarrierOnWriteReference)
+        il2cpp::gc::WriteBarrier::GenericStore((Il2CppString**)address, value);
+    else
+        *(Il2CppString**)address = value;
 }
 
 static void CS2LuaMarshalString(lua_State* L, void* address, const MarshalMetaInfo* ctx)
@@ -274,9 +294,9 @@ static void CS2LuaMarshalString(lua_State* L, void* address, const MarshalMetaIn
     StringMarshal::Push(L, *(Il2CppString**)address);
 }
 
-static void Lua2CSMarshalStruct(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalStruct(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
-    StructMarshal::PopValue(L, valueIdx, ctx->typeKlass, address);
+    StructMarshal::PopValue(L, valueIdx, ctx->typeKlass, address, needsWriteBarrierOnWriteReference);
 }
 
 static void CS2LuaMarshalStruct(lua_State* L, void* address, const MarshalMetaInfo* ctx)
@@ -284,8 +304,9 @@ static void CS2LuaMarshalStruct(lua_State* L, void* address, const MarshalMetaIn
     StructMarshal::PushValue(L, address, ctx->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx));
 }
 
-static void Lua2CSMarshalUnityVector2(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalUnityVector2(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     ByValUserDataHeader* header = StructMarshal::GetByValHeader(L, valueIdx);
     if (header == nullptr)
         LuaException::ThrowFormat("zlua argument mismatch: cannot convert non-by-val userdata to struct: %s.%s", ctx->typeKlass->namespaze, ctx->typeKlass->name);
@@ -300,8 +321,9 @@ static void CS2LuaMarshalUnityVector2(lua_State* L, void* address, const Marshal
     StructMarshal::PushValue(L, address, ctx->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx));
 }
 
-static void Lua2CSMarshalUnityVector3(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalUnityVector3(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     ByValUserDataHeader* header = StructMarshal::GetByValHeader(L, valueIdx);
     if (header == nullptr)
         LuaException::ThrowFormat("zlua argument mismatch: cannot convert non-by-val userdata to struct: %s.%s", ctx->typeKlass->namespaze, ctx->typeKlass->name);
@@ -316,8 +338,9 @@ static void CS2LuaMarshalUnityVector3(lua_State* L, void* address, const Marshal
     StructMarshal::PushValue(L, address, ctx->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx));
 }
 
-static void Lua2CSMarshalUnityVector4(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalUnityVector4(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     ByValUserDataHeader* header = StructMarshal::GetByValHeader(L, valueIdx);
     if (header == nullptr)
         LuaException::ThrowFormat("zlua argument mismatch: cannot convert non-by-val userdata to struct: %s.%s", ctx->typeKlass->namespaze, ctx->typeKlass->name);
@@ -332,8 +355,9 @@ static void CS2LuaMarshalUnityVector4(lua_State* L, void* address, const Marshal
     StructMarshal::PushValue(L, address, ctx->typeKlass, MarshalMeta::EnsureByValMetatableRef(L, ctx));
 }
 
-static void Lua2CSMarshalVar(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalVar(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetNotSupportedException("can't marshal VAR or MVAR type"));
 }
 
@@ -342,7 +366,7 @@ static void CS2LuaMarshalVar(lua_State* L, void* address, const MarshalMetaInfo*
     il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetNotSupportedException("can't marshal VAR or MVAR type"));
 }
 
-static void Lua2CsMarshalTypedReference(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CsMarshalTypedReference(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
     LuaException::Throw("zlua: can't marshal typed reference type");
 }
@@ -557,7 +581,7 @@ static LuaMarshalAsResolveKind TryResolveLuaMarshalAsDataForProperty(const Prope
     return LuaMarshalAsResolveKind::None;
 }
 
-static void SpecializedNullableTable_Lua2Cs(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* meta)
+static void SpecializedNullableTable_Lua2Cs(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* meta)
 {
     Il2CppClass* klass = meta->typeKlass;
     if (lua_isnil(L, valueIdx))
@@ -572,7 +596,7 @@ static void SpecializedNullableTable_Lua2Cs(lua_State* L, int valueIdx, void* ad
     {
         LuaException::ThrowFormat("zlua: missing specialized Table writer for Nullable<%s.%s>", klass->element_class->namespaze, klass->element_class->name);
     }
-    inner(L, valueIdx, valueAddr, meta);
+    inner(L, valueIdx, valueAddr, needsWriteBarrierOnWriteReference, meta);
     MetadataUtil::NullableSetHasValue(address, klass);
 }
 
@@ -641,9 +665,13 @@ static MarshalMetaInfo* AllocMarshalMeta(const Il2CppType* type)
     return meta;
 }
 
-static void Lua2CSMarshalByteArrayAsBytes(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalByteArrayAsBytes(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
-    *(Il2CppArray**)address = ArrayMarshal::PopFromBytes(L, valueIdx, ctx->typeKlass);
+    Il2CppArray* value = ArrayMarshal::PopFromBytes(L, valueIdx, ctx->typeKlass);
+    if (needsWriteBarrierOnWriteReference)
+        il2cpp::gc::WriteBarrier::GenericStore((Il2CppObject**)address, reinterpret_cast<Il2CppObject*>(value));
+    else
+        *(Il2CppArray**)address = value;
 }
 
 static void CS2LuaMarshalByteArrayAsBytes(lua_State* L, void* address, const MarshalMetaInfo* ctx)
@@ -658,9 +686,13 @@ static void CS2LuaMarshalByteArrayAsBytes(lua_State* L, void* address, const Mar
     ArrayMarshal::PushAsBytes(L, array);
 }
 
-static void Lua2CsMarshalArrayAsTable(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CsMarshalArrayAsTable(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
-    *(Il2CppArray**)address = ArrayMarshal::PopFromTable(L, valueIdx, ctx->typeKlass);
+    Il2CppArray* value = ArrayMarshal::PopFromTable(L, valueIdx, ctx->typeKlass);
+    if (needsWriteBarrierOnWriteReference)
+        il2cpp::gc::WriteBarrier::GenericStore((Il2CppObject**)address, reinterpret_cast<Il2CppObject*>(value));
+    else
+        *(Il2CppArray**)address = value;
 }
 
 static void CS2LuaMarshalArrayAsTable(lua_State* L, void* address, const MarshalMetaInfo* ctx)
@@ -669,9 +701,12 @@ static void CS2LuaMarshalArrayAsTable(lua_State* L, void* address, const Marshal
     ArrayMarshal::PushAsTable(L, array);
 }
 
-static void Lua2CSMarshalOpaque(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx)
+static void Lua2CSMarshalOpaque(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx)
 {
+    (void)needsWriteBarrierOnWriteReference;
     OpaqueValueMarshal::Pop(L, valueIdx, address, ctx->type);
+    if (needsWriteBarrierOnWriteReference && ctx->needsWriteBarrier)
+        il2cpp::gc::GarbageCollector::SetWriteBarrier((void**)address, ctx->size);
 }
 
 static void CS2LuaMarshalOpaque(lua_State* L, void* address, const MarshalMetaInfo* ctx)
@@ -735,6 +770,9 @@ static void ApplySizeAndPassByValueAndKlass(MarshalMetaInfo* meta, const Il2CppT
         break;
     }
     }
+
+    // Reference slots always; valuetypes only when they embed managed refs.
+    meta->needsWriteBarrier = MetadataUtil::NeedsWriteBarrier(klass);
 }
 
 static void ApplyDefaultMarshalWriters(MarshalMetaInfo* meta, const Il2CppType* type, Il2CppClass* klass)
@@ -933,6 +971,8 @@ static MarshalMetaInfo* CreateByRefOpaqueMeta(const Il2CppType* type)
     meta->cs2luaWriter = CS2LuaMarshalOpaque;
     meta->size = sizeof(uintptr_t);
     meta->passByValue = true;
+    // Opaque byref stores a raw address / blittable payload, not a GC object slot.
+    meta->needsWriteBarrier = false;
     return meta;
 }
 

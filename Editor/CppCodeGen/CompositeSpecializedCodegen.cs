@@ -368,9 +368,10 @@ namespace ZLua.CppCodeGen
         private static void WriteLua2Cs(CodeWriter writer, TypeSpec spec)
         {
             writer.WriteLine(
-                "static void " + spec.FuncPrefix + "_Lua2Cs(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* meta)");
+                "static void " + spec.FuncPrefix + "_Lua2Cs(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* meta)");
             writer.WriteLine("{");
             writer.IncreaseIndent();
+            writer.WriteLine("(void)needsWriteBarrierOnWriteReference;");
             writer.WriteLine("(void)meta;");
             writer.WriteLine("auto* p = reinterpret_cast<" + spec.CppTypeName + "*>(address);");
             writer.WriteLine("std::memset(p, 0, sizeof(*p));");

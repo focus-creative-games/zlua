@@ -137,7 +137,7 @@ extern "C" LUA_API int zlua_index_setter(lua_State* L)
             return luaL_error(L, "zlua: field is read-only");
         void* fieldPtr = ResolveFieldAddress(L, 1, ctx);
         IL2CPP_ASSERT(fieldPtr != nullptr);
-        writer(L, 2, fieldPtr, meta);
+        writer(L, 2, fieldPtr, meta->needsWriteBarrier, meta);
         return 0;
     }
     case MetaKind::Property:

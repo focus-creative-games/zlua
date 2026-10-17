@@ -365,7 +365,7 @@ static int DispatchInstanceNewIndex(lua_State* L)
             return luaL_error(L, "zlua: field is read-only: %s.%s", BindingTypeName(binding), key);
         void* fieldPtr = ResolveInstanceFieldAddress<kind>(L, 1, field);
         IL2CPP_ASSERT(fieldPtr != nullptr);
-        writer(L, 3, fieldPtr, meta);
+        writer(L, 3, fieldPtr, meta->needsWriteBarrier, meta);
         return 0;
     }
     case MetaKind::Property:
@@ -460,7 +460,7 @@ static int DispatchStaticNewIndex(lua_State* L, TypeBinding* binding, const Name
         FnMarshalLua2Cs writer = meta->lua2csWriter;
         if (writer == nullptr)
             return luaL_error(L, "zlua: field is read-only: %s.%s", BindingTypeName(binding), key);
-        writer(L, 3, field.staticAddress, meta);
+        writer(L, 3, field.staticAddress, meta->needsWriteBarrier, meta);
         return 0;
     }
     case MetaKind::Property:

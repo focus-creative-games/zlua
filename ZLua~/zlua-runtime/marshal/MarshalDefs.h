@@ -47,7 +47,9 @@ enum class MetaTableKind : uint8_t
 };
 
 struct MarshalMetaInfo;
-typedef void (*FnMarshalLua2Cs)(lua_State* L, int valueIdx, void* address, const MarshalMetaInfo* ctx);
+/// needsWriteBarrierOnWriteReference: destination is a GC-tracked slot (not stack/alloca).
+/// Distinct from MarshalMetaInfo::needsWriteBarrier (type itself embeds managed refs).
+typedef void (*FnMarshalLua2Cs)(lua_State* L, int valueIdx, void* address, bool needsWriteBarrierOnWriteReference, const MarshalMetaInfo* ctx);
 typedef void (*FnMarshalCs2Lua)(lua_State* L, void* address, const MarshalMetaInfo* ctx);
 
 /// Pre-resolved Table / UnpackedValues member (no name lookup on hot path).
@@ -81,6 +83,10 @@ struct MarshalMetaInfo
     uint16_t stackSlots; // Default/Table/... = 1; UnpackedValues = memberCount
     uint16_t memberCount;
     bool passByValue;
+    /// Precomputed: writing this type into GC-tracked memory needs a write barrier.
+    /// Reference types always; valuetypes only when they embed references.
+    /// Callers still pass false when the destination is stack / alloca.
+    bool needsWriteBarrier;
     LuaMarshalType marshalType;
 };
 

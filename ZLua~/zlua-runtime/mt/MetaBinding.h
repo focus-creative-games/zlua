@@ -111,8 +111,15 @@ class MetaBinding
                                          const Il2CppType* const* typeArgs, uint32_t typeArgCount);
     /// §3.7 full-signature miss: find first matching public method (no ctor/cctor), cache, push closure. Returns 1 or 0.
     static int TryResolveSignatureMethodAndPush(lua_State* L, TypeBinding* binding, const char* signatureKey, bool isStatic, bool isByVal);
-    /// Drop TypeBindings that embed state-local method closure registry refs. Process-level
-    /// MethodMarshalShared / Bridge tables are kept. Call from LuaEnv::Shutdown.
+    /// Drop TypeBindings that embed state-local method closure registry refs so EnsureBinding
+    /// rebuilds closures for the next lua_State. Call from LuaEnv::Shutdown (Reset path).
+    ///
+    /// Intentionally does **not** clear process-level caches keyed by MethodInfo* /
+    /// Il2Cpp metadata (s_methodMarshalShared, Field/Property/MethodMarshalCtx, etc.): those
+    /// live in LuaMetadataAlloc and survive Reset (spec: process-level Bridge / binding tables
+    /// are kept). There is no Free for that pool; memory is released only on process
+    /// LuaMetadataAlloc::Shutdown. Clearing the maps without freeing the pool would only
+    /// lose reuse and force re-allocation into the same bump arena.
     static void ShutdownState();
 };
 } // namespace zlua

@@ -252,7 +252,7 @@ namespace ZLua.CppCodeGen
                 else
                 {
                     usedCtx = true;
-                    writer.WriteLine($"ctx->retMeta->lua2csWriter(L, -1, &{retvalName}, ctx->retMeta);");
+                    writer.WriteLine($"ctx->retMeta->lua2csWriter(L, -1, &{retvalName}, false, ctx->retMeta);");
                 }
 
                 if (!usedCtx)

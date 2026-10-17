@@ -31,6 +31,7 @@ class LuaLoader
     static void SetModuleLoader(Il2CppDelegate* moduleLoader);
     static Il2CppDelegate* GetModuleLoader();
     static void InstallHooks();
+    /// Null the GC-rooted moduleLoader slot (Reset/Shutdown). Does not unregister the root.
     static void Clear();
 };
 } // namespace zlua
