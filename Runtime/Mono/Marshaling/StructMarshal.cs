@@ -276,7 +276,12 @@ namespace ZLua.Marshaling
         private static unsafe ByValUserDataHeader* CreateByValUserDataHeader(IntPtr L, Type klass, int payloadSize, int metatableRefIndex)
         {
             UIntPtr totalSize = (UIntPtr)(sizeof(ByValUserDataHeader) + Math.Max(payloadSize, 0));
+#if ZLUA_USE_LUAU
+            int tag = IsBlittable(klass) ? 0 : LuaDll.LuauUdTagByVal;
+            ByValUserDataHeader* header = (ByValUserDataHeader*)LuaDll.zlua_luau_newuserdata(L, totalSize, tag);
+#else
             ByValUserDataHeader* header = (ByValUserDataHeader*)LuaDll.lua_newuserdatauv(L, totalSize, 0);
+#endif
             header->Header.Kind = UserDataKind.ByVal;
             header->TypeHandle = TypeHandleStore.GetHandle(klass);
 

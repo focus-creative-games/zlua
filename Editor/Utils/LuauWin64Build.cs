@@ -99,6 +99,70 @@ namespace ZLua.Utils
             return LibDir(info);
         }
 
+        /// <summary>
+        /// Release /MD static libs plus a C-ABI luau.dll for the Windows Editor (Mono).
+        /// </summary>
+        public static void EnsureEditorDll(LuaVersionInfo info)
+        {
+            if (info == null || !info.IsLuau)
+            {
+                return;
+            }
+
+            string pluginsDir = Path.Combine(CommonPaths.PackagePluginsRoot, "lua", "luau");
+            string dllPath = Path.Combine(pluginsDir, "luau.dll");
+            string stamp = Path.Combine(EditorBuildDir(info), "luau.dll.stamp");
+            string sourceCpp = Path.GetFullPath(Path.Combine(
+                "Packages", CommonPaths.PackageName, "ZLua~", "mono-native", "luau-editor", "luau_editor_dll.cpp"));
+            if (File.Exists(dllPath) && File.Exists(stamp) && File.GetLastWriteTimeUtc(stamp) >= File.GetLastWriteTimeUtc(sourceCpp))
+            {
+                Debug.Log($"[ZLua] Using cached Editor luau.dll: {dllPath}");
+                return;
+            }
+
+            if (!Directory.Exists(info.SourceDir) || !File.Exists(Path.Combine(info.SourceDir, "CMakeLists.txt")))
+            {
+                throw new InvalidOperationException(
+                    $"[ZLua] Luau sources missing at {info.SourceDir}. Install should download them first.");
+            }
+
+            string buildDir = EditorBuildDir(info);
+            Directory.CreateDirectory(buildDir);
+            RunCmake(
+                "cmake",
+                "-S \"" + info.SourceDir + "\" -B \"" + buildDir + "\" -G \"Visual Studio 17 2022\" -A x64 "
+                + "-DLUAU_BUILD_CLI=OFF -DLUAU_BUILD_TESTS=OFF -DLUAU_BUILD_WEB=OFF -DLUAU_WERROR=OFF -DLUAU_STATIC_CRT=OFF");
+
+            RunCmake(
+                "cmake",
+                "--build \"" + buildDir + "\" --config Release --target Luau.Compiler Luau.Ast Luau.Bytecode Luau.Inliner Luau.VM Luau.Common");
+
+            string libDir = Path.Combine(buildDir, "Release");
+            string dllBuild = Path.Combine(buildDir, "dll");
+            string cmakeDir = Path.GetDirectoryName(sourceCpp);
+            RunCmake(
+                "cmake",
+                "-S \"" + cmakeDir + "\" -B \"" + dllBuild + "\" -G \"Visual Studio 17 2022\" -A x64 "
+                + "-DLUAU_SRC=\"" + info.SourceDir + "\" -DLUAU_LIB_DIR=\"" + libDir + "\"");
+            RunCmake("cmake", "--build \"" + dllBuild + "\" --config Release");
+
+            string built = Path.Combine(dllBuild, "Release", "luau.dll");
+            if (!File.Exists(built))
+            {
+                throw new InvalidOperationException("[ZLua] Editor luau.dll was not produced at " + built);
+            }
+
+            Directory.CreateDirectory(pluginsDir);
+            File.Copy(built, dllPath, true);
+            File.WriteAllText(stamp, DateTime.UtcNow.ToString("o"));
+            Debug.Log($"[ZLua] Built Editor luau.dll: {dllPath}");
+        }
+
+        private static string EditorBuildDir(LuaVersionInfo info)
+        {
+            return Path.Combine(CommonPaths.InstallRootDir, "LuauBuild", info.Id + "-editor");
+        }
+
         private static void RunCmake(string fileName, string arguments)
         {
             var psi = new ProcessStartInfo

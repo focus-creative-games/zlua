@@ -159,6 +159,9 @@ namespace ZLua.Marshaling
             LuaDll.lua_setfield(L, -2, LuaConsts.MetaMode);
             LuaDll.lua_setmetatable(L, -2);
             s_objectCacheRef = LuaDll.luaL_ref(L, LuaConsts.LuaRegistryIndex);
+#if ZLUA_USE_LUAU
+            LuaDll.zlua_luau_set_dtor(L, LuaDll.LuauUdTagByObj, GetOnReleaseFunctionPointer());
+#endif
         }
 
         internal static void Shutdown(IntPtr L)
@@ -192,7 +195,11 @@ namespace ZLua.Marshaling
 
             unsafe
             {
+#if ZLUA_USE_LUAU
+                IntPtr udPtr = LuaDll.zlua_luau_newuserdata(L, (UIntPtr)sizeof(ZLuaObjectUserData), LuaDll.LuauUdTagByObj);
+#else
                 IntPtr udPtr = LuaDll.lua_newuserdatauv(L, (UIntPtr)sizeof(ZLuaObjectUserData), 0);
+#endif
                 ZLuaObjectUserData* ud = (ZLuaObjectUserData*)udPtr;
                 ud->Header.Kind = UserDataKind.ByObj;
                 ud->SlotIndex = s_objectSlots.Register(obj, viewType);
@@ -269,7 +276,8 @@ namespace ZLua.Marshaling
         {
             unsafe
             {
-                ZLuaObjectUserData* ud = (ZLuaObjectUserData*)LuaDll.lua_touserdata(L, 1);
+                int index = LuaDll.lua_type(L, -1) == LuaDataType.LightUserData ? -1 : 1;
+                ZLuaObjectUserData* ud = (ZLuaObjectUserData*)LuaDll.lua_touserdata(L, index);
                 if (ud == null || ud->SlotIndex == InvalidSlotIndex)
                 {
                     return 0;

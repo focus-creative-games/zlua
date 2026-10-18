@@ -68,7 +68,7 @@ namespace ZLua.Utils
         {
             get
             {
-#if ZLUA_USE_LUAJIT || ZLUA_LUA_5_1
+#if ZLUA_USE_LUAJIT || ZLUA_LUA_5_1 || ZLUA_USE_LUAU
                 return LuaConsts.LuaGlobalsIndex;
 #else
                 return LuaConsts.LuaRegistryIndex;

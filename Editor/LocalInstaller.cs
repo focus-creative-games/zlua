@@ -491,6 +491,7 @@ namespace ZLua
             File.Copy(luacode, Path.Combine(dest, "luacode.h"), overwrite: true);
             EnsureFastMetatableDisabled(dest);
             LuauWin64Build.Ensure(luaInfo);
+            LuauWin64Build.EnsureEditorDll(luaInfo);
             Debug.Log($"[ZLua] Luau: installed public headers under {dest} (Win64 static libs linked via LuauLink.inc).");
             return "none";
         }
@@ -1005,7 +1006,7 @@ namespace ZLua
 #endif
             if (luaInfo.IsLuau)
             {
-                return;
+                LuauWin64Build.EnsureEditorDll(luaInfo);
             }
 
             string pluginsRoot = CommonPaths.PackagePluginsRoot;

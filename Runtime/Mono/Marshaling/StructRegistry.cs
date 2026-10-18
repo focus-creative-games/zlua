@@ -34,7 +34,11 @@ namespace ZLua.Marshaling
 
         internal static void Initialize(IntPtr L)
         {
+#if ZLUA_USE_LUAU
+            LuaDll.zlua_luau_set_dtor(L, LuaDll.LuauUdTagByVal, GetOnReleaseFunctionPointer());
+#else
             _ = L;
+#endif
         }
 
         internal static void Shutdown(IntPtr L)
@@ -66,7 +70,8 @@ namespace ZLua.Marshaling
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int OnReleaseByValUserData(IntPtr L)
         {
-            IntPtr ud = LuaDll.lua_touserdata(L, 1);
+            int index = LuaDll.lua_type(L, -1) == LuaDataType.LightUserData ? -1 : 1;
+            IntPtr ud = LuaDll.lua_touserdata(L, index);
             if (ud != IntPtr.Zero)
             {
                 Unregister(ud);

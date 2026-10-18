@@ -18,10 +18,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#if ZLUA_USE_LUAJIT || ZLUA_LUA_5_1
+#if ZLUA_USE_LUAJIT || ZLUA_LUA_5_1 || ZLUA_USE_LUAU
 #define ZLUA_MONO_LUA51_API
 #endif
-#if ZLUA_USE_LUAJIT || ZLUA_LUA_5_1 || ZLUA_LUA_5_2
+#if ZLUA_USE_LUAJIT || ZLUA_LUA_5_1 || ZLUA_LUA_5_2 || ZLUA_USE_LUAU
 #define ZLUA_MONO_LUA_PRE53
 #endif
 
@@ -498,6 +498,17 @@ namespace ZLua
         public static int lua_upvalueindex(int i) => LuaConsts.LuaGlobalsIndex - i;
 #else
         public static int lua_upvalueindex(int i) => LuaConsts.LuaRegistryIndex - i;
+#endif
+
+#if ZLUA_USE_LUAU
+        public const int LuauUdTagByObj = 1;
+        public const int LuauUdTagByVal = 2;
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern IntPtr zlua_luau_newuserdata(IntPtr luaState, UIntPtr size, int tag);
+
+        [DllImport(LUA_DLL, CallingConvention = CALLING_CONVENTION)]
+        public static extern void zlua_luau_set_dtor(IntPtr luaState, int tag, IntPtr releaseFn);
 #endif
     }
 }

@@ -33,6 +33,8 @@ namespace ZLua
         public const string LUA_DLL = "luajit20";
 #elif ZLUA_USE_LUAJIT
         public const string LUA_DLL = "luajit21";
+#elif ZLUA_USE_LUAU
+        public const string LUA_DLL = "luau";
 #elif ZLUA_LUA_5_5
         public const string LUA_DLL = "lua55";
 #elif ZLUA_LUA_5_4
