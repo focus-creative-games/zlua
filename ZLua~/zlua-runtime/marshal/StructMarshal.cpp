@@ -111,7 +111,6 @@ void StructMarshal::PushNullableValue(lua_State* L, void* dataAddr, Il2CppClass*
         lua_pushnil(L);
         return;
     }
-    IL2CPP_ASSERT(metatableRefIndex != LUA_NOREF);
 
     void* ptr = MetadataUtil::GetNullableValue(dataAddr, klass);
     Il2CppClass* elementClass = klass->element_class;
@@ -123,6 +122,7 @@ void StructMarshal::PushNullableValue(lua_State* L, void* dataAddr, Il2CppClass*
     Il2CppTypeEnum typeEnum = elementClass->byval_arg.type;
     if (typeEnum == IL2CPP_TYPE_VALUETYPE || typeEnum == IL2CPP_TYPE_GENERICINST)
     {
+        IL2CPP_ASSERT(metatableRefIndex != LUA_NOREF);
         PushValue(L, ptr, elementClass, metatableRefIndex);
         return;
     }
