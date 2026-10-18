@@ -81,7 +81,7 @@ void ObjectMarshal::Push(lua_State* L, Il2CppObject* obj)
 
 Il2CppObject* ObjectMarshal::Pop(lua_State* L, int objIndex, Il2CppClass* klass)
 {
-    int type = lua_type(L, objIndex);
+    int type = zlua_marshal_type(L, objIndex);
     switch (type)
     {
     case LUA_TNIL:

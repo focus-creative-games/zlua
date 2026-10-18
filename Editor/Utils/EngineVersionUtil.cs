@@ -96,7 +96,7 @@ namespace ZLua.Utils
                 throw new ArgumentNullException(nameof(luaInfo));
             }
 
-            if (luaInfo.IsLuaJit)
+            if (luaInfo.IsLuaJit || luaInfo.IsLuau)
             {
                 return 501;
             }

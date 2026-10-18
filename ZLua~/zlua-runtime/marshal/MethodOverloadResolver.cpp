@@ -39,7 +39,7 @@ namespace zlua
 
 static ConversionKind GetConversionKind(lua_State* L, int index, const MarshalMetaInfo* paramMeta)
 {
-    int luaType = lua_type(L, index);
+    int luaType = zlua_marshal_type(L, index);
     const Il2CppType* paramType = paramMeta->type;
     if (paramType->byref)
     {
@@ -315,7 +315,7 @@ static ConversionKind GetCompositeConversionKind(lua_State* L, int32_t slot, con
 {
     if (paramMeta->marshalType == LuaMarshalType::Table)
     {
-        const int luaType = lua_type(L, slot);
+        const int luaType = zlua_marshal_type(L, slot);
         if (paramMeta->typeKlass != nullptr && paramMeta->typeKlass->nullabletype && luaType == LUA_TNIL)
             return ConversionKind::NullLiteral;
         if (luaType == LUA_TTABLE)

@@ -15,6 +15,7 @@ namespace ZLua.Utils
         public string ApiFamilyDefine { get; set; }
         public string DllLogicalName { get; set; }
         public bool IsLuaJit { get; set; }
+        public bool IsLuau { get; set; }
         public string SourceDir { get; set; }
     }
 
@@ -26,6 +27,10 @@ namespace ZLua.Utils
 
         private static readonly Regex s_luaJit = new Regex(
             @"^luajit-(\d+)\.(\d+)(?:\.(.+))?$",
+            RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        private static readonly Regex s_luau = new Regex(
+            @"^luau-(\d+)\.(\d+)$",
             RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         public static IReadOnlyList<string> ListCachedVersionIds()
@@ -59,6 +64,22 @@ namespace ZLua.Utils
 
             string id = versionId.Trim();
 
+            Match luau = s_luau.Match(id);
+            if (luau.Success)
+            {
+                info = new LuaVersionInfo
+                {
+                    Id = id,
+                    Series = id,
+                    ApiFamilyDefine = "ZLUA_USE_LUAU",
+                    DllLogicalName = "luau",
+                    IsLuaJit = false,
+                    IsLuau = true,
+                    SourceDir = Path.Combine(CommonPaths.LuaSrcCacheDir, id),
+                };
+                return true;
+            }
+
             Match jit = s_luaJit.Match(id);
             if (jit.Success)
             {
@@ -78,6 +99,7 @@ namespace ZLua.Utils
                     ApiFamilyDefine = "ZLUA_USE_LUAJIT",
                     DllLogicalName = $"luajit{major}{minor}",
                     IsLuaJit = true,
+                    IsLuau = false,
                     SourceDir = Path.Combine(CommonPaths.LuaSrcCacheDir, jitFolder),
                 };
                 return true;
@@ -98,6 +120,7 @@ namespace ZLua.Utils
                     ApiFamilyDefine = $"ZLUA_LUA_{major}_{minor}",
                     DllLogicalName = dll,
                     IsLuaJit = false,
+                    IsLuau = false,
                     SourceDir = LuaSourceCache.GetCacheDirForVersionId(id),
                 };
                 return true;
@@ -118,7 +141,7 @@ namespace ZLua.Utils
 
                 throw new InvalidOperationException(
                     $"[ZLua] Invalid Settings.luaVersionId '{configuredId}'. "
-                    + "Use lua-X.Y.Z (e.g. lua-5.4.8) or luajit-M.N (e.g. luajit-2.1).");
+                    + "Use lua-X.Y.Z (e.g. lua-5.4.8), luajit-M.N (e.g. luajit-2.1), or luau-M.N (e.g. luau-0.743).");
             }
 
             wroteDefault = true;
@@ -131,7 +154,7 @@ namespace ZLua.Utils
         /// </summary>
         public static bool UsesLuaVmPatches(LuaVersionInfo info)
         {
-            if (info == null || info.IsLuaJit)
+            if (info == null || info.IsLuaJit || info.IsLuau)
             {
                 return false;
             }
@@ -160,7 +183,7 @@ namespace ZLua.Utils
         /// </summary>
         public static bool SupportsFastMetatable(LuaVersionInfo info)
         {
-            if (info == null || info.IsLuaJit)
+            if (info == null || info.IsLuaJit || info.IsLuau)
             {
                 return false;
             }

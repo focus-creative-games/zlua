@@ -108,8 +108,9 @@ int LuaException::CallLuaError(Il2CppExceptionWrapper& e)
 
         lua_pushstring(L, message.c_str());
     }
-    // we should destruct message before returning
-    return lua_error(L);
+    // Luau's lua_error is noreturn (C++ exception). Do not use its result as an int.
+    lua_error(L);
+    return 0;
 }
 
 } // namespace zlua

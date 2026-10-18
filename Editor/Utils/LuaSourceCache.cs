@@ -27,6 +27,10 @@ namespace ZLua.Utils
             @"^luajit-(\d+)\.(\d+)(?:\.(.+))?$",
             RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+        private static readonly Regex s_luau = new Regex(
+            @"^luau-(\d+)\.(\d+)$",
+            RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
         /// <summary>
         /// Official tarball stem on lua.org/ftp (without <c>lua-</c> / <c>.tar.gz</c>).
         /// Releases ≤ 5.1 with patch <c>0</c> omit the patch segment
@@ -99,6 +103,13 @@ namespace ZLua.Utils
                 return true;
             }
 
+            Match luau = s_luau.Match(id);
+            if (luau.Success)
+            {
+                folderName = id;
+                return true;
+            }
+
             return false;
         }
 
@@ -107,7 +118,8 @@ namespace ZLua.Utils
             return File.Exists(Path.Combine(sourceRoot, "src", "lua.h"))
                    || File.Exists(Path.Combine(sourceRoot, "src", "lua.hpp"))
                    || File.Exists(Path.Combine(sourceRoot, "src", "luajit.h"))
-                   || File.Exists(Path.Combine(sourceRoot, "src", "lj_obj.h"));
+                   || File.Exists(Path.Combine(sourceRoot, "src", "lj_obj.h"))
+                   || File.Exists(Path.Combine(sourceRoot, "VM", "include", "lua.h"));
         }
 
         /// <summary>
@@ -125,6 +137,12 @@ namespace ZLua.Utils
             if (info.IsLuaJit)
             {
                 EnsureAvailableLuaJit(info, cacheDir);
+                return cacheDir;
+            }
+
+            if (info.IsLuau)
+            {
+                EnsureAvailableLuau(info, cacheDir);
                 return cacheDir;
             }
 
@@ -172,6 +190,49 @@ namespace ZLua.Utils
 
                 Directory.Move(stageDir, cacheDir);
                 Debug.Log($"[ZLua] LuaJIT sources ready: {cacheDir}");
+            }
+            finally
+            {
+                if (Directory.Exists(stageRoot))
+                {
+                    DirectoryUtil.RemoveDir(stageRoot, true);
+                }
+            }
+        }
+
+        private static void EnsureAvailableLuau(LuaVersionInfo info, string cacheDir)
+        {
+            if (IsSourceReady(cacheDir))
+            {
+                Debug.Log($"[ZLua] Using cached Luau sources: {cacheDir}");
+                return;
+            }
+
+            string stageRoot = Path.Combine(CommonPaths.InstallRootDir, "tmp-luau-stage");
+            DirectoryUtil.RecreateDir(stageRoot);
+            string stageDir = Path.Combine(stageRoot, $"{info.Id}-{Guid.NewGuid():N}");
+
+            try
+            {
+                Directory.CreateDirectory(CommonPaths.LuaSrcCacheDir);
+                CloneGitRepository(
+                    "https://github.com/luau-lang/luau.git",
+                    info.Id.Substring("luau-".Length),
+                    stageDir);
+
+                if (!IsSourceReady(stageDir))
+                {
+                    throw new InvalidOperationException(
+                        $"[ZLua] Cloned Luau sources look incomplete: {stageDir}");
+                }
+
+                if (Directory.Exists(cacheDir))
+                {
+                    DirectoryUtil.RemoveDir(cacheDir, true);
+                }
+
+                Directory.Move(stageDir, cacheDir);
+                Debug.Log($"[ZLua] Luau sources ready: {cacheDir}");
             }
             finally
             {

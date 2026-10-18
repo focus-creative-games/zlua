@@ -46,6 +46,7 @@ namespace ZLua
             "ZLUA_LUA_",
             "ZLUA_LUAJIT_",
             "ZLUA_USE_LUAJIT",
+            "ZLUA_USE_LUAU",
         };
 
         private readonly UnityVersion _curVersion;
@@ -356,6 +357,11 @@ namespace ZLua
 
         private static string InstallLuaSources(LuaVersionInfo luaInfo)
         {
+            if (luaInfo.IsLuau)
+            {
+                return InstallLuauHeaders(luaInfo);
+            }
+
             string stagingRoot = Path.Combine(CommonPaths.InstallRootDir, "tmp-lua-stage");
             DirectoryUtil.RecreateDir(stagingRoot);
             string stagedVersion = Path.Combine(stagingRoot, luaInfo.Id);
@@ -453,6 +459,40 @@ namespace ZLua
 
             DirectoryUtil.RemoveDir(stagingRoot, true);
             return luaPatchKey;
+        }
+
+        /// <summary>
+        /// Luau is C++17. Copy public headers into <c>libil2cpp/lua</c> and link a prebuilt Win64 static library.
+        /// </summary>
+        private static string InstallLuauHeaders(LuaVersionInfo luaInfo)
+        {
+            string dest = CommonPaths.LocalLuaSrcPath;
+            DirectoryUtil.RecreateDir(dest);
+
+            string includeDir = Path.Combine(luaInfo.SourceDir, "VM", "include");
+            string[] headers = { "lua.h", "luaconf.h", "lualib.h" };
+            foreach (string name in headers)
+            {
+                string src = Path.Combine(includeDir, name);
+                if (!File.Exists(src))
+                {
+                    throw new InvalidOperationException($"[ZLua] Luau header missing: {src}");
+                }
+
+                File.Copy(src, Path.Combine(dest, name), overwrite: true);
+            }
+
+            string luacode = Path.Combine(luaInfo.SourceDir, "Compiler", "include", "luacode.h");
+            if (!File.Exists(luacode))
+            {
+                throw new InvalidOperationException($"[ZLua] Luau compiler header missing: {luacode}");
+            }
+
+            File.Copy(luacode, Path.Combine(dest, "luacode.h"), overwrite: true);
+            EnsureFastMetatableDisabled(dest);
+            LuauWin64Build.Ensure(luaInfo);
+            Debug.Log($"[ZLua] Luau: installed public headers under {dest} (Win64 static libs linked via LuauLink.inc).");
+            return "none";
         }
 
         /// <summary>
@@ -963,6 +1003,11 @@ namespace ZLua
 #else
             string fileName = luaInfo.DllLogicalName;
 #endif
+            if (luaInfo.IsLuau)
+            {
+                return;
+            }
+
             string pluginsRoot = CommonPaths.PackagePluginsRoot;
             bool found = Directory.Exists(pluginsRoot)
                          && Directory.EnumerateFiles(pluginsRoot, fileName, SearchOption.AllDirectories).Any();
@@ -979,7 +1024,9 @@ namespace ZLua
         {
             string[] wantedDefines = luaInfo.IsLuaJit
                 ? new[] { "ZLUA_USE_LUAJIT", GetLuaJitVersionDefine(luaInfo) }
-                : new[] { luaInfo.ApiFamilyDefine };
+                : luaInfo.IsLuau
+                    ? new[] { "ZLUA_USE_LUAU" }
+                    : new[] { luaInfo.ApiFamilyDefine };
             var targets = new HashSet<NamedBuildTarget>
             {
                 NamedBuildTarget.FromBuildTargetGroup(EditorUserBuildSettings.selectedBuildTargetGroup),
@@ -1099,6 +1146,26 @@ namespace ZLua
             {
                 throw new InvalidOperationException(
                     "[ZLua] Local LuaJIT headers incomplete after install (luajit.h missing).");
+            }
+
+            if (luaInfo.IsLuau
+                && !File.Exists(Path.Combine(CommonPaths.LocalLuaSrcPath, "luacode.h")))
+            {
+                throw new InvalidOperationException("[ZLua] Luau headers incomplete after install (luacode.h missing).");
+            }
+
+            if (luaInfo.IsLuau
+                && !File.Exists(Path.Combine(CommonPaths.GeneratedZLuaPath, "LuauLink.inc")))
+            {
+                throw new InvalidOperationException("[ZLua] generated/LuauLink.inc missing after install.");
+            }
+
+            if (luaInfo.IsLuau
+                && Directory.EnumerateFiles(CommonPaths.LocalLuaSrcPath, "*.c*", SearchOption.TopDirectoryOnly).Any())
+            {
+                throw new InvalidOperationException(
+                    "[ZLua] Luau install must not place C/C++ sources under libil2cpp/lua "
+                    + "(headers only; Win64 static libraries are linked separately).");
             }
 
             if (luaInfo.IsLuaJit

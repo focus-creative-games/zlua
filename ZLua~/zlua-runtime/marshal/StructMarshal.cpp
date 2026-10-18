@@ -48,7 +48,8 @@ ByValUserDataHeader* StructMarshal::GetByValHeader(lua_State* L, int index)
 static ByValUserDataHeader* CreateByValUserDataHeader(lua_State* L, Il2CppClass* klass, size_t payloadSize, int metatableRefIndex)
 {
     const size_t totalSize = sizeof(ByValUserDataHeader) + payloadSize;
-    ByValUserDataHeader* header = static_cast<ByValUserDataHeader*>(LuaNewUserData(L, totalSize));
+    const int udTag = klass->has_references ? kLuauUdTagByVal : 0;
+    ByValUserDataHeader* header = static_cast<ByValUserDataHeader*>(LuaNewUserData(L, totalSize, udTag));
     header->header.kind = UserDataKind::ByVal;
     header->klass = klass;
     if (metatableRefIndex != LUA_NOREF)
@@ -111,7 +112,6 @@ void StructMarshal::PushNullableValue(lua_State* L, void* dataAddr, Il2CppClass*
         lua_pushnil(L);
         return;
     }
-    IL2CPP_ASSERT(metatableRefIndex != LUA_NOREF);
 
     void* ptr = MetadataUtil::GetNullableValue(dataAddr, klass);
     Il2CppClass* elementClass = klass->element_class;
@@ -123,6 +123,7 @@ void StructMarshal::PushNullableValue(lua_State* L, void* dataAddr, Il2CppClass*
     Il2CppTypeEnum typeEnum = elementClass->byval_arg.type;
     if (typeEnum == IL2CPP_TYPE_VALUETYPE || typeEnum == IL2CPP_TYPE_GENERICINST)
     {
+        IL2CPP_ASSERT(metatableRefIndex != LUA_NOREF);
         PushValue(L, ptr, elementClass, metatableRefIndex);
         return;
     }

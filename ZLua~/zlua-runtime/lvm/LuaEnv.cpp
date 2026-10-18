@@ -25,6 +25,10 @@
 
 #include "LuaGlobalRefs.h"
 #include "LuaLoader.h"
+
+#if ZLUA_USE_LUAU
+#include "../generated/LuauLink.inc"
+#endif
 #include "ZLuaLib.h"
 
 
@@ -119,9 +123,62 @@ void LuaEnv::RegisterZLuaApi()
     DoStringIgnoreResult(kZLuaLibLua);
 }
 
+#if ZLUA_USE_LUAU
+static int ZLuaLuauLoadString(lua_State* L)
+{
+    size_t len = 0;
+    const char* source = luaL_checklstring(L, 1, &len);
+    const char* chunkName = luaL_optstring(L, 2, "=loadstring");
+    /* Loaded chunks must be able to assign globals (Luau safeenv blocks that). */
+    lua_setsafeenv(L, LUA_ENVIRONINDEX, 0);
+    if (zlua_luaL_loadbuffer(L, source, len, chunkName) == LUA_OK)
+        return 1;
+
+    lua_pushnil(L);
+    lua_insert(L, -2);
+    return 2;
+}
+
+static void RegisterLuauHostLibs(lua_State* L)
+{
+    lua_pushcfunction(L, ZLuaLuauLoadString);
+    lua_setglobal(L, "loadstring");
+    lua_pushcfunction(L, ZLuaLuauLoadString);
+    lua_setglobal(L, "load");
+
+    /* Luau's luaL_openlibs does not provide package/require or loadstring. */
+    const char* bootstrap = R"(
+package = { loaded = {}, searchers = {} }
+function require(modname)
+    local loaded = package.loaded[modname]
+    if loaded ~= nil then
+        return loaded
+    end
+    local searchers = package.searchers
+    for i = 1, #searchers do
+        local loader = searchers[i](modname)
+        if type(loader) == "function" then
+            local result = loader(modname)
+            if result == nil then
+                result = true
+            end
+            package.loaded[modname] = result
+            return result
+        end
+    end
+    error("module '" .. tostring(modname) .. "' not found", 2)
+end
+)";
+    LuaEnv::DoStringIgnoreResult(bootstrap);
+}
+#endif
+
 void LuaEnv::RegisterLibs()
 {
     luaL_openlibs(s_L);
+#if ZLUA_USE_LUAU
+    RegisterLuauHostLibs(s_L);
+#endif
     RegisterPrintCallback();
     RegisterZLuaApi();
 }

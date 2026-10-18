@@ -178,8 +178,13 @@ static void FillInstanceMetatable(lua_State* L, TypeBinding* binding, int typeTa
 
     if (gc != nullptr)
     {
+#if ZLUA_USE_LUAU
+        /* Luau does not run __gc. Lifetime is lua_setuserdatadtor on the userdata tag. */
+        (void)gc;
+#else
         lua_pushcfunction(L, gc);
         lua_setfield(L, mtIndex, LuaConsts::MetaGc);
+#endif
     }
 
     if (tostring != nullptr)

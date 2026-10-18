@@ -169,6 +169,10 @@ class ObjectSlotRegistry
 
 static ObjectSlotRegistry s_objectSlots;
 
+#if ZLUA_USE_LUAU
+static void LuauReleaseObjectUserData(lua_State* L, void* data);
+#endif
+
 void ObjectRegistry::Initialize(lua_State* L)
 {
     IL2CPP_ASSERT(s_objectCacheRef == LUA_NOREF);
@@ -183,6 +187,9 @@ void ObjectRegistry::Initialize(lua_State* L)
     lua_setfield(L, -2, LuaConsts::MetaMode);
     lua_setmetatable(L, -2);
     s_objectCacheRef = luaL_ref(L, LUA_REGISTRYINDEX);
+#if ZLUA_USE_LUAU
+    lua_setuserdatadtor(L, kLuauUdTagByObj, &LuauReleaseObjectUserData);
+#endif
 }
 
 void ObjectRegistry::Shutdown(lua_State* L)
@@ -311,7 +318,7 @@ void ObjectRegistry::Push(lua_State* L, Il2CppObject* obj, Il2CppClass* viewKlas
     if (TryPushCachedObject(L, obj, viewKlass))
         return;
 
-    ZLuaObjectUserData* ud = (ZLuaObjectUserData*)LuaNewUserData(L, sizeof(ZLuaObjectUserData));
+    ZLuaObjectUserData* ud = (ZLuaObjectUserData*)LuaNewUserData(L, sizeof(ZLuaObjectUserData), kLuauUdTagByObj);
     ud->header.kind = UserDataKind::ByObj;
     ud->obj = obj;
     ud->viewKlass = viewKlass;
@@ -338,16 +345,30 @@ Il2CppObject* ObjectRegistry::Pop(lua_State* L, int idx)
     return ud->obj;
 }
 
-int ObjectRegistry::OnReleaseObjectUserData(lua_State* L)
+static void ReleaseObjectUserData(lua_State* L, ZLuaObjectUserData* ud)
 {
-    ZLuaObjectUserData* ud = (ZLuaObjectUserData*)lua_touserdata(L, 1);
     IL2CPP_ASSERT(ud != nullptr);
-    IL2CPP_ASSERT(ud->slotIndex != kInvalidSlotIndex);
+    if (ud->slotIndex == kInvalidSlotIndex)
+        return;
 
     Il2CppObject* obj = ud->obj;
     Il2CppClass* viewKlass = ud->viewKlass;
-    s_objectSlots.UnregisterObject(ud->slotIndex);
+    const uint32_t slotIndex = ud->slotIndex;
+    ud->slotIndex = kInvalidSlotIndex;
+    s_objectSlots.UnregisterObject(slotIndex);
     RemoveFromObjectCache(L, obj, viewKlass);
+}
+
+#if ZLUA_USE_LUAU
+static void LuauReleaseObjectUserData(lua_State* L, void* data)
+{
+    ReleaseObjectUserData(L, (ZLuaObjectUserData*)data);
+}
+#endif
+
+int ObjectRegistry::OnReleaseObjectUserData(lua_State* L)
+{
+    ReleaseObjectUserData(L, (ZLuaObjectUserData*)lua_touserdata(L, 1));
     return 0;
 }
 } // namespace zlua

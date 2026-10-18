@@ -33,10 +33,22 @@ namespace zlua
 
 static std::unordered_set<ByValUserDataHeader*> s_byValUserDataSet;
 
-void StructRegistry::Initialize(lua_State* L)
+#if ZLUA_USE_LUAU
+static void LuauReleaseByValUserData(lua_State* L, void* data)
 {
     (void)L;
+    StructRegistry::Unregister((ByValUserDataHeader*)data);
+}
+#endif
+
+void StructRegistry::Initialize(lua_State* L)
+{
     IL2CPP_ASSERT(s_byValUserDataSet.empty());
+#if ZLUA_USE_LUAU
+    lua_setuserdatadtor(L, kLuauUdTagByVal, &LuauReleaseByValUserData);
+#else
+    (void)L;
+#endif
 }
 
 void StructRegistry::Shutdown(lua_State* L)

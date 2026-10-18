@@ -36,6 +36,10 @@ extern "C"
 #include "lauxlib.h"
 #include "lualib.h"
 }
+#elif ZLUA_USE_LUAU
+#include "lua/lua.h"
+#include "lua/lualib.h"
+#include "lua/luacode.h"
 #elif ZLUA_LUA_API_FAMILY < 502
 // Lua 5.1: upstream has no lua.hpp (added in 5.2).
 extern "C"
@@ -49,14 +53,36 @@ extern "C"
 #endif
 
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#if ZLUA_USE_LUAU
+/* Luau's lua_pushcfunction / lua_pushcclosure take a debug name. Keep the PUC arity. */
+#undef lua_pushcfunction
+#undef lua_pushcclosure
+#define lua_pushcfunction(L, fn) lua_pushcclosurek((L), (fn), "", 0, NULL)
+#define lua_pushcclosure(L, fn, nup) lua_pushcclosurek((L), (fn), "", (nup), NULL)
+
+/* luaL_errorL is noreturn. Call sites use it as `return luaL_error(...)`. */
+#undef luaL_error
+#undef luaL_typeerror
+#undef luaL_argerror
+#define luaL_error(L, fmt, ...) (luaL_errorL((L), (fmt), ##__VA_ARGS__), 0)
+#define luaL_typeerror(L, narg, tname) (luaL_typeerrorL((L), (narg), (tname)), 0)
+#define luaL_argerror(L, narg, extramsg) (luaL_argerrorL((L), (narg), (extramsg)), 0)
+#endif
 
 /* Lua 5.2+: LUA_OK. 5.1 documents success as status 0 without the name. */
 #if !defined(LUA_OK)
 #define LUA_OK 0
 #endif
 
-/* Lua 5.3+: LUA_MAXINTEGER / LUA_MININTEGER. 5.1/5.2/JIT: lua_Integer ~= ptrdiff_t. */
-#if !defined(LUA_MAXINTEGER)
+/* Lua 5.3+: LUA_MAXINTEGER / LUA_MININTEGER. 5.1/5.2/JIT: lua_Integer ~= ptrdiff_t.
+ * Luau's lua_Integer is 32-bit; integer64 values use a separate range. */
+#if ZLUA_USE_LUAU && !defined(LUA_MAXINTEGER)
+#define LUA_MAXINTEGER INT64_MAX
+#define LUA_MININTEGER INT64_MIN
+#elif !defined(LUA_MAXINTEGER)
 #define LUA_MAXINTEGER ((lua_Integer)INTPTR_MAX)
 #define LUA_MININTEGER ((lua_Integer)INTPTR_MIN)
 #endif
@@ -66,10 +92,22 @@ extern "C"
 #if !defined(lua_isinteger)
 inline int zlua_lua_isinteger(lua_State* L, int idx)
 {
+#if ZLUA_USE_LUAU
+    if (lua_isinteger64(L, idx))
+        return 1;
+#endif
     if (lua_type(L, idx) != LUA_TNUMBER)
         return 0;
     const lua_Number n = lua_tonumber(L, idx);
+#if ZLUA_USE_LUAU
+    /* lua_Integer is 32-bit. Whole doubles up to the int64 range must still count
+     * as integers so object boxing matches Lua 5.3 (3000000000 -> long, not double). */
+    if (n < (lua_Number)INT64_MIN || n >= 9223372036854775808.0)
+        return 0;
+    return n == (lua_Number)(int64_t)n;
+#else
     return n == (lua_Number)(lua_Integer)n;
+#endif
 }
 #define lua_isinteger(L, i) zlua_lua_isinteger((L), (i))
 #endif
@@ -84,7 +122,11 @@ inline int zlua_lua_isinteger(lua_State* L, int idx)
  */
 inline int64_t zlua_to_int64(lua_State* L, int idx)
 {
-#if ZLUA_USE_LUAJIT || (ZLUA_LUA_API_FAMILY < 503)
+#if ZLUA_USE_LUAU
+    if (lua_isinteger64(L, idx))
+        return lua_tointeger64(L, idx, nullptr);
+    return (int64_t)lua_tonumber(L, idx);
+#elif ZLUA_USE_LUAJIT || (ZLUA_LUA_API_FAMILY < 503)
     return (int64_t)lua_tonumber(L, idx);
 #else
     return (int64_t)lua_tointeger(L, idx);
@@ -93,7 +135,11 @@ inline int64_t zlua_to_int64(lua_State* L, int idx)
 
 inline uint64_t zlua_to_uint64(lua_State* L, int idx)
 {
-#if ZLUA_USE_LUAJIT || (ZLUA_LUA_API_FAMILY < 503)
+#if ZLUA_USE_LUAU
+    if (lua_isinteger64(L, idx))
+        return (uint64_t)lua_tointeger64(L, idx, nullptr);
+    return (uint64_t)lua_tonumber(L, idx);
+#elif ZLUA_USE_LUAJIT || (ZLUA_LUA_API_FAMILY < 503)
     return (uint64_t)lua_tonumber(L, idx);
 #else
     if (lua_isinteger(L, idx))
@@ -173,7 +219,7 @@ inline const char* zlua_luaL_tolstring(lua_State* L, int idx, size_t* len)
  * Official Lua 5.1 lacks it — polyfill via debug.traceback (openlibs provides debug).
  * level is the same as luaL_traceback / luaL_where (1 = first Lua caller of the current C function).
  */
-#if !ZLUA_USE_LUAJIT && (ZLUA_LUA_API_FAMILY < 502)
+#if !ZLUA_USE_LUAJIT && !ZLUA_USE_LUAU && (ZLUA_LUA_API_FAMILY < 502)
 #if !defined(luaL_traceback)
 inline void zlua_luaL_traceback(lua_State* L, lua_State* L1, const char* msg, int level)
 {
@@ -217,17 +263,109 @@ inline void zlua_luaL_traceback(lua_State* L, lua_State* L1, const char* msg, in
 #endif
 #endif
 
+#if ZLUA_USE_LUAU
+/* Luau lua_ref always pins in the registry and does not pop. ZLua also refs inside weak tables. */
+inline int zlua_luaL_ref(lua_State* L, int t)
+{
+    if (lua_isnil(L, -1))
+    {
+        lua_pop(L, 1);
+        /* Luau's LUA_REFNIL is 0, which is also the freelist slot. Return NOREF so unref is a no-op. */
+        return LUA_NOREF;
+    }
+
+    t = lua_absindex(L, t);
+    lua_rawgeti(L, t, 0);
+    int ref = (int)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    if (ref != 0)
+    {
+        lua_rawgeti(L, t, ref);
+        lua_rawseti(L, t, 0);
+    }
+    else
+    {
+        ref = (int)lua_objlen(L, t) + 1;
+    }
+
+    lua_rawseti(L, t, ref);
+    return ref;
+}
+
+inline void zlua_luaL_unref(lua_State* L, int t, int ref)
+{
+    if (ref <= 0)
+        return;
+
+    t = lua_absindex(L, t);
+    lua_rawgeti(L, t, 0);
+    lua_rawseti(L, t, ref);
+    lua_pushinteger(L, ref);
+    lua_rawseti(L, t, 0);
+}
+
+#define luaL_ref(L, t) zlua_luaL_ref((L), (t))
+#define luaL_unref(L, t, ref) zlua_luaL_unref((L), (t), (ref))
+
+inline int zlua_luaL_loadbuffer(lua_State* L, const char* buff, size_t sz, const char* name)
+{
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(buff, sz, nullptr, &bytecodeSize);
+    if (bytecode == nullptr)
+        return LUA_ERRMEM;
+
+    const int status = luau_load(L, name != nullptr ? name : "=zlua", bytecode, bytecodeSize, 0);
+    free(bytecode);
+    return status;
+}
+
+inline int zlua_luaL_loadstring(lua_State* L, const char* s)
+{
+    const size_t n = s != nullptr ? strlen(s) : 0;
+    return zlua_luaL_loadbuffer(L, s != nullptr ? s : "", n, "=zlua");
+}
+
+inline int zlua_luaL_dostring(lua_State* L, const char* s)
+{
+    return zlua_luaL_loadstring(L, s) || lua_pcall(L, 0, LUA_MULTRET, 0);
+}
+
+#define luaL_loadbuffer(L, buff, sz, name) zlua_luaL_loadbuffer((L), (buff), (sz), (name))
+#define luaL_loadstring(L, s) zlua_luaL_loadstring((L), (s))
+#define luaL_dostring(L, s) zlua_luaL_dostring((L), (s))
+
+inline int zlua_marshal_type(lua_State* L, int index)
+{
+    const int t = lua_type(L, index);
+    return t == LUA_TINTEGER ? LUA_TNUMBER : t;
+}
+#else
+inline int zlua_marshal_type(lua_State* L, int index)
+{
+    return lua_type(L, index);
+}
+#endif
+
 namespace zlua
 {
 
-/// <summary>Lua 5.4+ userdata with 0 uservalues; older API families use lua_newuserdata.</summary>
-inline void* LuaNewUserData(lua_State* L, size_t size)
+/* Luau userdata tags. Ignored by LuaNewUserData on PUC / LuaJIT. */
+static constexpr int kLuauUdTagByObj = 1;
+static constexpr int kLuauUdTagByVal = 2;
+
+/// <summary>Lua 5.4+ userdata with 0 uservalues; older API families use lua_newuserdata. Luau tag 0 has no destructor.</summary>
+inline void* LuaNewUserData(lua_State* L, size_t size, int tag = 0)
 {
-#if ZLUA_USE_LUAJIT
+#if ZLUA_USE_LUAU
+    return lua_newuserdatatagged(L, size, tag);
+#elif ZLUA_USE_LUAJIT
+    (void)tag;
     return lua_newuserdata(L, size);
 #elif (ZLUA_LUA_API_FAMILY >= 504) || (LUA_VERSION_NUM >= 504)
+    (void)tag;
     return lua_newuserdatauv(L, size, 0);
 #else
+    (void)tag;
     return lua_newuserdata(L, size);
 #endif
 }

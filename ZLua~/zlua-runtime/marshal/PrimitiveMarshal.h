@@ -73,24 +73,38 @@ class PrimitiveMarshal
 
     static void PushInt64(lua_State* L, int64_t v)
     {
+#if ZLUA_USE_LUAU
+        /* Luau number literals are doubles and do not compare equal to LUA_TINTEGER. */
+        lua_pushnumber(L, (lua_Number)v);
+#else
         lua_pushinteger(L, (lua_Integer)v);
+#endif
     }
 
     static int64_t PopInt64(lua_State* L, int idx);
 
     static void PushUInt32(lua_State* L, uint32_t v)
     {
+#if ZLUA_USE_LUAU
+        /* lua_Integer is 32-bit signed; values above INT32_MAX must stay doubles. */
+        lua_pushnumber(L, (lua_Number)v);
+#else
         lua_pushinteger(L, (lua_Integer)v);
+#endif
     }
 
     static uint32_t PopUInt32(lua_State* L, int idx);
 
     static void PushUInt64(lua_State* L, uint64_t v)
     {
+#if ZLUA_USE_LUAU
+        lua_pushnumber(L, (lua_Number)v);
+#else
         if (v <= (uint64_t)LUA_MAXINTEGER)
             lua_pushinteger(L, (lua_Integer)v);
         else
             lua_pushnumber(L, (lua_Number)v);
+#endif
     }
 
     static uint64_t PopUInt64(lua_State* L, int idx);
@@ -111,14 +125,22 @@ class PrimitiveMarshal
 
     static void PushIntPtr(lua_State* L, intptr_t v)
     {
+#if ZLUA_USE_LUAU
+        lua_pushnumber(L, (lua_Number)v);
+#else
         lua_pushinteger(L, (lua_Integer)v);
+#endif
     }
 
     static intptr_t PopIntPtr(lua_State* L, int idx);
 
     static void PushUIntPtr(lua_State* L, uintptr_t v)
     {
+#if ZLUA_USE_LUAU
+        lua_pushnumber(L, (lua_Number)v);
+#else
         lua_pushinteger(L, (lua_Integer)v);
+#endif
     }
 
     static uintptr_t PopUIntPtr(lua_State* L, int idx);

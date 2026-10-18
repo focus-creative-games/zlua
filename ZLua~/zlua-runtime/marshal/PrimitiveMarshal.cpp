@@ -30,6 +30,14 @@ namespace
 {
 inline void ExpectLuaType(lua_State* L, int idx, int expectedType, const char* expectedName)
 {
+#if ZLUA_USE_LUAU
+    if (expectedType == LUA_TNUMBER)
+    {
+        const int t = lua_type(L, idx);
+        if (t == LUA_TNUMBER || t == LUA_TINTEGER)
+            return;
+    }
+#endif
     if (ZLUA_UNLIKELY(lua_type(L, idx) != expectedType))
         LuaException::ThrowFormat("zlua argument mismatch: expected %s at index %d", expectedName, idx);
 }

@@ -145,7 +145,13 @@ local function zlua_module_searcher(modname)
 end
 
 local searchers = package.searchers or package.loaders
-table.insert(searchers, 2, zlua_module_searcher)
+-- Luau starts with an empty searcher list. insert at 2 would leave a hole at [1],
+-- and `#searchers` would stay 0 so require never calls the loader.
+if searchers[1] == nil then
+    searchers[1] = zlua_module_searcher
+else
+    table.insert(searchers, 2, zlua_module_searcher)
+end
 )";
     LuaEnv::DoStringIgnoreResult(installSearcherChunk);
 }

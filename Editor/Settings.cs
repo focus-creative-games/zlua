@@ -33,7 +33,7 @@ namespace ZLua
         [Tooltip("Enable ZLua")]
         public bool enable = true;
 
-        [Tooltip("PUC-Rio: lua-X.Y.Z (downloaded from lua.org into Library/ZLua/LuaSrcCache). LuaJIT: luajit-M.N (clone into LuaSrcCache/luajit-M.N). Empty = lua-5.5.0. See spec 11-MULTI-VERSION.")]
+        [Tooltip("PUC-Rio: lua-X.Y.Z. LuaJIT: luajit-M.N. Luau: luau-M.N (e.g. luau-0.743). Empty = lua-5.5.0.")]
         public string luaVersionId = "lua-5.5.0";
 
         [Tooltip("MarshalAs XML files or directories (relative to project root or absolute). See spec marshal/02-MARSHAL-AS §9.")]

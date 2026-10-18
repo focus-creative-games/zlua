@@ -27,7 +27,9 @@
 #include "../utils/LuaException.h"
 
 #include "il2cpp-config.h"
+#if !ZLUA_USE_LUAU
 #include "lua/lauxlib.h"
+#endif
 
 namespace zlua
 {

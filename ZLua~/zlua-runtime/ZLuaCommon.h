@@ -58,6 +58,18 @@
 #error "ZLUA_FAST_METATABLE must be defined by lua/luaconf.h"
 #endif
 
+#ifndef ZLUA_USE_LUAU
+#define ZLUA_USE_LUAU 0
+#endif
+
+#if ZLUA_USE_LUAJIT && ZLUA_USE_LUAU
+#error "ZLUA_USE_LUAJIT and ZLUA_USE_LUAU are mutually exclusive"
+#endif
+
 #if ZLUA_USE_LUAJIT && ZLUA_FAST_METATABLE
 #error "ZLUA_FAST_METATABLE must be 0 when ZLUA_USE_LUAJIT is enabled"
+#endif
+
+#if ZLUA_USE_LUAU && ZLUA_FAST_METATABLE
+#error "ZLUA_FAST_METATABLE must be 0 when ZLUA_USE_LUAU is enabled"
 #endif
