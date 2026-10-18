@@ -129,6 +129,14 @@ print(d.x)
 
 ---
 
+## AI Skills
+
+The package includes skill notes for AI coding agents. They are not a runtime API. Files live under `ZLua~/skills/`. The `~` suffix keeps Unity from importing the folder as assets.
+
+Agents do not discover that path on their own. Add `ZLua~/skills` to the agent's skill search path, or copy or link the skill folders into the location that agent reads. Do not move the Markdown into a normal `Packages/.../` folder, or Unity will import it.
+
+---
+
 ## License
 
 MIT. Free to use, modify, and distribute.
