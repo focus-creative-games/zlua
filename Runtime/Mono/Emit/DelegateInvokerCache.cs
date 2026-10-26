@@ -99,12 +99,7 @@ namespace ZLua.Emit
             for (int i = 0; i < parameters.Length; i++)
             {
                 Type paramType = parameters[i].ParameterType;
-                Expression popped = Expression.Call(
-                    EmitMethods.PopArg,
-                    L,
-                    Expression.Constant(i + 2),
-                    Expression.Constant(paramType, typeof(Type)));
-                argExprs[i] = Expression.Convert(popped, paramType);
+                argExprs[i] = TypedBridgeEmit.PopArg(L, i + 2, paramType);
             }
 
             Expression call = Expression.Call(typedDel, invoke, argExprs);
@@ -117,11 +112,7 @@ namespace ZLua.Emit
             {
                 ParameterExpression result = Expression.Variable(invoke.ReturnType, "result");
                 exprs.Add(Expression.Assign(result, call));
-                exprs.Add(Expression.Call(
-                    EmitMethods.PushReturn,
-                    L,
-                    Expression.Constant(invoke.ReturnType, typeof(Type)),
-                    Expression.Convert(result, typeof(object))));
+                exprs.Add(TypedBridgeEmit.PushReturn(L, invoke.ReturnType, result));
                 return Expression.Lambda<Func<Delegate, IntPtr, int>>(
                     Expression.Block(new[] { result }, exprs),
                     delParam,

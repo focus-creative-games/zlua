@@ -137,7 +137,6 @@ namespace ZLua.Emit
             if (isStatic)
             {
                 value = Expression.Field(null, field);
-                value = Expression.Convert(value, typeof(object));
             }
             else if (isByVal && declaringType.IsValueType)
             {
@@ -156,16 +155,10 @@ namespace ZLua.Emit
                     Expression.Constant(1),
                     Expression.Constant(declaringType, typeof(Type)),
                     Expression.Constant(false));
-                value = Expression.Convert(
-                    Expression.Field(Expression.Convert(targetObj, declaringType), field),
-                    typeof(object));
+                value = Expression.Field(Expression.Convert(targetObj, declaringType), field);
             }
 
-            Expression body = Expression.Call(
-                EmitMethods.PushReturn,
-                L,
-                Expression.Constant(fieldType, typeof(Type)),
-                value);
+            Expression body = TypedBridgeEmit.PushReturn(L, fieldType, value);
 
             Func<IntPtr, int> core = Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
             return Wrap(core);
@@ -212,22 +205,18 @@ namespace ZLua.Emit
             Type fieldType = field.FieldType;
             ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
 
-            Expression valueObj = Expression.Call(
-                EmitMethods.PopArg,
-                L,
-                Expression.Constant(2),
-                Expression.Constant(fieldType, typeof(Type)));
+            Expression typedValue = TypedBridgeEmit.PopArg(L, 2, fieldType);
 
             Expression body;
             if (isStatic)
             {
-                Expression typedValue = Expression.Convert(valueObj, fieldType);
                 body = Expression.Block(
                     Expression.Assign(Expression.Field(null, field), typedValue),
                     Expression.Constant(0));
             }
             else if (isByVal && declaringType.IsValueType)
             {
+                Expression valueObj = Expression.Convert(typedValue, typeof(object));
                 body = Expression.Block(
                     Expression.Call(
                         EmitMethods.ByValSetField,
@@ -240,7 +229,6 @@ namespace ZLua.Emit
             }
             else
             {
-                Expression typedValue = Expression.Convert(valueObj, fieldType);
                 Expression targetObj = Expression.Call(
                     EmitMethods.PopTarget,
                     L,

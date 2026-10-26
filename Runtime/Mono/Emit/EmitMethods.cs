@@ -35,6 +35,12 @@ namespace ZLua.Emit
         internal static readonly MethodInfo ValidateExactArgCount =
             Require(typeof(BridgeMarshaling), nameof(BridgeMarshaling.ValidateExactArgCount));
 
+        internal static readonly MethodInfo ValidateArgCountRange =
+            Require(typeof(BridgeMarshaling), nameof(BridgeMarshaling.ValidateArgCountRange));
+
+        internal static readonly MethodInfo LuaGetTop =
+            Require(typeof(global::ZLua.LuaDll), nameof(global::ZLua.LuaDll.lua_gettop));
+
         internal static readonly MethodInfo PopTarget =
             Require(typeof(BridgeMarshaling), nameof(BridgeMarshaling.PopTarget));
 

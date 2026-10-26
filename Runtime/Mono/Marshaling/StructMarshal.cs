@@ -161,6 +161,29 @@ namespace ZLua.Marshaling
             return ref *(T*)(void*)GetDataPointer(L, index, typeof(T));
         }
 
+        /// <summary>
+        /// Push unmanaged struct without boxing through <see cref="object"/> / <see cref="CopyValue"/>.
+        /// </summary>
+        internal static unsafe void PushValue<T>(IntPtr L, T value) where T : unmanaged
+        {
+            Type structType = typeof(T);
+            int payloadSize = UnsafeUtility.SizeOf<T>();
+            ByValUserDataHeader* header = CreateByValUserDataHeader(
+                L, structType, payloadSize, LuaConsts.LuaNoRef);
+            if (payloadSize > 0)
+            {
+                *(T*)PayloadOf(header) = value;
+            }
+        }
+
+        /// <summary>
+        /// Copy blittable ByVal userdata out as <typeparamref name="T"/> (Lua → C# by-value arg).
+        /// </summary>
+        internal static unsafe T PopValue<T>(IntPtr L, int index) where T : unmanaged
+        {
+            return AsRef<T>(L, index);
+        }
+
         internal static void PushValue(IntPtr L, object boxedOrValue, Type structType, int metatableRefIndex)
         {
             if (structType == null)
@@ -175,7 +198,6 @@ namespace ZLua.Marshaling
                     $"zlua argument mismatch: cannot convert {boxed.GetType().FullName} to {structType.FullName}");
             }
 
-            object owned = CopyValue(boxed, structType);
             int payloadSize = GetPayloadSize(structType);
             unsafe
             {
@@ -183,10 +205,13 @@ namespace ZLua.Marshaling
                 IntPtr udPtr = (IntPtr)header;
                 if (IsBlittable(structType) && payloadSize > 0)
                 {
-                    global::System.Runtime.InteropServices.Marshal.StructureToPtr(owned, (IntPtr)PayloadOf(header), false);
+                    // Blittable: StructureToPtr copies fields; skip extra CopyValue box churn.
+                    global::System.Runtime.InteropServices.Marshal.StructureToPtr(
+                        boxed, (IntPtr)PayloadOf(header), false);
                 }
                 else if (!IsBlittable(structType))
                 {
+                    object owned = CopyValue(boxed, structType);
                     StructRegistry.RegisterBoxed(udPtr, owned);
                 }
             }

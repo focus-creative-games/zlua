@@ -32,6 +32,13 @@ namespace ZLua.Emit
     internal static class InterpretedMethodInvoker
     {
         /// <summary>
+        /// Exact-length buffers: <see cref="MethodInfo.Invoke"/> requires args.Length == parameter count.
+        /// Indexed by length; grown as needed. ThreadStatic for Editor worker threads.
+        /// </summary>
+        [ThreadStatic]
+        private static object[][] s_argsByLength;
+
+        /// <summary>
         /// Lua→C# <c>out</c>: omitted from arity / Pop; pushed as multi-return after Invoke (spec 03-BYREF §5).
         /// </summary>
         internal static bool IsOutParameter(ParameterInfo parameter)
@@ -39,6 +46,49 @@ namespace ZLua.Emit
             return parameter != null
                 && parameter.ParameterType.IsByRef
                 && parameter.IsOut;
+        }
+
+        private static object[] RentArgs(int length)
+        {
+            if (length < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(length));
+            }
+
+            object[][] byLength = s_argsByLength;
+            if (byLength == null || byLength.Length <= length)
+            {
+                int newLen = Math.Max(length + 1, 16);
+                if (byLength != null && byLength.Length > newLen)
+                {
+                    newLen = byLength.Length;
+                }
+
+                var grown = new object[newLen][];
+                if (byLength != null)
+                {
+                    Array.Copy(byLength, grown, byLength.Length);
+                }
+
+                s_argsByLength = byLength = grown;
+            }
+
+            object[] buffer = byLength[length];
+            if (buffer == null)
+            {
+                buffer = new object[length];
+                byLength[length] = buffer;
+            }
+
+            return buffer;
+        }
+
+        private static void ClearArgs(object[] args, int length)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                args[i] = null;
+            }
         }
 
         internal static bool NeedsInterpreted(MethodBase method)
@@ -174,6 +224,22 @@ namespace ZLua.Emit
                 ? LuaMarshalBinding.Default
                 : LuaMarshalAsValidation.Current.ResolveReturnBinding(method, LuaMarshalDirection.CSharpToLua);
 
+            var outBindings = new LuaMarshalBinding[parameters.Length];
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                if (!IsOutParameter(parameters[i]))
+                {
+                    continue;
+                }
+
+                Type elementType = parameters[i].ParameterType.GetElementType();
+                outBindings[i] = LuaMarshalAsValidation.Current.ResolveParameterBinding(
+                    parameters[i],
+                    method,
+                    LuaMarshalDirection.CSharpToLua,
+                    elementType);
+            }
+
             bool isExtension = ExtensionMethodUtil.IsExtensionMethod(method);
             int argStart = isStatic ? 1 : 2;
             int maxArgs = GetMaxLuaArity(method);
@@ -191,8 +257,16 @@ namespace ZLua.Emit
                 if (isExtension)
                 {
                     object[] invokeArgs = PopExtensionArgs(L, argStart, parameters, paramBindings, cachedDefaults);
-                    object returnValue = method.Invoke(null, invokeArgs);
-                    return PushInvokeResults(L, method, parameters, returnValue, invokeArgs, returnBinding);
+                    try
+                    {
+                        object returnValue = method.Invoke(null, invokeArgs);
+                        return PushInvokeResults(
+                            L, method, parameters, returnValue, invokeArgs, returnBinding, outBindings);
+                    }
+                    finally
+                    {
+                        ClearArgs(invokeArgs, parameters.Length);
+                    }
                 }
 
                 object target = null;
@@ -200,17 +274,33 @@ namespace ZLua.Emit
                 {
                     if (isByVal && declaringType != null && declaringType.IsValueType)
                     {
-                        var args = PopArgs(L, argStart, parameters, paramBindings, cachedDefaults);
-                        object result = ByValInstanceOps.InvokeInstance(L, 1, declaringType, method, args);
-                        return PushInvokeResults(L, method, parameters, result, args, returnBinding);
+                        object[] args = PopArgs(L, argStart, parameters, paramBindings, cachedDefaults);
+                        try
+                        {
+                            object result = ByValInstanceOps.InvokeInstance(L, 1, declaringType, method, args);
+                            return PushInvokeResults(
+                                L, method, parameters, result, args, returnBinding, outBindings);
+                        }
+                        finally
+                        {
+                            ClearArgs(args, parameters.Length);
+                        }
                     }
 
                     target = BridgeMarshaling.PopTarget(L, 1, declaringType, isByVal: false);
                 }
 
                 object[] invokeArgsNormal = PopArgs(L, argStart, parameters, paramBindings, cachedDefaults);
-                object returnValueNormal = method.Invoke(target, invokeArgsNormal);
-                return PushInvokeResults(L, method, parameters, returnValueNormal, invokeArgsNormal, returnBinding);
+                try
+                {
+                    object returnValueNormal = method.Invoke(target, invokeArgsNormal);
+                    return PushInvokeResults(
+                        L, method, parameters, returnValueNormal, invokeArgsNormal, returnBinding, outBindings);
+                }
+                finally
+                {
+                    ClearArgs(invokeArgsNormal, parameters.Length);
+                }
             };
         }
 
@@ -238,9 +328,16 @@ namespace ZLua.Emit
             {
                 BridgeMarshaling.ValidateArgCountRange(L, minArgs, maxArgs, argStart);
                 object[] args = PopArgs(L, argStart, parameters, paramBindings, cachedDefaults);
-                object instance = ctor.Invoke(args);
-                TypeRegistry.PushConstructorInstance(L, instance, type);
-                return 1;
+                try
+                {
+                    object instance = ctor.Invoke(args);
+                    TypeRegistry.PushConstructorInstance(L, instance, type);
+                    return 1;
+                }
+                finally
+                {
+                    ClearArgs(args, parameters.Length);
+                }
             };
         }
 
@@ -251,7 +348,7 @@ namespace ZLua.Emit
             LuaMarshalBinding[] bindings,
             object[] cachedDefaults)
         {
-            var args = new object[parameters.Length];
+            object[] args = RentArgs(parameters.Length);
             // Slot 1 = receiver → CLR param 0 (P0 type; ByObj or ByVal via CompositeMarshal).
             args[0] = CompositeMarshal.Pop(L, 1, parameters[0].ParameterType, bindings[0]);
             int slot = argStart;
@@ -271,7 +368,7 @@ namespace ZLua.Emit
             LuaMarshalBinding[] bindings,
             object[] cachedDefaults)
         {
-            var args = new object[parameters.Length];
+            object[] args = RentArgs(parameters.Length);
             int slot = argStart;
             int top = LuaDll.lua_gettop(L);
             for (int i = 0; i < parameters.Length; i++)
@@ -337,7 +434,8 @@ namespace ZLua.Emit
             ParameterInfo[] parameters,
             object returnValue,
             object[] invokeArgs,
-            LuaMarshalBinding returnBinding)
+            LuaMarshalBinding returnBinding,
+            LuaMarshalBinding[] outBindings)
         {
             int pushed = CompositeMarshal.Push(L, returnValue, method.ReturnType, returnBinding);
             for (int i = 0; i < parameters.Length; i++)
@@ -348,12 +446,7 @@ namespace ZLua.Emit
                 }
 
                 Type elementType = parameters[i].ParameterType.GetElementType();
-                LuaMarshalBinding outBinding = LuaMarshalAsValidation.Current.ResolveParameterBinding(
-                    parameters[i],
-                    method,
-                    LuaMarshalDirection.CSharpToLua,
-                    elementType);
-                pushed += CompositeMarshal.Push(L, invokeArgs[i], elementType, outBinding);
+                pushed += CompositeMarshal.Push(L, invokeArgs[i], elementType, outBindings[i]);
             }
 
             return pushed;

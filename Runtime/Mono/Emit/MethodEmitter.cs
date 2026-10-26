@@ -437,8 +437,7 @@ namespace ZLua.Emit
                 // Zero-arg closed methods (e.g. GetComponent<T>()) skip SelectMethod.
                 if (maxArity > 0 || valueArgCount > 0)
                 {
-                    MethodInfo[] one = { closed };
-                    if (LuaArgMatcher.SelectMethod(L, valueArgStart, one, out _)
+                    if (LuaArgMatcher.SelectMethod(L, valueArgStart, closed, out _)
                         != LuaOverloadMatch.BestMatch)
                     {
                         continue;
@@ -508,12 +507,31 @@ namespace ZLua.Emit
 
         private static LuaCSFunction CompileDirect(MethodInfo method, bool isStatic, bool isByVal)
         {
+            // Optional defaults stay on Expression (typed PopArgOrDefault). params / composite / out → interpreted.
             Func<IntPtr, int> core = InterpretedMethodInvoker.NeedsInterpreted(method)
-                || DefaultParameterUtil.HasOptionalDefaults(method)
                 || ParamsArrayUtil.HasParamsArray(method)
                 ? InterpretedMethodInvoker.CompileMethod(method, isStatic, isByVal)
                 : BuildDirectCore(method, isStatic, isByVal);
             return Wrap(core);
+        }
+
+        private static Expression BuildOptionalPop(
+            Expression L,
+            Expression top,
+            int slot,
+            Type paramType,
+            object[] cachedDefaults,
+            int paramIndex)
+        {
+            if (cachedDefaults != null
+                && paramIndex < cachedDefaults.Length
+                && !ReferenceEquals(cachedDefaults[paramIndex], Missing.Value))
+            {
+                return TypedBridgeEmit.PopArgOrDefault(
+                    L, top, slot, paramType, cachedDefaults[paramIndex]);
+            }
+
+            return TypedBridgeEmit.PopArg(L, slot, paramType);
         }
 
         private static Func<IntPtr, int> BuildDirectCore(MethodInfo method, bool isStatic, bool isByVal)
@@ -536,18 +554,31 @@ namespace ZLua.Emit
             Type declaringType = method.DeclaringType;
             ParameterInfo[] parameters = method.GetParameters();
             int argStart = isStatic ? 1 : 2;
-            int expectedArgs = parameters.Length;
+            bool hasOptional = DefaultParameterUtil.HasOptionalDefaults(method);
+            object[] cachedDefaults = hasOptional ? DefaultParameterUtil.GetCachedDefaults(method) : null;
+            int minArgs = hasOptional ? DefaultParameterUtil.GetMinLuaArity(method) : parameters.Length;
+            int maxArgs = parameters.Length;
 
             ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
             var locals = new List<ParameterExpression>();
-            var exprs = new List<Expression>
+            var exprs = new List<Expression>();
+            if (hasOptional)
             {
-                Expression.Call(
+                exprs.Add(Expression.Call(
+                    EmitMethods.ValidateArgCountRange,
+                    L,
+                    Expression.Constant(minArgs),
+                    Expression.Constant(maxArgs),
+                    Expression.Constant(argStart)));
+            }
+            else
+            {
+                exprs.Add(Expression.Call(
                     EmitMethods.ValidateExactArgCount,
                     L,
-                    Expression.Constant(expectedArgs),
-                    Expression.Constant(argStart)),
-            };
+                    Expression.Constant(maxArgs),
+                    Expression.Constant(argStart)));
+            }
 
             Expression targetExpr = null;
             if (!isStatic)
@@ -565,16 +596,22 @@ namespace ZLua.Emit
                 targetExpr = Expression.Convert(targetLocal, declaringType);
             }
 
+            ParameterExpression topLocal = null;
+            if (hasOptional)
+            {
+                topLocal = Expression.Variable(typeof(int), "top");
+                locals.Add(topLocal);
+                exprs.Add(Expression.Assign(topLocal, Expression.Call(EmitMethods.LuaGetTop, L)));
+            }
+
             var argExprs = new Expression[parameters.Length];
             for (int i = 0; i < parameters.Length; i++)
             {
                 Type paramType = parameters[i].ParameterType;
-                Expression popped = Expression.Call(
-                    EmitMethods.PopArg,
-                    L,
-                    Expression.Constant(argStart + i),
-                    Expression.Constant(paramType, typeof(Type)));
-                argExprs[i] = Expression.Convert(popped, paramType);
+                int slot = argStart + i;
+                argExprs[i] = hasOptional
+                    ? BuildOptionalPop(L, topLocal, slot, paramType, cachedDefaults, i)
+                    : TypedBridgeEmit.PopArg(L, slot, paramType);
             }
 
             Expression call = isStatic
@@ -591,11 +628,7 @@ namespace ZLua.Emit
                 ParameterExpression resultLocal = Expression.Variable(method.ReturnType, "result");
                 locals.Add(resultLocal);
                 exprs.Add(Expression.Assign(resultLocal, call));
-                exprs.Add(Expression.Call(
-                    EmitMethods.PushReturn,
-                    L,
-                    Expression.Constant(method.ReturnType, typeof(Type)),
-                    Expression.Convert(resultLocal, typeof(object))));
+                exprs.Add(TypedBridgeEmit.PushReturn(L, method.ReturnType, resultLocal));
             }
 
             Expression body = Expression.Block(locals, exprs);
@@ -609,37 +642,51 @@ namespace ZLua.Emit
         {
             ParameterInfo[] parameters = method.GetParameters();
             const int argStart = 2;
-            int expectedArgs = parameters.Length - 1;
+            bool hasOptional = DefaultParameterUtil.HasOptionalDefaults(method);
+            object[] cachedDefaults = hasOptional ? DefaultParameterUtil.GetCachedDefaults(method) : null;
+            int minArgs = hasOptional ? DefaultParameterUtil.GetMinLuaArity(method) : parameters.Length - 1;
+            int maxArgs = parameters.Length - 1;
 
             ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
             var locals = new List<ParameterExpression>();
-            var exprs = new List<Expression>
+            var exprs = new List<Expression>();
+            if (hasOptional)
             {
-                Expression.Call(
+                exprs.Add(Expression.Call(
+                    EmitMethods.ValidateArgCountRange,
+                    L,
+                    Expression.Constant(minArgs),
+                    Expression.Constant(maxArgs),
+                    Expression.Constant(argStart)));
+            }
+            else
+            {
+                exprs.Add(Expression.Call(
                     EmitMethods.ValidateExactArgCount,
                     L,
-                    Expression.Constant(expectedArgs),
-                    Expression.Constant(argStart)),
-            };
+                    Expression.Constant(maxArgs),
+                    Expression.Constant(argStart)));
+            }
+
+            ParameterExpression topLocal = null;
+            if (hasOptional)
+            {
+                topLocal = Expression.Variable(typeof(int), "top");
+                locals.Add(topLocal);
+                exprs.Add(Expression.Assign(topLocal, Expression.Call(EmitMethods.LuaGetTop, L)));
+            }
 
             var argExprs = new Expression[parameters.Length];
             Type p0Type = parameters[0].ParameterType;
-            Expression receiverPopped = Expression.Call(
-                EmitMethods.PopArg,
-                L,
-                Expression.Constant(1),
-                Expression.Constant(p0Type, typeof(Type)));
-            argExprs[0] = Expression.Convert(receiverPopped, p0Type);
+            argExprs[0] = TypedBridgeEmit.PopArg(L, 1, p0Type);
 
             for (int i = 1; i < parameters.Length; i++)
             {
                 Type paramType = parameters[i].ParameterType;
-                Expression popped = Expression.Call(
-                    EmitMethods.PopArg,
-                    L,
-                    Expression.Constant(argStart + i - 1),
-                    Expression.Constant(paramType, typeof(Type)));
-                argExprs[i] = Expression.Convert(popped, paramType);
+                int slot = argStart + i - 1;
+                argExprs[i] = hasOptional
+                    ? BuildOptionalPop(L, topLocal, slot, paramType, cachedDefaults, i)
+                    : TypedBridgeEmit.PopArg(L, slot, paramType);
             }
 
             Expression call = Expression.Call(method, argExprs);
@@ -654,11 +701,7 @@ namespace ZLua.Emit
                 ParameterExpression resultLocal = Expression.Variable(method.ReturnType, "result");
                 locals.Add(resultLocal);
                 exprs.Add(Expression.Assign(resultLocal, call));
-                exprs.Add(Expression.Call(
-                    EmitMethods.PushReturn,
-                    L,
-                    Expression.Constant(method.ReturnType, typeof(Type)),
-                    Expression.Convert(resultLocal, typeof(object))));
+                exprs.Add(TypedBridgeEmit.PushReturn(L, method.ReturnType, resultLocal));
             }
 
             Expression body = Expression.Block(locals, exprs);
@@ -853,7 +896,6 @@ namespace ZLua.Emit
                 if (group.Count == 1)
                 {
                     cores[kv.Key] = InterpretedMethodInvoker.NeedsInterpreted(first)
-                        || DefaultParameterUtil.HasOptionalDefaults(first)
                         || ParamsArrayUtil.HasParamsArray(first)
                         ? InterpretedMethodInvoker.CompileMethod(first, isStatic, isByVal)
                         : BuildDirectCore(first, isStatic, isByVal);
@@ -939,12 +981,12 @@ namespace ZLua.Emit
                 compiled[i] = InterpretedMethodInvoker.CompileMethod(methods[i], isStatic, isByVal);
             }
 
-            MethodInfo[] methodArray = methods.ToArray();
+            LuaArgMatchCandidate[] candidates = LuaArgMatchCandidate.CreateAll(methods.ToArray());
             int argStart = isStatic ? 1 : 2;
             string typeName = TypeRegistry.GetLuaFullName(methods[0].DeclaringType);
             return L =>
             {
-                LuaOverloadMatch match = LuaArgMatcher.SelectMethod(L, argStart, methodArray, out int selected);
+                LuaOverloadMatch match = LuaArgMatcher.SelectMethod(L, argStart, candidates, out int selected);
                 if (match == LuaOverloadMatch.Ambiguous)
                 {
                     LuaCallbackBoundary.Throw($"zlua: ambiguous method found: {typeName}.{name}");

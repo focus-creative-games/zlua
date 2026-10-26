@@ -148,11 +148,7 @@ namespace ZLua.Emit
             if (isStatic)
             {
                 Expression value = Expression.Call(getter);
-                body = Expression.Call(
-                    EmitMethods.PushReturn,
-                    L,
-                    Expression.Constant(propertyType, typeof(Type)),
-                    Expression.Convert(value, typeof(object)));
+                body = TypedBridgeEmit.PushReturn(L, propertyType, value);
             }
             else if (isByVal && declaringType.IsValueType)
             {
@@ -162,11 +158,8 @@ namespace ZLua.Emit
                     Expression.Constant(1),
                     Expression.Constant(declaringType, typeof(Type)),
                     Expression.Constant(getter, typeof(MethodInfo)));
-                body = Expression.Call(
-                    EmitMethods.PushReturn,
-                    L,
-                    Expression.Constant(propertyType, typeof(Type)),
-                    value);
+                // ByVal ops still return object; PushReturn falls back for non-primitive structs.
+                body = TypedBridgeEmit.PushReturn(L, propertyType, value);
             }
             else
             {
@@ -178,11 +171,7 @@ namespace ZLua.Emit
                     Expression.Constant(false));
                 Expression typedTarget = Expression.Convert(targetObj, declaringType);
                 Expression value = Expression.Call(typedTarget, getter);
-                body = Expression.Call(
-                    EmitMethods.PushReturn,
-                    L,
-                    Expression.Constant(propertyType, typeof(Type)),
-                    Expression.Convert(value, typeof(object)));
+                body = TypedBridgeEmit.PushReturn(L, propertyType, value);
             }
 
             Func<IntPtr, int> core = Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
@@ -236,22 +225,18 @@ namespace ZLua.Emit
             Type propertyType = property.PropertyType;
             ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
 
-            Expression valueObj = Expression.Call(
-                EmitMethods.PopArg,
-                L,
-                Expression.Constant(2),
-                Expression.Constant(propertyType, typeof(Type)));
+            Expression typedValue = TypedBridgeEmit.PopArg(L, 2, propertyType);
 
             Expression body;
             if (isStatic)
             {
-                Expression typedValue = Expression.Convert(valueObj, propertyType);
                 body = Expression.Block(
                     Expression.Call(setter, typedValue),
                     Expression.Constant(0));
             }
             else if (isByVal && declaringType.IsValueType)
             {
+                Expression valueObj = Expression.Convert(typedValue, typeof(object));
                 body = Expression.Block(
                     Expression.Call(
                         EmitMethods.ByValInvokePropertySetter,
@@ -264,7 +249,6 @@ namespace ZLua.Emit
             }
             else
             {
-                Expression typedValue = Expression.Convert(valueObj, propertyType);
                 Expression targetObj = Expression.Call(
                     EmitMethods.PopTarget,
                     L,

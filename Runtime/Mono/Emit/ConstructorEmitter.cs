@@ -239,7 +239,6 @@ namespace ZLua.Emit
         private static LuaCSFunction CompileDirect(ConstructorInfo ctor, Type type)
         {
             Func<IntPtr, int> core = InterpretedMethodInvoker.NeedsInterpreted(ctor)
-                || DefaultParameterUtil.HasOptionalDefaults(ctor)
                 || ParamsArrayUtil.HasParamsArray(ctor)
                 ? InterpretedMethodInvoker.CompileConstructor(ctor, type)
                 : BuildDirectCore(ctor, type);
@@ -250,27 +249,57 @@ namespace ZLua.Emit
         {
             ParameterInfo[] parameters = ctor.GetParameters();
             const int argStart = 2; // 1 = type table
-            ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
+            bool hasOptional = DefaultParameterUtil.HasOptionalDefaults(ctor);
+            object[] cachedDefaults = hasOptional ? DefaultParameterUtil.GetCachedDefaults(ctor) : null;
+            int minArgs = hasOptional ? DefaultParameterUtil.GetMinLuaArity(ctor) : parameters.Length;
+            int maxArgs = parameters.Length;
 
-            var exprs = new List<Expression>
+            ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
+            var locals = new List<ParameterExpression>();
+            var exprs = new List<Expression>();
+            if (hasOptional)
             {
-                Expression.Call(
+                exprs.Add(Expression.Call(
+                    EmitMethods.ValidateArgCountRange,
+                    L,
+                    Expression.Constant(minArgs),
+                    Expression.Constant(maxArgs),
+                    Expression.Constant(argStart)));
+            }
+            else
+            {
+                exprs.Add(Expression.Call(
                     EmitMethods.ValidateExactArgCount,
                     L,
-                    Expression.Constant(parameters.Length),
-                    Expression.Constant(argStart)),
-            };
+                    Expression.Constant(maxArgs),
+                    Expression.Constant(argStart)));
+            }
+
+            ParameterExpression topLocal = null;
+            if (hasOptional)
+            {
+                topLocal = Expression.Variable(typeof(int), "top");
+                locals.Add(topLocal);
+                exprs.Add(Expression.Assign(topLocal, Expression.Call(EmitMethods.LuaGetTop, L)));
+            }
 
             var argExprs = new Expression[parameters.Length];
             for (int i = 0; i < parameters.Length; i++)
             {
                 Type paramType = parameters[i].ParameterType;
-                Expression popped = Expression.Call(
-                    EmitMethods.PopArg,
-                    L,
-                    Expression.Constant(argStart + i),
-                    Expression.Constant(paramType, typeof(Type)));
-                argExprs[i] = Expression.Convert(popped, paramType);
+                int slot = argStart + i;
+                if (hasOptional
+                    && cachedDefaults != null
+                    && i < cachedDefaults.Length
+                    && !ReferenceEquals(cachedDefaults[i], Missing.Value))
+                {
+                    argExprs[i] = TypedBridgeEmit.PopArgOrDefault(
+                        L, topLocal, slot, paramType, cachedDefaults[i]);
+                }
+                else
+                {
+                    argExprs[i] = TypedBridgeEmit.PopArg(L, slot, paramType);
+                }
             }
 
             Expression constructed = Expression.New(ctor, argExprs);
@@ -282,7 +311,9 @@ namespace ZLua.Emit
                 Expression.Constant(type, typeof(Type))));
             exprs.Add(Expression.Constant(1));
 
-            Expression body = Expression.Block(exprs);
+            Expression body = locals.Count == 0
+                ? Expression.Block(exprs)
+                : Expression.Block(locals, exprs);
             return Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
         }
 
@@ -335,7 +366,6 @@ namespace ZLua.Emit
                 {
                     ConstructorInfo only = kv.Value[0];
                     cores[kv.Key] = InterpretedMethodInvoker.NeedsInterpreted(only)
-                        || DefaultParameterUtil.HasOptionalDefaults(only)
                         || ParamsArrayUtil.HasParamsArray(only)
                         ? InterpretedMethodInvoker.CompileConstructor(only, type)
                         : BuildDirectCore(only, type);
@@ -422,15 +452,16 @@ namespace ZLua.Emit
             {
                 ctorArray[i] = ctors[i];
                 cores[i] = InterpretedMethodInvoker.NeedsInterpreted(ctors[i])
-                    || DefaultParameterUtil.HasOptionalDefaults(ctors[i])
+                    || ParamsArrayUtil.HasParamsArray(ctors[i])
                     ? InterpretedMethodInvoker.CompileConstructor(ctors[i], type)
                     : BuildDirectCore(ctors[i], type);
             }
 
+            LuaArgMatchCandidate[] candidates = LuaArgMatchCandidate.CreateAll(ctorArray);
             string typeName = TypeRegistry.GetLuaFullName(type);
             return L =>
             {
-                LuaOverloadMatch match = LuaArgMatcher.Select(L, argStart: 2, ctorArray, out int selected);
+                LuaOverloadMatch match = LuaArgMatcher.Select(L, argStart: 2, candidates, out int selected);
                 if (match == LuaOverloadMatch.Ambiguous)
                 {
                     LuaCallbackBoundary.Throw($"zlua: ambiguous constructor found: {typeName}");

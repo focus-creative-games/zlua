@@ -35,31 +35,58 @@ namespace ZLua.Emit
 
     /// <summary>
     /// Non-throwing Lua→C# argument shape checks for same-arity overload selection.
+    /// Scoring reads bind-time <see cref="LuaArgMatchCandidate"/> snapshots only.
     /// </summary>
     internal static class LuaArgMatcher
     {
         internal static LuaOverloadMatch Select(
             IntPtr L,
             int argStart,
-            ConstructorInfo[] ctors,
+            LuaArgMatchCandidate[] candidates,
             out int selectedIndex)
         {
-            return SelectCore(L, argStart, ctors, out selectedIndex);
+            return SelectCore(L, argStart, candidates, out selectedIndex);
         }
 
         internal static LuaOverloadMatch SelectMethod(
             IntPtr L,
             int argStart,
-            MethodInfo[] methods,
+            LuaArgMatchCandidate[] candidates,
             out int selectedIndex)
         {
-            return SelectCore(L, argStart, methods, out selectedIndex);
+            return SelectCore(L, argStart, candidates, out selectedIndex);
+        }
+
+        /// <summary>
+        /// Single-candidate score using the shared MethodBase cache (GTAP closed methods).
+        /// </summary>
+        internal static LuaOverloadMatch SelectMethod(
+            IntPtr L,
+            int argStart,
+            MethodInfo method,
+            out int selectedIndex)
+        {
+            selectedIndex = -1;
+            if (!TryScore(
+                    L,
+                    argStart,
+                    LuaArgMatchCandidate.GetOrCreate(method),
+                    out _,
+                    out _,
+                    out _,
+                    out _))
+            {
+                return LuaOverloadMatch.None;
+            }
+
+            selectedIndex = 0;
+            return LuaOverloadMatch.BestMatch;
         }
 
         private static LuaOverloadMatch SelectCore(
             IntPtr L,
             int argStart,
-            MethodBase[] candidates,
+            LuaArgMatchCandidate[] candidates,
             out int selectedIndex)
         {
             selectedIndex = -1;
@@ -129,7 +156,7 @@ namespace ZLua.Emit
         private static bool TryScore(
             IntPtr L,
             int argStart,
-            MethodBase method,
+            LuaArgMatchCandidate candidate,
             out int score,
             out int optionalUsed,
             out int paramsExpanded,
@@ -138,26 +165,23 @@ namespace ZLua.Emit
             score = 0;
             optionalUsed = 0;
             paramsExpanded = 0;
-            paramsKind = ParamsArrayUtil.HasParamsArray(method) ? 1 : 0;
-            ParameterInfo[] parameters = method.GetParameters();
-            int paramStart = ExtensionMethodUtil.IsExtensionMethod(method) ? 1 : 0;
+            paramsKind = candidate.ParamsKind;
+            int paramStart = candidate.ParamStart;
             int top = LuaDll.lua_gettop(L);
             int slot = argStart;
-            for (int i = paramStart; i < parameters.Length; i++)
+            for (int i = paramStart; i < candidate.Parameters.Length; i++)
             {
                 // out: 0 Lua slots (spec 03-BYREF §5 / 04-METHOD-OVERLOAD §3.3).
-                if (InterpretedMethodInvoker.IsOutParameter(parameters[i]))
+                if (candidate.IsOut[i])
                 {
                     continue;
                 }
 
-                LuaMarshalBinding binding = LuaMarshalAsValidation.Current.ResolveParameterBinding(
-                    parameters[i],
-                    method,
-                    LuaMarshalDirection.LuaToCSharp);
+                LuaMarshalBinding binding = candidate.Bindings[i];
+                Type declaredType = candidate.ParameterTypes[i];
                 int available = top >= slot ? top - slot + 1 : 0;
 
-                if (ParamsArrayUtil.IsParamsParameter(parameters[i]))
+                if (candidate.IsParams[i])
                 {
                     if (available == 0)
                     {
@@ -165,7 +189,7 @@ namespace ZLua.Emit
                         continue;
                     }
 
-                    Type arrayType = parameters[i].ParameterType;
+                    Type arrayType = declaredType;
                     // Whole-array pass-through: matching szarray userdata only (not table / nil).
                     if (available == 1 && ParamsArrayUtil.LooksLikeArrayUserDataArg(L, slot, arrayType))
                     {
@@ -201,7 +225,7 @@ namespace ZLua.Emit
                 int need = binding.StackSlots > 0 ? binding.StackSlots : 1;
                 if (available >= need)
                 {
-                    if (!TryMatchParameter(L, slot, parameters[i].ParameterType, binding, out int part))
+                    if (!TryMatchParameter(L, slot, declaredType, binding, out int part))
                     {
                         score = -1;
                         return false;
@@ -212,7 +236,7 @@ namespace ZLua.Emit
                     continue;
                 }
 
-                if (DefaultParameterUtil.TryGetDefaultValue(parameters[i], out _))
+                if (candidate.HasDefault[i])
                 {
                     optionalUsed++;
                     continue;
