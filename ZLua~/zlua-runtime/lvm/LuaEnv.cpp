@@ -27,8 +27,8 @@
 #include "LuaLoader.h"
 #include "ZLuaLib.h"
 
-
 #include "../marshal/ObjectRegistry.h"
+#include "../marshal/StringMarshal.h"
 #include "../marshal/StructRegistry.h"
 #include "../marshal/MarshalDefs.h"
 #include "../marshal/MarshalMeta.h"
@@ -45,7 +45,6 @@
 #include "vm/String.h"
 #include "vm/Exception.h"
 #include "os/Mutex.h"
-
 
 namespace zlua
 {
@@ -176,6 +175,7 @@ void LuaEnv::Shutdown()
     }
 
     lua_close(s_L);
+    StringMarshal::ClearScratch();
     {
         il2cpp::os::FastAutoLock lock(&s_pendingRefReleasesMutex);
         s_L = nullptr;
