@@ -24,6 +24,7 @@
 #include "../utils/LuaException.h"
 
 #include "vm/String.h"
+#include <climits>
 // utf8::* comes from Il2CppCompatible.h (via ZLuaCommon.h) using ZLUA_UNITY_VERSION.
 
 namespace zlua
@@ -86,6 +87,11 @@ static inline bool TryAllAsciiChars(const Il2CppString* str)
 // Matches StringUtils::Utf8ToUtf16: invalid UTF-8 yields length 0.
 static int32_t ConvertToUtf16(const char* utf8, size_t len)
 {
+    // Like StringUtils::Utf8ToUtf16, validate before unchecked conversion:
+    // padding the output alone cannot prevent reads past truncated input.
+    if (!utf8::is_valid(utf8, utf8 + len))
+        return 0;
+
     // Worst case: all ASCII → 1 UTF-16 unit per byte.
     EnsureUtf16Scratch(static_cast<int32_t>(len));
 
@@ -136,6 +142,8 @@ Il2CppString* StringMarshal::Pop(lua_State* L, int idx)
         {
             return il2cpp::vm::String::Empty();
         }
+        if (len > static_cast<size_t>(INT32_MAX))
+            LuaException::Throw("zlua: string is too long to marshal to System.String");
 
         if (TryAllAsciiBytes(str, len))
             return il2cpp::vm::String::NewUtf16(s_utf16Scratch, static_cast<int32_t>(len));
