@@ -39,7 +39,7 @@ class LuaEnv
 
     static void DoStringIgnoreResult(const char* chunk);
 
-    static void AddPendingRef(int refIndex);
+    static void AddPendingRef(lua_State* L, int refIndex);
     static void ProcessPendingRefReleases();
 
   private:

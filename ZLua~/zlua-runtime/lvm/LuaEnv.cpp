@@ -44,6 +44,7 @@
 #include "vm/Runtime.h"
 #include "vm/String.h"
 #include "vm/Exception.h"
+#include "os/Mutex.h"
 
 
 namespace zlua
@@ -54,6 +55,7 @@ namespace zlua
 static lua_State* s_L = nullptr;
 static int s_errorHandlerRef = LUA_NOREF;
 static std::vector<int> s_pendingRefReleases;
+static baselib::ReentrantLock s_pendingRefReleasesMutex;
 static const MethodInfo* s_debugLogMethod = nullptr;
 
 void LuaEnv::RegisterGlobals()
@@ -129,8 +131,12 @@ void LuaEnv::RegisterLibs()
 void LuaEnv::Initialize()
 {
     IL2CPP_ASSERT(s_L == nullptr);
-    s_L = luaL_newstate();
-    IL2CPP_ASSERT(s_L != nullptr);
+    lua_State* L = luaL_newstate();
+    IL2CPP_ASSERT(L != nullptr);
+    {
+        il2cpp::os::FastAutoLock lock(&s_pendingRefReleasesMutex);
+        s_L = L;
+    }
     RegisterGlobals();
     RegisterLibs();
     ObjectRegistry::Initialize(s_L);
@@ -165,7 +171,13 @@ void LuaEnv::Shutdown()
     }
 
     lua_close(s_L);
-    s_L = nullptr;
+    {
+        il2cpp::os::FastAutoLock lock(&s_pendingRefReleasesMutex);
+        s_L = nullptr;
+        // Finalizers may have queued refs after the initial drain. The closed
+        // state already released them; never carry them into the next state.
+        s_pendingRefReleases.clear();
+    }
 }
 
 lua_State* LuaEnv::GetState()
@@ -227,16 +239,19 @@ void LuaEnv::DoStringIgnoreResult(const char* chunk)
     lua_settop(s_L, oldTop);
 }
 
-void LuaEnv::AddPendingRef(int refIndex)
+void LuaEnv::AddPendingRef(lua_State* L, int refIndex)
 {
     IL2CPP_ASSERT(refIndex != LUA_NOREF);
-    if (s_L == nullptr)
+    il2cpp::os::FastAutoLock lock(&s_pendingRefReleasesMutex);
+    // Finalizer threads must check state ownership under the same lock as enqueue.
+    if (s_L == nullptr || s_L != L)
         return;
     s_pendingRefReleases.push_back(refIndex);
 }
 
 void LuaEnv::ProcessPendingRefReleases()
 {
+    il2cpp::os::FastAutoLock lock(&s_pendingRefReleasesMutex);
     if (s_L == nullptr)
     {
         s_pendingRefReleases.clear();

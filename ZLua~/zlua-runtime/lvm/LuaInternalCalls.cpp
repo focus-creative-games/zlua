@@ -50,12 +50,7 @@ static void LuaIl2CppAppDomain_ResetInternal(Il2CppDelegate* moduleLoader)
 
 static void LuaMethod_AddPendingRef(void* L, int32_t refIndex)
 {
-    lua_State* active = LuaEnv::GetState();
-    if (active == nullptr || active != static_cast<lua_State*>(L))
-    {
-        return;
-    }
-    LuaEnv::AddPendingRef(refIndex);
+    LuaEnv::AddPendingRef(static_cast<lua_State*>(L), refIndex);
 }
 
 static void LuaIl2CppAppDomain_ProcessPendingRefReleases()
