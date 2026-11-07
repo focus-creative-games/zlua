@@ -21,6 +21,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using ZLua.Utils;
 
 namespace ZLua.Marshaling
@@ -37,21 +38,22 @@ namespace ZLua.Marshaling
         private readonly struct CacheKey : IEquatable<CacheKey>
         {
             public readonly Type DeclaredType;
-            public readonly LuaMarshalType MarshalType;
+            public readonly LuaMarshalBinding Binding;
 
-            public CacheKey(Type declaredType, LuaMarshalType marshalType)
+            public CacheKey(Type declaredType, LuaMarshalBinding binding)
             {
                 DeclaredType = declaredType;
-                MarshalType = marshalType;
+                Binding = binding;
             }
 
             public bool Equals(CacheKey other) =>
-                DeclaredType == other.DeclaredType && MarshalType == other.MarshalType;
+                DeclaredType == other.DeclaredType && ReferenceEquals(Binding, other.Binding);
 
             public override bool Equals(object obj) => obj is CacheKey other && Equals(other);
 
             public override int GetHashCode() =>
-                ((DeclaredType != null ? DeclaredType.GetHashCode() : 0) * 397) ^ (int)MarshalType;
+                ((DeclaredType != null ? DeclaredType.GetHashCode() : 0) * 397) ^
+                (Binding != null ? RuntimeHelpers.GetHashCode(Binding) : 0);
         }
 
         private sealed class Entry
@@ -65,6 +67,12 @@ namespace ZLua.Marshaling
 
         private static readonly ConcurrentDictionary<CacheKey, byte> s_negative =
             new ConcurrentDictionary<CacheKey, byte>();
+
+        internal static void Shutdown()
+        {
+            s_cache.Clear();
+            s_negative.Clear();
+        }
 
         internal static bool TryPop(
             IntPtr L,
@@ -118,7 +126,9 @@ namespace ZLua.Marshaling
                 return false;
             }
 
-            var key = new CacheKey(declaredType, binding.MarshalType);
+            // Build captures this binding's Members, their order/optionality and slot
+            // count. Reuse only the same resolved binding, without per-call member scans.
+            var key = new CacheKey(declaredType, binding);
             if (s_negative.ContainsKey(key))
             {
                 return false;

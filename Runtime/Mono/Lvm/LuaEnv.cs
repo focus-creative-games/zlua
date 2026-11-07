@@ -375,6 +375,7 @@ namespace ZLua.Lvm
                 TypeRegistry.Shutdown();
                 MethodEmitter.Shutdown();
                 MetaBinding.Shutdown();
+                CompositeSpecialized.Shutdown();
                 ClosurePin.Shutdown();
                 StructOpaqueScope.Shutdown();
 
