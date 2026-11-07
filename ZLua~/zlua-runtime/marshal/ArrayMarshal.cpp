@@ -117,7 +117,7 @@ Il2CppArray* ArrayMarshal::PopFromBytes(lua_State* L, int arrayIndex, Il2CppClas
     }
     size_t length;
     const char* data = lua_tolstring(L, arrayIndex, &length);
-    Il2CppArray* newArr = (Il2CppArray*)il2cpp::vm::Array::New(klass, length);
+    Il2CppArray* newArr = (Il2CppArray*)il2cpp::vm::Array::NewSpecific(klass, length);
     if (length > 0)
         std::memcpy(il2cpp_array_addr(newArr, uint8_t, 0), data, length);
     return newArr;
