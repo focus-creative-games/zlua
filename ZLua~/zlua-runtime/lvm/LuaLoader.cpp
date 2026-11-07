@@ -121,7 +121,7 @@ static int ZLuaLoadModule(lua_State* L)
     LoadModuleSource(moduleName, source);
     lua_pushlstring(L, source.c_str(), source.size());
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 void LuaLoader::InstallHooks()

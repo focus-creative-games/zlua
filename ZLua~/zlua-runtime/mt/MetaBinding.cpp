@@ -114,7 +114,7 @@ static int InvokeStaticMethodDirect(lua_State* L)
     ZLUA_TRY_BEGIN()
     const MethodMarshalCtx* ctx = (const MethodMarshalCtx*)lua_touserdata(L, lua_upvalueindex(kUpvalueIndexGroupsOrCtx));
     return MethodBridge::InvokeLua2Cs(L, nullptr, 1, ctx);
-    ZLUA_TRY_END();
+    ZLUA_TRY_END(L);
 }
 
 static int InvokeInstanceMethodDirect(lua_State* L)
@@ -123,7 +123,7 @@ static int InvokeInstanceMethodDirect(lua_State* L)
     const MethodMarshalCtx* ctx = (const MethodMarshalCtx*)lua_touserdata(L, lua_upvalueindex(kUpvalueIndexGroupsOrCtx));
     void* target = ctx->resolveThis(L, 1);
     return MethodBridge::InvokeLua2Cs(L, target, 2, ctx);
-    ZLUA_TRY_END();
+    ZLUA_TRY_END(L);
 }
 
 /// Extension static-as-instance: validate arity as instance (after self), invoke as static with argStart=1.
@@ -149,7 +149,7 @@ static int InvokeExtensionMethodDirect(lua_State* L)
     ZLUA_TRY_BEGIN()
     const MethodMarshalCtx* ctx = (const MethodMarshalCtx*)lua_touserdata(L, lua_upvalueindex(kUpvalueIndexGroupsOrCtx));
     return InvokeExtensionMethodCore(L, ctx);
-    ZLUA_TRY_END();
+    ZLUA_TRY_END(L);
 }
 
 static bool TryMaterializeDefaultParam(const MethodInfo* method, int paramIndex, const MarshalMetaInfo* meta, void** outValueSlot, Il2CppObject** outObjectSlot)
@@ -509,7 +509,7 @@ static int InvokeGtapThenFallback(lua_State* L)
         "(use zlua.inflate, or pass zlua.typeof(...) prefixes)",
         methodName);
     return 0;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int InvokeMethodDirectGeneric(lua_State* L)
@@ -530,7 +530,7 @@ static int InvokeMethodDirectGeneric(lua_State* L)
         "(use zlua.inflate, or pass zlua.typeof(...) prefixes)",
         ctx->method->name);
     return 0;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int CreateGtapWrapperClosureRef(lua_State* L, const TypeBinding* binding, const std::vector<const MethodInfo*>& openMethods,
@@ -765,7 +765,7 @@ static int InvokeStaticMethodDispatch(lua_State* L)
     const MethodMarshalCtx* ctx = FindBestMethod(L, binding, groups, argStart);
 
     return MethodBridge::InvokeLua2Cs(L, nullptr, argStart, ctx);
-    ZLUA_TRY_END();
+    ZLUA_TRY_END(L);
 }
 
 static int InvokeInstanceMethodDispatch(lua_State* L)
@@ -781,7 +781,7 @@ static int InvokeInstanceMethodDispatch(lua_State* L)
 
     void* target = ctx->resolveThis(L, 1);
     return MethodBridge::InvokeLua2Cs(L, target, argStart, ctx);
-    ZLUA_TRY_END();
+    ZLUA_TRY_END(L);
 }
 
 static void CollectBindableMethods(Il2CppClass* klass, std::vector<const MethodInfo*>& ctorMethods, std::vector<const MethodInfo*>& staticMethods,

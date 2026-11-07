@@ -67,7 +67,7 @@ namespace zlua
         lua_pushvalue(L, -1);
         lua_setfield(L, 1, typeName);
         return 1;
-        ZLUA_TRY_END();
+        ZLUA_TRY_END(L);
     }
 
     static int ResolveAssemblyIndex(lua_State* L)
@@ -95,7 +95,7 @@ namespace zlua
         lua_pushvalue(L, -1);
         lua_setfield(L, 1, assemblyName);
         return 1;
-        ZLUA_TRY_END();
+        ZLUA_TRY_END(L);
     }
 
     void AssemblyRegistry::InitializeCSharpRoot(lua_State* L)

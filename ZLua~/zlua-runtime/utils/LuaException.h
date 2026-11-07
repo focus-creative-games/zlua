@@ -31,16 +31,16 @@ class LuaException : Il2CppObject
     static void Throw(const std::string& message);
     static void ThrowFormat(const char* fmt, ...);
     static void Throw(Il2CppException* e);
-    static int CallLuaError(Il2CppExceptionWrapper& e);
+    static int CallLuaError(lua_State* L, Il2CppExceptionWrapper& e);
 };
 
 #define ZLUA_TRY_BEGIN() \
     try                  \
     {
-#define ZLUA_TRY_END()                      \
+#define ZLUA_TRY_END(L)                      \
     }                                       \
     catch (Il2CppExceptionWrapper & e)      \
     {                                       \
-        return LuaException::CallLuaError(e); \
+        return LuaException::CallLuaError((L), e); \
     }
 } // namespace zlua

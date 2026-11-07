@@ -28,7 +28,6 @@
 #include "vm/Type.h"
 
 #include "MetadataUtil.h"
-#include "../lvm/LuaEnv.h"
 
 #include "utils/StringUtils.h"
 
@@ -92,10 +91,9 @@ void LuaException::Throw(Il2CppException* e)
     il2cpp::vm::Exception::Raise(e);
 }
 
-int LuaException::CallLuaError(Il2CppExceptionWrapper& e)
+int LuaException::CallLuaError(lua_State* L, Il2CppExceptionWrapper& e)
 {
     Il2CppException* ex = e.ex;
-    lua_State* L = LuaEnv::GetState();
     {
         std::string message("lua error: ");
         message.append(il2cpp::vm::Type::GetName(&ex->klass->byval_arg, Il2CppTypeNameFormat::IL2CPP_TYPE_NAME_FORMAT_IL));

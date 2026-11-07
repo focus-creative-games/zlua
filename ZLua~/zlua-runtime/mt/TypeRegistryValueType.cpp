@@ -87,7 +87,7 @@ static int CreateValueTypeInstance(lua_State* L)
     IL2CPP_ASSERT(ret == 0);
     StructMarshal::PushValue(L, payload, klass);
     return 1;
-    ZLUA_TRY_END();
+    ZLUA_TRY_END(L);
 }
 
 static int InvokeStructDefault(lua_State* L)
@@ -100,7 +100,7 @@ static int InvokeStructDefault(lua_State* L)
 
     StructMarshal::PushZeroedValue(L, klass);
     return 1;
-    ZLUA_TRY_END();
+    ZLUA_TRY_END(L);
 }
 
 void AttachNullableStaticTypeMetatable(lua_State* L, int typeTableIndex, lua_CFunction callFn, TypeBinding* elementBinding)

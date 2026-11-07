@@ -101,7 +101,7 @@ static int ZLuaBox(lua_State* L)
     Il2CppObject* boxed = il2cpp::vm::Object::Box(klass, storage);
     ObjectMarshal::Push(L, boxed, klass);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaUnbox(lua_State* L)
@@ -117,7 +117,7 @@ static int ZLuaUnbox(lua_State* L)
     void* storage = ZLuaObjectUnbox(obj);
     TypedMarshal::PushByType(L, storage, &klass->byval_arg);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaCast(lua_State* L)
@@ -142,7 +142,7 @@ static int ZLuaCast(lua_State* L)
 
     ObjectMarshal::Push(L, obj, targetType);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaTypeOf(lua_State* L)
@@ -157,7 +157,7 @@ static int ZLuaTypeOf(lua_State* L)
     Il2CppReflectionType* reflectionType = il2cpp::vm::Reflection::GetTypeObject(&klass->byval_arg);
     ObjectMarshal::Push(L, (Il2CppObject*)reflectionType);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaGetTypeFromName(lua_State* L)
@@ -183,7 +183,7 @@ static int ZLuaGetTypeFromName(lua_State* L)
 
     TypeRegistry::PushInternedTypeTable(L, klass);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaCreateSignature(lua_State* L)
@@ -203,7 +203,7 @@ static int ZLuaCreateSignature(lua_State* L)
     signature.push_back(')');
     lua_pushstring(L, signature.c_str());
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaMakeGenericType(lua_State* L)
@@ -238,7 +238,7 @@ static int ZLuaMakeGenericType(lua_State* L)
 
     TypeRegistry::PushInternedTypeTable(L, closedType);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 constexpr int maxMdArrayRank = 32;
@@ -256,7 +256,7 @@ static int ZLuaMakeSzArrayType(lua_State* L)
 
     TypeRegistry::PushInternedTypeTable(L, arrayClass);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaMakeMdArrayType(lua_State* L)
@@ -276,7 +276,7 @@ static int ZLuaMakeMdArrayType(lua_State* L)
 
     TypeRegistry::PushInternedTypeTable(L, arrayClass);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaNewSzArrayByElementType(lua_State* L)
@@ -300,7 +300,7 @@ static int ZLuaNewSzArrayByElementType(lua_State* L)
 
     ObjectMarshal::Push(L, (Il2CppObject*)array);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaNewSzArrayBySzArrayType(lua_State* L)
@@ -325,7 +325,7 @@ static int ZLuaNewSzArrayBySzArrayType(lua_State* L)
 
     ObjectMarshal::Push(L, (Il2CppObject*)array);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static Il2CppArray* CreateMdArrayInstance(lua_State* L, Il2CppClass* arrayClass, int lowboundsIndex, int sizesIndex)
@@ -379,7 +379,7 @@ static int ZLuaNewMdArrayByMdArrayType(lua_State* L)
 
     ObjectMarshal::Push(L, (Il2CppObject*)array);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaNewMdArrayBySpec(lua_State* L)
@@ -402,7 +402,7 @@ static int ZLuaNewMdArrayBySpec(lua_State* L)
 
     ObjectMarshal::Push(L, (Il2CppObject*)array);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int InternClosedGenericMethodClosure(lua_State* L, const MethodInfo* openMethod, const TypeBinding* binding, bool isStatic, bool isByVal,
@@ -466,7 +466,7 @@ static int ZLuaInflate(lua_State* L)
 
     TypeBinding* binding = MetaBinding::EnsureBinding(L, ownerKlass);
     return InternClosedGenericMethodClosure(L, openMethod, binding, isStatic, isByVal, typeArgs);
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaToDelegate(lua_State* L)
@@ -488,7 +488,7 @@ static int ZLuaToDelegate(lua_State* L)
 
     ObjectMarshal::Push(L, (Il2CppObject*)delegate);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaGetOpaqueValue(lua_State* L)
@@ -499,7 +499,7 @@ static int ZLuaGetOpaqueValue(lua_State* L)
 
     OpaqueValueMarshal::PushValueFromHandle(L, 1);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaSetOpaqueValue(lua_State* L)
@@ -510,7 +510,7 @@ static int ZLuaSetOpaqueValue(lua_State* L)
 
     OpaqueValueMarshal::SetValueToHandle(L, 1, 2);
     return 0;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static bool IsBlittablePrimitiveElementType(const Il2CppType* elementType)
@@ -586,7 +586,7 @@ static int ZLuaToBytes(lua_State* L)
     const char* data = il2cpp::vm::Array::GetFirstElementAddress(array);
     lua_pushlstring(L, data, (size_t)byteLength);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static int ZLuaToTable(lua_State* L)
@@ -607,7 +607,7 @@ static int ZLuaToTable(lua_State* L)
     Il2CppArray* array = (Il2CppArray*)obj;
     ArrayMarshal::PushAsTable(L, array);
     return 1;
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 void ZLuaLib::RegisterGlobals(lua_State* L)

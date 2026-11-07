@@ -85,7 +85,7 @@ int CreateReferenceTypeInstance(lua_State* L)
     IL2CPP_ASSERT(ret == 0);
     ObjectMarshal::Push(L, obj, klass);
     return 1;
-    ZLUA_TRY_END();
+    ZLUA_TRY_END(L);
 }
 
 void TypeRegistryReference::CreateTypeTable(lua_State* L, Il2CppClass* klass)

@@ -251,7 +251,7 @@ static int DelegateInstanceCall(lua_State* L)
     }
 
     return MethodBridge::InvokeLua2Cs(L, delegate, 2, invokeCtx);
-    ZLUA_TRY_END()
+    ZLUA_TRY_END(L)
 }
 
 static const MetaInfo* LookupMeta(const NameMetaMap* map, const char* key)
