@@ -31,6 +31,8 @@ class LuaEnv
     static void Shutdown();
 
     static lua_State* GetState();
+    // Main-thread only. Never reused, even if lua_State allocations reuse addresses.
+    static uintptr_t GetDomainId();
     /// Validate that <paramref name="target"/> (LuaMethod) still belongs to the active state.
     static lua_State* GetStateForInvoke(Il2CppObject* target);
     static int GetErrorHandlerRef();
@@ -39,7 +41,7 @@ class LuaEnv
 
     static void DoStringIgnoreResult(const char* chunk);
 
-    static void AddPendingRef(lua_State* L, int refIndex);
+    static void AddPendingRef(uintptr_t domainId, int refIndex);
     static void ProcessPendingRefReleases();
 
   private:

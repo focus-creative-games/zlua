@@ -129,7 +129,7 @@ void FullGenericSharingReflectionInvoke(Il2CppMethodPointer, const MethodInfo* m
 {
     LuaMethod* luaMethod = reinterpret_cast<LuaMethod*>(__this);
     Il2CppObject* targetObj = reinterpret_cast<Il2CppObject*>(luaMethod);
-    lua_State* L = LuaEnv::GetState();
+    lua_State* L = LuaEnv::GetStateForInvoke(targetObj);
     OpaqueParameterScope opaqueScope;
     const MethodMarshalCtx* ctx = luaMethod->methodMarshalCtx;
     LuaStackGuard guard(L);
@@ -212,6 +212,7 @@ void DelegateMarshal::Push(lua_State* L, Il2CppDelegate* delegate, int metatable
     if (target != nullptr && target->klass == MetadataUtil::GetLuaMethodClass())
     {
         LuaMethod* luaMethod = (LuaMethod*)target;
+        LuaEnv::GetStateForInvoke(target);
         LuaUtil::PushRef(L, luaMethod->funcRef);
         return;
     }
@@ -240,7 +241,7 @@ Il2CppDelegate* DelegateMarshal::CreateFromFuncRef(lua_State* L, Il2CppClass* de
     Il2CppClass* luaMethodClass = MetadataUtil::GetLuaMethodClass();
     LuaMethod* target = reinterpret_cast<LuaMethod*>(il2cpp::vm::Object::New(luaMethodClass));
     target->disposed = false;
-    target->L = L;
+    target->domainId = LuaEnv::GetDomainId();
     target->funcRef = funcRef;
     target->methodMarshalCtx = ctor->marshalCtx;
 

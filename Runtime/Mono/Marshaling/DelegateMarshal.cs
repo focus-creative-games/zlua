@@ -38,6 +38,15 @@ namespace ZLua.Marshaling
 
             if (del.Target is LuaMethod luaMethod)
             {
+                // Registry refs belong to a LuaEnv instance, not a reusable native
+                // address. Coroutines share that env even though their L differs.
+                LuaEnv owner = luaMethod.Env;
+                if (owner == null || !owner.IsAlive || !ReferenceEquals(owner, LuaEnv.Active))
+                {
+                    LuaCallbackBoundary.Throw(
+                        "ZLua domain was Reset; discard old GetFunction delegates and re-bind.");
+                }
+
                 LuaDll.lua_rawgeti(L, LuaConsts.LuaRegistryIndex, luaMethod.RefIndex);
                 return;
             }

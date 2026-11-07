@@ -295,7 +295,7 @@ struct MethodOverloadResolutionResult
 
 struct LuaMethod : Il2CppObject
 {
-    lua_State* L;
+    uintptr_t domainId; // Matches managed LuaMethod._domainId (IntPtr).
     const MethodMarshalCtx* methodMarshalCtx;
     int32_t funcRef;
     bool disposed;

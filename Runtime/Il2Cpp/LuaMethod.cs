@@ -25,15 +25,17 @@ namespace ZLua
 {
     public sealed class LuaMethod : IDisposable
     {
-        private readonly IntPtr _L;
+        // Opaque process-unique domain identity, not a lua_State address.
+        // Keep pointer-sized storage in sync with native LuaMethod::domainId.
+        private readonly IntPtr _domainId;
         // Set from native when binding a Lua function to a closed delegate (MethodMarshalCtx*).
         private IntPtr _methodMarshalCtx;
         private readonly int _refIndex;
         private bool _disposed;
 
-        internal LuaMethod(IntPtr L, int refIndex)
+        internal LuaMethod(IntPtr domainId, int refIndex)
         {
-            _L = L;
+            _domainId = domainId;
             _refIndex = refIndex;
         }
 
@@ -49,7 +51,7 @@ namespace ZLua
         }
 
         [MethodImpl(MethodImplOptions.InternalCall)]
-        extern private static void AddPendingRef(IntPtr L, int refIndex);
+        extern private static void AddPendingRef(IntPtr domainId, int refIndex);
 
         private void Dispose(bool disposing)
         {
@@ -57,7 +59,7 @@ namespace ZLua
             {
                 return;
             }
-            AddPendingRef(_L, _refIndex);
+            AddPendingRef(_domainId, _refIndex);
             _disposed = true;
         }
     }

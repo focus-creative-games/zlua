@@ -53,6 +53,7 @@ namespace zlua
 #include "../generated/BuiltinScripts.inc"
 
 static lua_State* s_L = nullptr;
+static uintptr_t s_domainId = 0;
 static int s_errorHandlerRef = LUA_NOREF;
 static std::vector<int> s_pendingRefReleases;
 static baselib::ReentrantLock s_pendingRefReleasesMutex;
@@ -131,10 +132,14 @@ void LuaEnv::RegisterLibs()
 void LuaEnv::Initialize()
 {
     IL2CPP_ASSERT(s_L == nullptr);
+    // Refuse to wrap: even a pointer-sized counter must never revive an old domain.
+    if (s_domainId == UINTPTR_MAX)
+        LuaException::Throw("ZLua domain identity space exhausted.");
     lua_State* L = luaL_newstate();
     IL2CPP_ASSERT(L != nullptr);
     {
         il2cpp::os::FastAutoLock lock(&s_pendingRefReleasesMutex);
+        ++s_domainId;
         s_L = L;
     }
     RegisterGlobals();
@@ -185,6 +190,11 @@ lua_State* LuaEnv::GetState()
     return s_L;
 }
 
+uintptr_t LuaEnv::GetDomainId()
+{
+    return s_domainId;
+}
+
 lua_State* LuaEnv::GetStateForInvoke(Il2CppObject* target)
 {
     if (s_L == nullptr)
@@ -193,7 +203,7 @@ lua_State* LuaEnv::GetStateForInvoke(Il2CppObject* target)
     }
 
     LuaMethod* luaMethod = reinterpret_cast<LuaMethod*>(target);
-    if (luaMethod->L != s_L)
+    if (luaMethod->domainId != s_domainId)
     {
         LuaException::Throw("ZLua domain was Reset; discard old GetFunction delegates and re-bind.");
     }
@@ -239,12 +249,12 @@ void LuaEnv::DoStringIgnoreResult(const char* chunk)
     lua_settop(s_L, oldTop);
 }
 
-void LuaEnv::AddPendingRef(lua_State* L, int refIndex)
+void LuaEnv::AddPendingRef(uintptr_t domainId, int refIndex)
 {
     IL2CPP_ASSERT(refIndex != LUA_NOREF);
     il2cpp::os::FastAutoLock lock(&s_pendingRefReleasesMutex);
     // Finalizer threads must check state ownership under the same lock as enqueue.
-    if (s_L == nullptr || s_L != L)
+    if (s_L == nullptr || s_domainId != domainId)
         return;
     s_pendingRefReleases.push_back(refIndex);
 }
