@@ -65,6 +65,12 @@ namespace ZLua.DelegateImpl
         private static readonly ConcurrentDictionary<FactoryKey, Func<LuaMethod, Delegate>> FactoryCache =
             new ConcurrentDictionary<FactoryKey, Func<LuaMethod, Delegate>>();
 
+        internal static void Shutdown()
+        {
+            // Factories bake in the current XML marshal rules and opaque-scope decision.
+            FactoryCache.Clear();
+        }
+
         private static readonly MethodInfo LuaGetTop = typeof(LuaDll).GetMethod(
             nameof(LuaDll.lua_gettop),
             new[] { typeof(IntPtr) });

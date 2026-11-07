@@ -95,6 +95,8 @@ namespace ZLua
             ProcessPendingRefReleases();
             _luaEnv.Dispose();
             _luaEnv = null;
+            // Clear after lua_close callbacks, before the new XML is loaded and bridges warm up.
+            DynamicBridgeFactory.Shutdown();
             LuaCallbackBoundary.ResetDepth();
         }
 
