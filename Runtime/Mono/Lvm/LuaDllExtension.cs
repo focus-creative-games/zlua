@@ -25,6 +25,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using ZLua.Lvm;
 using ZLua.Utils;
 
 namespace ZLua
@@ -82,31 +83,59 @@ namespace ZLua
         }
 
         /// <summary>
-        /// Any Lua value → display string via <c>luaL_tolstring</c> (same as standard <c>print</c> / Il2Cpp).
-        /// Pops the temporary string left by <c>luaL_tolstring</c>.
+        /// Convert through the captured native <c>tostring</c> under <c>lua_pcall</c>.
+        /// Leave either the converted string or the original Lua error object on top.
         /// </summary>
-        public static unsafe string ToDisplayString(IntPtr luaState, int index)
+        internal static bool TryPushDisplayString(IntPtr luaState, int index)
         {
-            IntPtr strPtr = LuaDll.luaL_tolstring(luaState, index, out UIntPtr len);
+            index = LuaDll.lua_absindex(luaState, index);
+            LuaEnv env = LuaEnv.Active;
+            if (env == null)
+            {
+                throw new InvalidOperationException("Lua environment is not initialized.");
+            }
+
+            env.PushDisplayStringFunction(luaState);
+            LuaDll.lua_pushvalue(luaState, index);
+            if (LuaDll.lua_pcall(luaState, 1, 1, 0) != 0)
+            {
+                return false;
+            }
+
+            // Lua 5.1/JIT tostring may return the metamethod result without checking it.
+            // As with luaL_tolstring, numeric results can be converted to strings.
+            LuaDataType type = LuaDll.lua_type(luaState, -1);
+            if (type != LuaDataType.String && type != LuaDataType.Number)
+            {
+                LuaDll.lua_pop(luaState, 1);
+                LuaDll.lua_pushstring(luaState, "'__tostring' must return a string");
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>Convert a display string without allowing metamethod errors to unwind managed frames.</summary>
+        public static string ToDisplayString(IntPtr luaState, int index)
+        {
+            int top = LuaDll.lua_gettop(luaState);
             try
             {
-                if (strPtr == IntPtr.Zero)
+                if (!TryPushDisplayString(luaState, index))
                 {
-                    return string.Empty;
+                    throw new LuaScriptException(tostring(luaState, -1) ?? "Lua value conversion failed.");
                 }
-
-                return Encoding.UTF8.GetString((byte*)strPtr, (int)len);
+                return tostring(luaState, -1) ?? string.Empty;
             }
             finally
             {
-                LuaDll.lua_pop(luaState, 1);
+                LuaDll.lua_settop(luaState, top);
             }
         }
 
         /// <summary>
         /// Convert a Lua error object to a non-empty string (never null/empty for pcall failures).
         /// </summary>
-        public static unsafe string FormatErrorObject(IntPtr luaState, int index)
+        public static string FormatErrorObject(IntPtr luaState, int index)
         {
             int top = LuaDll.lua_gettop(luaState);
             if (index < 0 && index > LuaConsts.LuaRegistryIndex)
@@ -114,12 +143,17 @@ namespace ZLua
                 index = top + index + 1;
             }
 
-            IntPtr strPtr = LuaDll.luaL_tolstring(luaState, index, out UIntPtr len);
             try
             {
-                if (strPtr != IntPtr.Zero && len != UIntPtr.Zero)
+                // Error objects can themselves have a throwing __tostring. Do not
+                // let error reporting introduce another unprotected Lua unwind.
+                if (TryPushDisplayString(luaState, index))
                 {
-                    return Encoding.UTF8.GetString((byte*)strPtr, (int)len);
+                    string message = tostring(luaState, -1);
+                    if (!string.IsNullOrEmpty(message))
+                    {
+                        return message;
+                    }
                 }
             }
             finally
@@ -135,16 +169,26 @@ namespace ZLua
         {
             switch (type)
             {
-                case LuaDataType.Nil: return "nil";
-                case LuaDataType.Boolean: return "boolean";
-                case LuaDataType.LightUserData: return "userdata";
-                case LuaDataType.Number: return "number";
-                case LuaDataType.String: return "string";
-                case LuaDataType.Table: return "table";
-                case LuaDataType.Function: return "function";
-                case LuaDataType.UserData: return "userdata";
-                case LuaDataType.Thread: return "thread";
-                default: return "no value";
+            case LuaDataType.Nil:
+                return "nil";
+            case LuaDataType.Boolean:
+                return "boolean";
+            case LuaDataType.LightUserData:
+                return "userdata";
+            case LuaDataType.Number:
+                return "number";
+            case LuaDataType.String:
+                return "string";
+            case LuaDataType.Table:
+                return "table";
+            case LuaDataType.Function:
+                return "function";
+            case LuaDataType.UserData:
+                return "userdata";
+            case LuaDataType.Thread:
+                return "thread";
+            default:
+                return "no value";
             }
         }
 

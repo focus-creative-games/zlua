@@ -81,7 +81,10 @@ namespace ZLua
                 uint generation = ++_generation;
                 int index = Entries.Count;
                 GCHandle handle = GCHandle.Alloc(boxedStruct);
-                try { Entries.Add((handle, structType, generation)); }
+                try
+                {
+                    Entries.Add((handle, structType, generation));
+                }
                 catch { handle.Free(); throw; }
                 return EncodeHandle(generation, index);
             }

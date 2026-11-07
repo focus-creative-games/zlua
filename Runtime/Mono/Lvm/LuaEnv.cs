@@ -42,6 +42,8 @@ namespace ZLua.Lvm
         private Func<string, object> _moduleLoader;
         private bool _disposed;
         private int _errorHandlerRef = LuaConsts.LuaNoRef;
+        private int _displayStringRef = LuaConsts.LuaNoRef;
+        private int _printTracebackRef = LuaConsts.LuaNoRef;
         private bool _printRegistered;
         private bool _moduleLoaderHooksInstalled;
         private bool _emmyDebuggerStarted;
@@ -328,6 +330,16 @@ namespace ZLua.Lvm
             LuaDll.lua_rawgeti(luaState, LuaConsts.LuaRegistryIndex, EnsureErrorHandlerRef());
         }
 
+        internal void PushDisplayStringFunction(IntPtr luaState)
+        {
+            LuaDll.lua_rawgeti(luaState, LuaConsts.LuaRegistryIndex, _displayStringRef);
+        }
+
+        internal void PushPrintTracebackFunction(IntPtr luaState)
+        {
+            LuaDll.lua_rawgeti(luaState, LuaConsts.LuaRegistryIndex, _printTracebackRef);
+        }
+
         public void Dispose()
         {
             if (_disposed)
@@ -372,7 +384,11 @@ namespace ZLua.Lvm
                     _errorHandlerRef = LuaConsts.LuaNoRef;
                 }
 
+                // Keep tostring available to __gc callbacks that print during lua_close.
+                // Closing the registry releases the cached function as well.
                 LuaDll.lua_close(_state);
+                _displayStringRef = LuaConsts.LuaNoRef;
+                _printTracebackRef = LuaConsts.LuaNoRef;
                 _state = IntPtr.Zero;
             }
 
@@ -416,6 +432,13 @@ namespace ZLua.Lvm
                 return;
             }
 
+            // Capture the native base-library function before scripts can replace globals.
+            LuaDll.lua_getglobal(_state, "tostring");
+            _displayStringRef = LuaDll.luaL_ref(_state, LuaConsts.LuaRegistryIndex);
+            LuaDll.lua_getglobal(_state, "debug");
+            LuaDll.lua_getfield(_state, -1, "traceback");
+            _printTracebackRef = LuaDll.luaL_ref(_state, LuaConsts.LuaRegistryIndex);
+            LuaDll.lua_pop(_state, 1);
             LuaDllExtension.RegisterCallback(_state, "print", s_print);
             _printRegistered = true;
         }
@@ -454,8 +477,16 @@ table.insert(searchers, 2, zlua_module_searcher)
         [MonoLuaCallback(typeof(LuaCSFunction))]
         private static int Print(IntPtr luaState)
         {
-            LuaPrintBuffer.EnqueueFromLuaPrint(luaState);
-            return 0;
+            try
+            {
+                // Preserve the original Lua error object; the native gate throws only
+                // after this managed reverse-P/Invoke frame has returned.
+                return LuaPrintBuffer.TryEnqueueFromLuaPrint(luaState) ? 0 : LuaCallbackGate.ErrorSentinel;
+            }
+            catch (Exception ex)
+            {
+                return LuaCallbackBoundary.ToLuaError(luaState, ex);
+            }
         }
 
         [MonoLuaCallback(typeof(LuaCSFunction))]

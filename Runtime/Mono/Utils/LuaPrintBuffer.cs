@@ -22,6 +22,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
+using ZLua.Lvm;
 
 namespace ZLua.Utils
 {
@@ -65,7 +66,7 @@ namespace ZLua.Utils
         /// </summary>
         internal static bool IsNestedManagedPcall => _managedPcallDepth > 1;
 
-        public static void EnqueueFromLuaPrint(IntPtr luaState)
+        public static bool TryEnqueueFromLuaPrint(IntPtr luaState)
         {
             int count = LuaDll.lua_gettop(luaState);
             StringBuilder msg = new StringBuilder();
@@ -77,12 +78,31 @@ namespace ZLua.Utils
                     msg.Append('\t');
                 }
 
-                // lua_tolstring alone yields null for table/userdata; use luaL_tolstring like Il2Cpp print.
-                msg.Append(LuaDllExtension.ToDisplayString(luaState, i));
+                // __tostring must run below a native protected-call boundary.
+                // On failure leave its error object on top for the callback gate.
+                if (!LuaDllExtension.TryPushDisplayString(luaState, i))
+                {
+                    return false;
+                }
+                try
+                {
+                    msg.Append(LuaDllExtension.tostring(luaState, -1));
+                }
+                finally
+                {
+                    LuaDll.lua_pop(luaState, 1);
+                }
             }
 
-            // level 1 = first Lua caller of print (same as previous luaL_where).
-            LuaDll.luaL_traceback(luaState, luaState, msg.ToString(), 1);
+            // Avoid mutable debug/global-table lookups in the Lua 5.1 traceback shim.
+            // The extra native debug.traceback frame requires level 2 to reach print's caller.
+            LuaEnv.Active.PushPrintTracebackFunction(luaState);
+            LuaDll.lua_pushstring(luaState, msg.ToString());
+            LuaDll.lua_pushinteger(luaState, 2);
+            if (LuaDll.lua_pcall(luaState, 2, 1, 0) != 0)
+            {
+                return false;
+            }
             string traceback = LuaDllExtension.tostring(luaState, -1) ?? msg.ToString();
             LuaDll.lua_pop(luaState, 1);
 
@@ -90,6 +110,7 @@ namespace ZLua.Utils
             {
                 PendingLines.Add("[ZLua] " + traceback);
             }
+            return true;
         }
 
         public static void ForceFlushAll()
