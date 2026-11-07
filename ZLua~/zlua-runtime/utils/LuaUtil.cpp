@@ -25,6 +25,7 @@
 
 #include "../lvm/LuaEnv.h"
 #include "LuaException.h"
+#include "LuaStackGuard.h"
 
 #include "utils/StringUtils.h"
 #include "vm/Type.h"
@@ -69,24 +70,30 @@ int LuaUtil::PushRef(lua_State* L, int refIndex)
 //     return resultCount;
 // }
 
+// Keep metamethod execution below a native protected-call boundary. This callback
+// must not own C++ resources that a Lua longjmp could bypass on other backends.
+static int ErrorObjectToString(lua_State* L)
+{
+    luaL_tolstring(L, 1, nullptr);
+    return 1;
+}
+
 std::string LuaUtil::FormatErrorObject(lua_State* L, int index)
 {
     index = lua_absindex(L, index);
-    const int top = lua_gettop(L);
-    size_t len = 0;
-    const char* str = luaL_tolstring(L, index, &len);
-    if (str != nullptr)
+    LuaStackGuard guard(L);
+    lua_pushcfunction(L, ErrorObjectToString);
+    lua_pushvalue(L, index);
+    if (lua_pcall(L, 1, 1, 0) == LUA_OK)
     {
-        std::string message(str, len);
-        lua_settop(L, top);
-        if (!message.empty())
-            return message;
-    }
-    else
-    {
-        lua_settop(L, top);
+        size_t len = 0;
+        const char* str = lua_tolstring(L, -1, &len);
+        if (str != nullptr && len != 0)
+            return std::string(str, len);
     }
 
+    // Describe the original object without invoking its metamethod again, or
+    // trying to stringify the secondary error object produced by the conversion.
     return std::string("lua pcall failed (error object is ") + luaL_typename(L, index) + ")";
 }
 
