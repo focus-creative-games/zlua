@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using ZLua.Marshaling;
 using ZLua.Mt;
@@ -33,10 +34,11 @@ namespace ZLua.Emit
     {
         /// <summary>
         /// Exact-length buffers: <see cref="MethodInfo.Invoke"/> requires args.Length == parameter count.
-        /// Indexed by length; grown as needed. ThreadStatic for Editor worker threads.
+        /// Idle arrays indexed by length. Renting removes a buffer from the pool so
+        /// same-thread reentry cannot overwrite an active invocation's arguments.
         /// </summary>
         [ThreadStatic]
-        private static object[][] s_argsByLength;
+        private static Stack<object[]>[] s_argsByLength;
 
         /// <summary>
         /// Lua→C# <c>out</c>: omitted from arity / Pop; pushed as multi-return after Invoke (spec 03-BYREF §5).
@@ -55,7 +57,7 @@ namespace ZLua.Emit
                 throw new ArgumentOutOfRangeException(nameof(length));
             }
 
-            object[][] byLength = s_argsByLength;
+            Stack<object[]>[] byLength = s_argsByLength;
             if (byLength == null || byLength.Length <= length)
             {
                 int newLen = Math.Max(length + 1, 16);
@@ -64,7 +66,7 @@ namespace ZLua.Emit
                     newLen = byLength.Length;
                 }
 
-                var grown = new object[newLen][];
+                var grown = new Stack<object[]>[newLen];
                 if (byLength != null)
                 {
                     Array.Copy(byLength, grown, byLength.Length);
@@ -73,22 +75,19 @@ namespace ZLua.Emit
                 s_argsByLength = byLength = grown;
             }
 
-            object[] buffer = byLength[length];
-            if (buffer == null)
+            Stack<object[]> pool = byLength[length];
+            if (pool == null)
             {
-                buffer = new object[length];
-                byLength[length] = buffer;
+                pool = byLength[length] = new Stack<object[]>();
             }
 
-            return buffer;
+            return pool.Count != 0 ? pool.Pop() : new object[length];
         }
 
-        private static void ClearArgs(object[] args, int length)
+        private static void ReturnArgs(object[] args)
         {
-            for (int i = 0; i < length; i++)
-            {
-                args[i] = null;
-            }
+            Array.Clear(args, 0, args.Length);
+            s_argsByLength[args.Length].Push(args);
         }
 
         internal static bool NeedsInterpreted(MethodBase method)
@@ -265,7 +264,7 @@ namespace ZLua.Emit
                     }
                     finally
                     {
-                        ClearArgs(invokeArgs, parameters.Length);
+                        ReturnArgs(invokeArgs);
                     }
                 }
 
@@ -283,7 +282,7 @@ namespace ZLua.Emit
                         }
                         finally
                         {
-                            ClearArgs(args, parameters.Length);
+                            ReturnArgs(args);
                         }
                     }
 
@@ -299,7 +298,7 @@ namespace ZLua.Emit
                 }
                 finally
                 {
-                    ClearArgs(invokeArgsNormal, parameters.Length);
+                    ReturnArgs(invokeArgsNormal);
                 }
             };
         }
@@ -336,7 +335,7 @@ namespace ZLua.Emit
                 }
                 finally
                 {
-                    ClearArgs(args, parameters.Length);
+                    ReturnArgs(args);
                 }
             };
         }
@@ -349,16 +348,24 @@ namespace ZLua.Emit
             object[] cachedDefaults)
         {
             object[] args = RentArgs(parameters.Length);
-            // Slot 1 = receiver → CLR param 0 (P0 type; ByObj or ByVal via CompositeMarshal).
-            args[0] = CompositeMarshal.Pop(L, 1, parameters[0].ParameterType, bindings[0]);
-            int slot = argStart;
-            int top = LuaDll.lua_gettop(L);
-            for (int i = 1; i < parameters.Length; i++)
+            try
             {
-                args[i] = PopOne(L, ref slot, top, parameters, bindings, cachedDefaults, i);
-            }
+                // Slot 1 = receiver → CLR param 0 (P0 type; ByObj or ByVal via CompositeMarshal).
+                args[0] = CompositeMarshal.Pop(L, 1, parameters[0].ParameterType, bindings[0]);
+                int slot = argStart;
+                int top = LuaDll.lua_gettop(L);
+                for (int i = 1; i < parameters.Length; i++)
+                {
+                    args[i] = PopOne(L, ref slot, top, parameters, bindings, cachedDefaults, i);
+                }
 
-            return args;
+                return args;
+            }
+            catch
+            {
+                ReturnArgs(args);
+                throw;
+            }
         }
 
         private static object[] PopArgs(
@@ -369,14 +376,22 @@ namespace ZLua.Emit
             object[] cachedDefaults)
         {
             object[] args = RentArgs(parameters.Length);
-            int slot = argStart;
-            int top = LuaDll.lua_gettop(L);
-            for (int i = 0; i < parameters.Length; i++)
+            try
             {
-                args[i] = PopOne(L, ref slot, top, parameters, bindings, cachedDefaults, i);
-            }
+                int slot = argStart;
+                int top = LuaDll.lua_gettop(L);
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    args[i] = PopOne(L, ref slot, top, parameters, bindings, cachedDefaults, i);
+                }
 
-            return args;
+                return args;
+            }
+            catch
+            {
+                ReturnArgs(args);
+                throw;
+            }
         }
 
         private static object PopOne(
