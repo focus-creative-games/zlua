@@ -202,6 +202,12 @@ const LuaDelegateCtorCache* GetOrCreateLuaDelegateCtor(lua_State* L, Il2CppClass
 
 void DelegateMarshal::Push(lua_State* L, Il2CppDelegate* delegate, int metatableRefIndex)
 {
+    if (delegate == nullptr)
+    {
+        lua_pushnil(L);
+        return;
+    }
+
     Il2CppObject* target = delegate->target;
     if (target != nullptr && target->klass == MetadataUtil::GetLuaMethodClass())
     {
