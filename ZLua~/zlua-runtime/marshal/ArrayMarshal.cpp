@@ -91,7 +91,7 @@ void ArrayMarshal::PushAsArrayObject(lua_State* L, Il2CppArray* array, const Mar
 Il2CppArray* ArrayMarshal::PopFromArrayObject(lua_State* L, int arrayIndex, Il2CppClass* klass)
 {
     Il2CppArray* array = (Il2CppArray*)ObjectRegistry::Pop(L, arrayIndex);
-    if (array != nullptr && array->klass != klass)
+    if (array != nullptr && array->klass != klass && !il2cpp::vm::Class::IsAssignableFrom(klass, array->klass))
     {
         LuaException::ThrowFormat("zlua argument mismatch: array type mismatch");
     }
@@ -151,8 +151,7 @@ Il2CppArray* PopFromPrimitiveTable(lua_State* L, int arrayIndex, Il2CppClass* kl
     }
     if (kNeedsWriteBarrier && length > 0)
     {
-        il2cpp::gc::GarbageCollector::SetWriteBarrier(
-            reinterpret_cast<void**>(startAddr), (size_t)length * sizeof(T));
+        il2cpp::gc::GarbageCollector::SetWriteBarrier(reinterpret_cast<void**>(startAddr), (size_t)length * sizeof(T));
     }
     return newArray;
 }
@@ -289,8 +288,7 @@ Il2CppArray* ArrayMarshal::PopFromTable(lua_State* L, int arrayIndex, Il2CppClas
             lua_pop(L, 1);
             if (needsWriteBarrier)
             {
-                il2cpp::gc::GarbageCollector::SetWriteBarrier(
-                    reinterpret_cast<void**>(valueAddr), (size_t)elementSize);
+                il2cpp::gc::GarbageCollector::SetWriteBarrier(reinterpret_cast<void**>(valueAddr), (size_t)elementSize);
             }
         }
         return newArray;
@@ -337,8 +335,7 @@ static Il2CppArray* PopParamsExpandPrimitive(lua_State* L, int firstSlot, int co
         startAddr[i] = DefaultTypedMarshal<T>::Pop(L, firstSlot + i);
     if (kNeedsWriteBarrier && count > 0)
     {
-        il2cpp::gc::GarbageCollector::SetWriteBarrier(
-            reinterpret_cast<void**>(startAddr), (size_t)count * sizeof(T));
+        il2cpp::gc::GarbageCollector::SetWriteBarrier(reinterpret_cast<void**>(startAddr), (size_t)count * sizeof(T));
     }
     return newArray;
 }
@@ -393,8 +390,7 @@ Il2CppArray* ArrayMarshal::PopParamsExpand(lua_State* L, int firstSlot, int coun
             TypedMarshal::PopByType(L, firstSlot + i, valueAddr, elementType);
             if (needsWriteBarrier)
             {
-                il2cpp::gc::GarbageCollector::SetWriteBarrier(
-                    reinterpret_cast<void**>(valueAddr), (size_t)elementSize);
+                il2cpp::gc::GarbageCollector::SetWriteBarrier(reinterpret_cast<void**>(valueAddr), (size_t)elementSize);
             }
         }
         return newArray;
