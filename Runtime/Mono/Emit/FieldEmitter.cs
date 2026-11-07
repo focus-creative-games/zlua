@@ -280,7 +280,6 @@ namespace ZLua.Emit
             return L =>
             {
                 LuaCallbackBoundary.Enter();
-                StructOpaqueScope.EnterLuaToCSharp();
                 try
                 {
                     try
@@ -294,7 +293,6 @@ namespace ZLua.Emit
                 }
                 finally
                 {
-                    StructOpaqueScope.LeaveLuaToCSharp();
                     LuaCallbackBoundary.Leave();
                 }
             };

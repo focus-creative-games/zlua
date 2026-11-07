@@ -26,56 +26,44 @@ namespace ZLua
 {
     /// <summary>
     /// Sync-call struct opaque handles (MARSHAL_SPEC §4, OpaqueValue).
-    /// Handles from the current invoke remain valid until the next Lua→C# entry at depth 0.
+    /// Handles live until their synchronous C#→Lua frame exits, including nested callbacks.
     /// </summary>
     internal static class StructOpaqueScope
     {
         private static readonly object Sync = new object();
-        private static uint _generation = 1;
-        private static int _luaToCSharpDepth;
-        private static readonly List<(GCHandle handle, Type type)> Entries = new List<(GCHandle, Type)>();
+        private static uint _generation;
+        private static readonly List<(GCHandle handle, Type type, uint generation)> Entries =
+            new List<(GCHandle, Type, uint)>();
 
-        /// <summary>True while executing a Lua→C# bridge callback (MethodEmitter Wrap, etc.).</summary>
-        internal static bool IsInsideLuaToCSharp => _luaToCSharpDepth > 0;
-
-        /// <summary>Lua→C# method/constructor callback entry.</summary>
-        internal static void EnterLuaToCSharp()
+        /// <summary>Save the first slot owned by this C#→Lua frame.</summary>
+        internal static int EnterCSharpToLua()
         {
-            if (_luaToCSharpDepth++ == 0)
+            lock (Sync)
             {
-                ResetScope();
+                return Entries.Count;
             }
         }
 
-        /// <summary>Lua→C# method/constructor callback exit.</summary>
-        internal static void LeaveLuaToCSharp()
+        /// <summary>Free only this frame's handles; outer frames remain valid.</summary>
+        internal static void LeaveCSharpToLua(int firstSlot)
         {
-            if (_luaToCSharpDepth > 0)
+            lock (Sync)
             {
-                _luaToCSharpDepth--;
-            }
-        }
-
-        /// <summary>Standalone C#→Lua (GetFunction / top-level pcall), only when not nested in Lua→C#.</summary>
-        internal static void EnterStandaloneCSharpToLua()
-        {
-            if (_luaToCSharpDepth == 0)
-            {
-                ResetScope();
+                for (int i = Entries.Count - 1; i >= firstSlot; i--)
+                {
+                    Entries[i].handle.Free();
+                }
+                if (firstSlot < Entries.Count)
+                    Entries.RemoveRange(firstSlot, Entries.Count - firstSlot);
             }
         }
 
         /// <summary>
-        /// Drop opaque handles and reset nesting depth. Call on Reset / <c>lua_close</c>.
+        /// Drop opaque handles. Call on Reset / <c>lua_close</c>.
         /// </summary>
         internal static void Shutdown()
         {
-            lock (Sync)
-            {
-                _luaToCSharpDepth = 0;
-            }
-
-            ResetScope();
+            LeaveCSharpToLua(0);
         }
 
         internal static IntPtr RegisterStruct(object boxedStruct, Type structType)
@@ -85,12 +73,17 @@ namespace ZLua
                 return IntPtr.Zero;
             }
 
-            GCHandle handle = GCHandle.Alloc(boxedStruct);
             lock (Sync)
             {
+                // Never revive a stale handle when a released slot is reused, even after Reset.
+                if (_generation == uint.MaxValue)
+                    throw new InvalidOperationException("Opaque handle generation exhausted.");
+                uint generation = ++_generation;
                 int index = Entries.Count;
-                Entries.Add((handle, structType));
-                return EncodeHandle(_generation, index);
+                GCHandle handle = GCHandle.Alloc(boxedStruct);
+                try { Entries.Add((handle, structType, generation)); }
+                catch { handle.Free(); throw; }
+                return EncodeHandle(generation, index);
             }
         }
 
@@ -132,12 +125,12 @@ namespace ZLua
 
             lock (Sync)
             {
-                if (generation != _generation || index < 0 || index >= Entries.Count)
+                if (index < 0 || index >= Entries.Count || generation != Entries[index].generation)
                 {
                     return false;
                 }
 
-                (GCHandle handle, Type type) entry = Entries[index];
+                var entry = Entries[index];
                 if (!entry.handle.IsAllocated)
                 {
                     return false;
@@ -163,12 +156,12 @@ namespace ZLua
 
             lock (Sync)
             {
-                if (generation != _generation || index < 0 || index >= Entries.Count)
+                if (index < 0 || index >= Entries.Count || generation != Entries[index].generation)
                 {
                     return false;
                 }
 
-                (GCHandle handle, Type type) entry = Entries[index];
+                var entry = Entries[index];
                 if (!entry.handle.IsAllocated)
                 {
                     return false;
@@ -181,27 +174,6 @@ namespace ZLua
 
                 entry.handle.Target = newValue;
                 return true;
-            }
-        }
-
-        private static void ResetScope()
-        {
-            lock (Sync)
-            {
-                for (int i = 0; i < Entries.Count; i++)
-                {
-                    if (Entries[i].handle.IsAllocated)
-                    {
-                        Entries[i].handle.Free();
-                    }
-                }
-
-                Entries.Clear();
-                _generation++;
-                if (_generation == 0)
-                {
-                    _generation = 1;
-                }
             }
         }
 

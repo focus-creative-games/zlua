@@ -156,8 +156,12 @@ namespace ZLua.DelegateImpl
                 _ => CompileFactory(invokeMethod, delegateType));
         }
 
-        private static readonly MethodInfo EnterStandaloneOpaque = typeof(StructOpaqueScope).GetMethod(
-            nameof(StructOpaqueScope.EnterStandaloneCSharpToLua),
+        private static readonly MethodInfo EnterOpaqueScope = typeof(StructOpaqueScope).GetMethod(
+            nameof(StructOpaqueScope.EnterCSharpToLua),
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        private static readonly MethodInfo LeaveOpaqueScope = typeof(StructOpaqueScope).GetMethod(
+            nameof(StructOpaqueScope.LeaveCSharpToLua),
             BindingFlags.NonPublic | BindingFlags.Static);
 
         private static Func<LuaMethod, Delegate> CompileFactory(MethodInfo invokeMethod, Type delegateType)
@@ -205,9 +209,11 @@ namespace ZLua.DelegateImpl
             };
 
             var invokeStatements = new System.Collections.Generic.List<Expression>();
+            ParameterExpression opaqueStart = Expression.Variable(typeof(int), "opaqueStart");
             if (needsOpaqueScope)
             {
-                invokeStatements.Add(Expression.Call(EnterStandaloneOpaque));
+                locals.Add(opaqueStart);
+                invokeStatements.Add(Expression.Assign(opaqueStart, Expression.Call(EnterOpaqueScope)));
             }
 
             invokeStatements.Add(Expression.Call(targetParam, PushErrorHandlerToStack));
@@ -310,6 +316,7 @@ namespace ZLua.DelegateImpl
 
             Expression body = Expression.Block(
                 locals,
+                needsOpaqueScope ? (Expression)Expression.Assign(opaqueStart, Expression.Constant(-1)) : Expression.Empty(),
                 Expression.TryFinally(
                     Expression.Block(
                         getLuaState,
@@ -318,6 +325,11 @@ namespace ZLua.DelegateImpl
                         tryBody),
                     Expression.Block(
                         restoreStack,
+                        needsOpaqueScope
+                            ? (Expression)Expression.IfThen(
+                                Expression.GreaterThanOrEqual(opaqueStart, Expression.Constant(0)),
+                                Expression.Call(LeaveOpaqueScope, opaqueStart))
+                            : Expression.Empty(),
                         Expression.Call(LeaveManagedPcall))));
 
             LambdaExpression innerDelegate = Expression.Lambda(
