@@ -59,12 +59,7 @@ namespace ZLua.Emit
 
         private static LuaMarshalBinding ResolveFieldBinding(FieldInfo field, LuaMarshalDirection direction)
         {
-            // Type-level / XML type rules (field-level attrs use the same clrType path).
-            return LuaMarshalAsValidation.Current.ResolveParameterBinding(
-                null,
-                null,
-                direction,
-                field.FieldType);
+            return LuaMarshalAsValidation.Current.ResolveMemberBinding(field, direction);
         }
 
         private sealed class LazyAccessorBind
@@ -158,7 +153,7 @@ namespace ZLua.Emit
                 value = Expression.Field(Expression.Convert(targetObj, declaringType), field);
             }
 
-            Expression body = TypedBridgeEmit.PushReturn(L, fieldType, value);
+            Expression body = TypedBridgeEmit.PushMember(L, fieldType, value, binding);
 
             Func<IntPtr, int> core = Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
             return Wrap(core);
@@ -205,7 +200,7 @@ namespace ZLua.Emit
             Type fieldType = field.FieldType;
             ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
 
-            Expression typedValue = TypedBridgeEmit.PopArg(L, 2, fieldType);
+            Expression typedValue = TypedBridgeEmit.PopMember(L, 2, fieldType, binding);
 
             Expression body;
             if (isStatic)

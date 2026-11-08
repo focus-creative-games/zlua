@@ -333,6 +333,36 @@ namespace ZLua.Emit
                 $"zlua emit: missing generic StructMarshal.{name}");
         }
 
+        internal static Expression PopMember(Expression L, int index, Type type, LuaMarshalBinding binding)
+        {
+            if (binding.MarshalType == LuaMarshalType.Bytes)
+            {
+                string method = type == typeof(string) ? nameof(BytesMarshal.ReadStringAsOctets) : nameof(BytesMarshal.ReadByteArray);
+                return Expression.Call(Require(typeof(BytesMarshal), method), L, Expression.Constant(index));
+            }
+            if (binding.MarshalType == LuaMarshalType.UserData)
+            {
+                return Expression.Convert(Expression.Call(s_popObject, L, Expression.Constant(index), Expression.Constant(type)), type);
+            }
+            return PopArg(L, index, type);
+        }
+
+        internal static Expression PushMember(Expression L, Type type, Expression value, LuaMarshalBinding binding)
+        {
+            if (binding.MarshalType == LuaMarshalType.Bytes)
+            {
+                string method = type == typeof(string) ? nameof(BytesMarshal.PushStringAsOctets) : nameof(BytesMarshal.PushByteArray);
+                return Expression.Block(Expression.Call(Require(typeof(BytesMarshal), method), L, Expression.Convert(value, type)), Expression.Constant(1));
+            }
+            if (binding.MarshalType == LuaMarshalType.UserData)
+            {
+                MethodInfo push = typeof(ObjectMarshal).GetMethod(nameof(ObjectMarshal.Push), StaticAny, null,
+                    new[] { typeof(IntPtr), typeof(object), typeof(Type) }, null);
+                return Expression.Block(Expression.Call(push, L, Expression.Convert(value, typeof(object)), Expression.Constant(type)), Expression.Constant(1));
+            }
+            return PushReturn(L, type, value);
+        }
+
         private static Expression FallbackPop(Expression L, Expression indexExpr, Type declaredType)
         {
             Expression popped = Expression.Call(

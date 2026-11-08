@@ -132,9 +132,11 @@ namespace ZLua.Emit
 
         private static LuaCSFunction CompileGetter(PropertyInfo property, MethodInfo getter, bool isStatic, bool isByVal)
         {
-            LuaMarshalBinding returnBinding = LuaMarshalAsValidation.Current.ResolveReturnBinding(
-                getter,
-                LuaMarshalDirection.CSharpToLua);
+            LuaMarshalBinding returnBinding = LuaMarshalAsValidation.Current.ResolveMemberBinding(property, LuaMarshalDirection.CSharpToLua);
+            if (returnBinding.MarshalType == LuaMarshalType.Default)
+            {
+                returnBinding = LuaMarshalAsValidation.Current.ResolveReturnBinding(getter, LuaMarshalDirection.CSharpToLua);
+            }
             if (returnBinding.MarshalType == LuaMarshalType.ActualTypeUserData || returnBinding.IsComposite)
             {
                 return CompileGetterInterpreted(property, getter, isStatic, isByVal, returnBinding);
@@ -148,7 +150,7 @@ namespace ZLua.Emit
             if (isStatic)
             {
                 Expression value = Expression.Call(getter);
-                body = TypedBridgeEmit.PushReturn(L, propertyType, value);
+                body = TypedBridgeEmit.PushMember(L, propertyType, value, returnBinding);
             }
             else if (isByVal && declaringType.IsValueType)
             {
@@ -159,7 +161,7 @@ namespace ZLua.Emit
                     Expression.Constant(declaringType, typeof(Type)),
                     Expression.Constant(getter, typeof(MethodInfo)));
                 // ByVal ops still return object; PushReturn falls back for non-primitive structs.
-                body = TypedBridgeEmit.PushReturn(L, propertyType, value);
+                body = TypedBridgeEmit.PushMember(L, propertyType, value, returnBinding);
             }
             else
             {
@@ -171,7 +173,7 @@ namespace ZLua.Emit
                     Expression.Constant(false));
                 Expression typedTarget = Expression.Convert(targetObj, declaringType);
                 Expression value = Expression.Call(typedTarget, getter);
-                body = TypedBridgeEmit.PushReturn(L, propertyType, value);
+                body = TypedBridgeEmit.PushMember(L, propertyType, value, returnBinding);
             }
 
             Func<IntPtr, int> core = Expression.Lambda<Func<IntPtr, int>>(body, L).Compile();
@@ -212,10 +214,11 @@ namespace ZLua.Emit
         {
             ParameterInfo[] setterParams = setter.GetParameters();
             ParameterInfo valueParam = setterParams[setterParams.Length - 1];
-            LuaMarshalBinding valueBinding = LuaMarshalAsValidation.Current.ResolveParameterBinding(
-                valueParam,
-                setter,
-                LuaMarshalDirection.LuaToCSharp);
+            LuaMarshalBinding valueBinding = LuaMarshalAsValidation.Current.ResolveMemberBinding(property, LuaMarshalDirection.LuaToCSharp);
+            if (valueBinding.MarshalType == LuaMarshalType.Default)
+            {
+                valueBinding = LuaMarshalAsValidation.Current.ResolveParameterBinding(valueParam, setter, LuaMarshalDirection.LuaToCSharp);
+            }
             if (valueBinding.IsComposite || valueBinding.MarshalType == LuaMarshalType.ActualTypeUserData)
             {
                 return CompileSetterInterpreted(property, setter, isStatic, isByVal, valueBinding);
@@ -225,7 +228,7 @@ namespace ZLua.Emit
             Type propertyType = property.PropertyType;
             ParameterExpression L = Expression.Parameter(typeof(IntPtr), "L");
 
-            Expression typedValue = TypedBridgeEmit.PopArg(L, 2, propertyType);
+            Expression typedValue = TypedBridgeEmit.PopMember(L, 2, propertyType, valueBinding);
 
             Expression body;
             if (isStatic)

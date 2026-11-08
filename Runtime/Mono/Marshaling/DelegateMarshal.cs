@@ -36,7 +36,7 @@ namespace ZLua.Marshaling
                 return;
             }
 
-            if (del.Target is LuaMethod luaMethod)
+            if (DynamicBridgeFactory.TryGetLuaMethod(del, out LuaMethod luaMethod))
             {
                 // Registry refs belong to a LuaEnv instance, not a reusable native
                 // address. Coroutines share that env even though their L differs.
@@ -69,35 +69,35 @@ namespace ZLua.Marshaling
             LuaDataType valueType = LuaDll.lua_type(L, index);
             switch (valueType)
             {
-                case LuaDataType.Function:
+            case LuaDataType.Function:
+            {
+                LuaEnv env = LuaEnv.Active;
+                if (env == null)
                 {
-                    LuaEnv env = LuaEnv.Active;
-                    if (env == null)
-                    {
-                        LuaCallbackBoundary.Throw("zlua internal error: no active LuaEnv");
-                    }
-
-                    int funcRef = LuaDelegateBinder.CreateFunctionRef(L, index);
-                    return LuaDelegateBinder.Create(env, delegateType, funcRef);
+                    LuaCallbackBoundary.Throw("zlua internal error: no active LuaEnv");
                 }
 
-                case LuaDataType.UserData:
+                int funcRef = LuaDelegateBinder.CreateFunctionRef(L, index);
+                return LuaDelegateBinder.Create(env, delegateType, funcRef);
+            }
+
+            case LuaDataType.UserData:
+            {
+                object obj = ObjectRegistry.Pop(L, index);
+                if (obj == null || !delegateType.IsInstanceOfType(obj))
                 {
-                    object obj = ObjectRegistry.Pop(L, index);
-                    if (obj == null || !delegateType.IsInstanceOfType(obj))
-                    {
-                        LuaCallbackBoundary.Throw("zlua: argument mismatch: expected delegate");
-                    }
-
-                    return (Delegate)obj;
-                }
-
-                case LuaDataType.Nil:
-                    return null;
-
-                default:
                     LuaCallbackBoundary.Throw("zlua: argument mismatch: expected delegate");
-                    return null;
+                }
+
+                return (Delegate)obj;
+            }
+
+            case LuaDataType.Nil:
+                return null;
+
+            default:
+                LuaCallbackBoundary.Throw("zlua: argument mismatch: expected delegate");
+                return null;
             }
         }
     }

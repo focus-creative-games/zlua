@@ -57,9 +57,8 @@ namespace ZLua.DelegateImpl
             nameof(LuaDll.lua_pushnil),
             new[] { typeof(IntPtr) });
 
-        private static readonly MethodInfo LuaPushString = typeof(LuaDll).GetMethod(
-            nameof(LuaDll.lua_pushstring),
-            new[] { typeof(IntPtr), typeof(string) });
+        private static readonly MethodInfo LuaPushString = typeof(PrimitiveMarshal).GetMethod(
+            nameof(PrimitiveMarshal.PushString), BindingFlags.NonPublic | BindingFlags.Static);
 
         private static readonly MethodInfo LuaToBoolean = typeof(LuaDll).GetMethod(
             nameof(LuaDll.lua_toboolean),
@@ -239,53 +238,53 @@ namespace ZLua.DelegateImpl
         {
             switch (marshalType)
             {
-                case LuaMarshalType.Bytes:
-                    if (declaredType == typeof(byte[]) || declaredType == typeof(string))
-                    {
-                        return LuaMarshalType.Bytes;
-                    }
-
-                    return LuaMarshalType.Default;
-                case LuaMarshalType.UserData:
-                    if (!declaredType.IsValueType || declaredType.IsEnum)
-                    {
-                        // reference types + string ok; structs also ok for UserData
-                    }
-
-                    if (declaredType.IsPrimitive && declaredType != typeof(IntPtr) && declaredType != typeof(UIntPtr))
-                    {
-                        return LuaMarshalType.Default;
-                    }
-
-                    return LuaMarshalType.UserData;
-                case LuaMarshalType.OpaqueValue:
-                    return LuaMarshalType.OpaqueValue;
-                case LuaMarshalType.ActualTypeUserData:
+            case LuaMarshalType.Bytes:
+                if (declaredType == typeof(byte[]) || declaredType == typeof(string))
                 {
-                    // Expression path soft-filters like Attribute validation (ByObj facades only).
-                    Type target = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
-                    if (target == null
-                        || target == typeof(string)
-                        || target.IsValueType
-                        || typeof(Delegate).IsAssignableFrom(target)
-                        || target.IsPointer
-                        || target.IsByRef)
-                    {
-                        return LuaMarshalType.Default;
-                    }
+                    return LuaMarshalType.Bytes;
+                }
 
-                    if (target.IsArray
-                        || target == typeof(object)
-                        || target.IsClass
-                        || target.IsInterface)
-                    {
-                        return LuaMarshalType.ActualTypeUserData;
-                    }
+                return LuaMarshalType.Default;
+            case LuaMarshalType.UserData:
+                if (!declaredType.IsValueType || declaredType.IsEnum)
+                {
+                    // reference types + string ok; structs also ok for UserData
+                }
 
+                if (declaredType.IsPrimitive && declaredType != typeof(IntPtr) && declaredType != typeof(UIntPtr))
+                {
                     return LuaMarshalType.Default;
                 }
-                default:
+
+                return LuaMarshalType.UserData;
+            case LuaMarshalType.OpaqueValue:
+                return LuaMarshalType.OpaqueValue;
+            case LuaMarshalType.ActualTypeUserData:
+            {
+                // Expression path soft-filters like Attribute validation (ByObj facades only).
+                Type target = Nullable.GetUnderlyingType(declaredType) ?? declaredType;
+                if (target == null
+                    || target == typeof(string)
+                    || target.IsValueType
+                    || typeof(Delegate).IsAssignableFrom(target)
+                    || target.IsPointer
+                    || target.IsByRef)
+                {
                     return LuaMarshalType.Default;
+                }
+
+                if (target.IsArray
+                    || target == typeof(object)
+                    || target.IsClass
+                    || target.IsInterface)
+                {
+                    return LuaMarshalType.ActualTypeUserData;
+                }
+
+                return LuaMarshalType.Default;
+            }
+            default:
+                return LuaMarshalType.Default;
             }
         }
 

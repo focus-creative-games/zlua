@@ -169,7 +169,7 @@ namespace ZLua.Marshaling
                 return;
             }
 
-            LuaDll.lua_pushstring(L, v);
+            BytesMarshal.PushStringAsOctets(L, v);
         }
 
         internal static string PopString(IntPtr L, int idx)

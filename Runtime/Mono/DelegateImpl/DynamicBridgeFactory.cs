@@ -23,6 +23,7 @@ using System.Collections.Concurrent;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using ZLua;
 using ZLua.Lvm;
 using ZLua.Utils;
@@ -64,6 +65,15 @@ namespace ZLua.DelegateImpl
 
         private static readonly ConcurrentDictionary<FactoryKey, Func<LuaMethod, Delegate>> FactoryCache =
             new ConcurrentDictionary<FactoryKey, Func<LuaMethod, Delegate>>();
+
+        // Ephemeron keys do not keep delegates (or their Lua registry refs) alive.
+        private static readonly ConditionalWeakTable<Delegate, LuaMethod> Targets = new ConditionalWeakTable<Delegate, LuaMethod>();
+
+        internal static bool TryGetLuaMethod(Delegate value, out LuaMethod target)
+        {
+            target = value.Target as LuaMethod;
+            return target != null || Targets.TryGetValue(value, out target);
+        }
 
         internal static void Shutdown()
         {
@@ -152,7 +162,9 @@ namespace ZLua.DelegateImpl
             }
 
             Func<LuaMethod, Delegate> factory = EnsureFactory(invokeMethod, delegateType);
-            return factory(target);
+            Delegate result = factory(target);
+            Targets.Add(result, target);
+            return result;
         }
 
         private static Func<LuaMethod, Delegate> EnsureFactory(MethodInfo invokeMethod, Type delegateType)

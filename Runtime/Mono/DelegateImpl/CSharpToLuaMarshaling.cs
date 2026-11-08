@@ -105,7 +105,7 @@ namespace ZLua.DelegateImpl
                 }
                 else
                 {
-                    LuaDll.lua_pushstring(L, value);
+                    PrimitiveMarshal.PushString(L, value);
                 }
 
                 return;

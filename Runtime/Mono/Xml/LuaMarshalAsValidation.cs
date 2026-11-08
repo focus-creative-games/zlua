@@ -119,6 +119,29 @@ namespace ZLua
             return LuaMarshalBinding.Default;
         }
 
+        public LuaMarshalBinding ResolveMemberBinding(MemberInfo member, LuaMarshalDirection direction)
+        {
+            Type clrType = member is FieldInfo field ? field.FieldType : ((PropertyInfo)member).PropertyType;
+            if (TryGetDeclaredBinding(member.GetCustomAttribute<LuaMarshalAsAttribute>(false),
+                null, null, clrType, direction, false, false, out LuaMarshalBinding binding))
+            {
+                return binding;
+            }
+
+            LuaMarshalAsXmlRegistry registry = ActiveRegistry;
+            LuaMarshalAsXmlRule rule = null;
+            bool hasRule = registry != null && (member is FieldInfo fieldInfo
+                ? registry.TryGetFieldRule(fieldInfo, out rule)
+                : registry.TryGetPropertyRule((PropertyInfo)member, out rule));
+            if (hasRule && TryGetDeclaredBinding(rule.ToAttribute(),
+                null, null, clrType, direction, false, false, out binding))
+            {
+                return binding;
+            }
+
+            return ResolveParameterBinding(null, null, direction, clrType);
+        }
+
         public LuaMarshalBinding ResolveReturnBinding(MethodInfo method, LuaMarshalDirection direction)
         {
             if (method == null || method.ReturnType == typeof(void))
@@ -770,7 +793,10 @@ namespace ZLua
         /// When true, invalid LuaMarshalAs diagnostics are not written to the Unity console.
         /// Intended for unit-test hosts that intentionally exercise invalid attributes.
         /// </summary>
-        public static bool SuppressInvalidLogging { get; set; }
+        public static bool SuppressInvalidLogging
+        {
+            get; set;
+        }
 
         private static void LogInvalidOnce(string memberSignature, Type clrType, LuaMarshalType marshalType, string reason)
         {
