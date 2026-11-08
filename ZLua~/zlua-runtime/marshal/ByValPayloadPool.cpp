@@ -27,7 +27,6 @@
 #include <cstring>
 #include <memory>
 #include <stdexcept>
-#include <utility>
 
 namespace zlua
 {
@@ -184,13 +183,19 @@ ByValPayloadPool::Handle ByValPayloadPool::Allocate(size_t payloadSize)
     return Handle(page, index);
 }
 
-ByValPayloadPool::Handle::Handle(Handle&& other) noexcept : _page(std::exchange(other._page, nullptr)), _index(std::exchange(other._index, kNoSlot)) {}
+ByValPayloadPool::Handle::Handle(Handle&& other) noexcept : _page(other._page), _index(other._index)
+{
+    other._page = nullptr;
+    other._index = kNoSlot;
+}
 
 ByValPayloadPool::Handle& ByValPayloadPool::Handle::operator=(Handle&& other) noexcept
 {
     IL2CPP_ASSERT(_page == nullptr);
-    _page = std::exchange(other._page, nullptr);
-    _index = std::exchange(other._index, kNoSlot);
+    _page = other._page;
+    _index = other._index;
+    other._page = nullptr;
+    other._index = kNoSlot;
     return *this;
 }
 
