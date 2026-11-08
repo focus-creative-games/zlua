@@ -73,6 +73,9 @@ namespace ZLua.Emit
         private static readonly MethodInfo s_pushUIntPtr = Require(typeof(PrimitiveMarshal), nameof(PrimitiveMarshal.PushUIntPtr));
         private static readonly MethodInfo s_popString = Require(typeof(PrimitiveMarshal), nameof(PrimitiveMarshal.PopString));
         private static readonly MethodInfo s_pushString = Require(typeof(PrimitiveMarshal), nameof(PrimitiveMarshal.PushString));
+        private static readonly MethodInfo s_popObject = Require(typeof(ObjectMarshal), nameof(ObjectMarshal.Pop));
+        private static readonly MethodInfo s_pushActualType = typeof(ObjectMarshal).GetMethod(
+            nameof(ObjectMarshal.Push), StaticAny, null, new[] { typeof(IntPtr), typeof(object) }, null);
 
         /// <summary>
         /// Expression of type <paramref name="declaredType"/> popped from Lua stack slot <paramref name="index"/>.
@@ -133,7 +136,38 @@ namespace ZLua.Emit
                 return Expression.Call(popStruct, L, indexExpr);
             }
 
+            // Reference categories are known while compiling. Ordinary ByObj
+            // arguments need no per-call pointer/struct/delegate classification.
+            if ((declaredType.IsClass || declaredType.IsInterface)
+                && !declaredType.IsArray
+                && !typeof(Delegate).IsAssignableFrom(declaredType))
+            {
+                return Expression.Convert(
+                    Expression.Call(s_popObject, L, indexExpr, Expression.Constant(declaredType, typeof(Type))),
+                    declaredType);
+            }
+
             return FallbackPop(L, indexExpr, declaredType);
+        }
+
+        // Resolve the return policy once while compiling the bridge. Runtime
+        // calls push the actual facade directly, without MethodInfo.Invoke.
+        internal static Expression PushMethodReturn(Expression L, MethodInfo method, Expression value)
+        {
+            LuaMarshalBinding binding = LuaMarshalAsValidation.Current.ResolveReturnBinding(
+                method, LuaMarshalDirection.CSharpToLua);
+            if (binding.MarshalType == LuaMarshalType.ActualTypeUserData)
+            {
+                return Expression.Block(
+                    Expression.Call(s_pushActualType, L, Expression.Convert(value, typeof(object))),
+                    Expression.Constant(1));
+            }
+
+            // ByVal/pointer invokers already return object; preserve their
+            // existing object marshal path for ordinary return policies.
+            return value.Type == typeof(object)
+                ? FallbackPush(L, method.ReturnType, value)
+                : PushReturn(L, method.ReturnType, value);
         }
 
         /// <summary>
@@ -325,17 +359,61 @@ namespace ZLua.Emit
         {
             method = null;
             resultType = type;
-            if (type == typeof(bool)) { method = s_popBool; return true; }
-            if (type == typeof(sbyte)) { method = s_popInt8; return true; }
-            if (type == typeof(byte)) { method = s_popUInt8; return true; }
-            if (type == typeof(short)) { method = s_popInt16; return true; }
-            if (type == typeof(ushort)) { method = s_popUInt16; return true; }
-            if (type == typeof(int)) { method = s_popInt32; return true; }
-            if (type == typeof(uint)) { method = s_popUInt32; return true; }
-            if (type == typeof(long)) { method = s_popInt64; return true; }
-            if (type == typeof(ulong)) { method = s_popUInt64; return true; }
-            if (type == typeof(float)) { method = s_popFloat; return true; }
-            if (type == typeof(double)) { method = s_popDouble; return true; }
+            if (type == typeof(bool))
+            {
+                method = s_popBool;
+                return true;
+            }
+            if (type == typeof(sbyte))
+            {
+                method = s_popInt8;
+                return true;
+            }
+            if (type == typeof(byte))
+            {
+                method = s_popUInt8;
+                return true;
+            }
+            if (type == typeof(short))
+            {
+                method = s_popInt16;
+                return true;
+            }
+            if (type == typeof(ushort))
+            {
+                method = s_popUInt16;
+                return true;
+            }
+            if (type == typeof(int))
+            {
+                method = s_popInt32;
+                return true;
+            }
+            if (type == typeof(uint))
+            {
+                method = s_popUInt32;
+                return true;
+            }
+            if (type == typeof(long))
+            {
+                method = s_popInt64;
+                return true;
+            }
+            if (type == typeof(ulong))
+            {
+                method = s_popUInt64;
+                return true;
+            }
+            if (type == typeof(float))
+            {
+                method = s_popFloat;
+                return true;
+            }
+            if (type == typeof(double))
+            {
+                method = s_popDouble;
+                return true;
+            }
             if (type == typeof(char))
             {
                 method = s_popUInt16;
@@ -343,25 +421,77 @@ namespace ZLua.Emit
                 return true;
             }
 
-            if (type == typeof(IntPtr)) { method = s_popIntPtr; return true; }
-            if (type == typeof(UIntPtr)) { method = s_popUIntPtr; return true; }
+            if (type == typeof(IntPtr))
+            {
+                method = s_popIntPtr;
+                return true;
+            }
+            if (type == typeof(UIntPtr))
+            {
+                method = s_popUIntPtr;
+                return true;
+            }
             return false;
         }
 
         private static bool TryGetPrimitivePush(Type type, out MethodInfo method)
         {
             method = null;
-            if (type == typeof(bool)) { method = s_pushBool; return true; }
-            if (type == typeof(sbyte)) { method = s_pushInt8; return true; }
-            if (type == typeof(byte)) { method = s_pushUInt8; return true; }
-            if (type == typeof(short)) { method = s_pushInt16; return true; }
-            if (type == typeof(ushort)) { method = s_pushUInt16; return true; }
-            if (type == typeof(int)) { method = s_pushInt32; return true; }
-            if (type == typeof(uint)) { method = s_pushUInt32; return true; }
-            if (type == typeof(long)) { method = s_pushInt64; return true; }
-            if (type == typeof(ulong)) { method = s_pushUInt64; return true; }
-            if (type == typeof(float)) { method = s_pushFloat; return true; }
-            if (type == typeof(double)) { method = s_pushDouble; return true; }
+            if (type == typeof(bool))
+            {
+                method = s_pushBool;
+                return true;
+            }
+            if (type == typeof(sbyte))
+            {
+                method = s_pushInt8;
+                return true;
+            }
+            if (type == typeof(byte))
+            {
+                method = s_pushUInt8;
+                return true;
+            }
+            if (type == typeof(short))
+            {
+                method = s_pushInt16;
+                return true;
+            }
+            if (type == typeof(ushort))
+            {
+                method = s_pushUInt16;
+                return true;
+            }
+            if (type == typeof(int))
+            {
+                method = s_pushInt32;
+                return true;
+            }
+            if (type == typeof(uint))
+            {
+                method = s_pushUInt32;
+                return true;
+            }
+            if (type == typeof(long))
+            {
+                method = s_pushInt64;
+                return true;
+            }
+            if (type == typeof(ulong))
+            {
+                method = s_pushUInt64;
+                return true;
+            }
+            if (type == typeof(float))
+            {
+                method = s_pushFloat;
+                return true;
+            }
+            if (type == typeof(double))
+            {
+                method = s_pushDouble;
+                return true;
+            }
             if (type == typeof(char))
             {
                 // Push as ushort; caller must convert char → ushort first when using this method directly.
@@ -369,8 +499,16 @@ namespace ZLua.Emit
                 return true;
             }
 
-            if (type == typeof(IntPtr)) { method = s_pushIntPtr; return true; }
-            if (type == typeof(UIntPtr)) { method = s_pushUIntPtr; return true; }
+            if (type == typeof(IntPtr))
+            {
+                method = s_pushIntPtr;
+                return true;
+            }
+            if (type == typeof(UIntPtr))
+            {
+                method = s_pushUIntPtr;
+                return true;
+            }
             return false;
         }
 

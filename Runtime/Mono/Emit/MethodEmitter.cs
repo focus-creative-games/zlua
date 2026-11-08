@@ -626,7 +626,7 @@ namespace ZLua.Emit
                 ParameterExpression resultLocal = Expression.Variable(method.ReturnType, "result");
                 locals.Add(resultLocal);
                 exprs.Add(Expression.Assign(resultLocal, call));
-                exprs.Add(TypedBridgeEmit.PushReturn(L, method.ReturnType, resultLocal));
+                exprs.Add(TypedBridgeEmit.PushMethodReturn(L, method, resultLocal));
             }
 
             Expression body = Expression.Block(locals, exprs);
@@ -699,7 +699,7 @@ namespace ZLua.Emit
                 ParameterExpression resultLocal = Expression.Variable(method.ReturnType, "result");
                 locals.Add(resultLocal);
                 exprs.Add(Expression.Assign(resultLocal, call));
-                exprs.Add(TypedBridgeEmit.PushReturn(L, method.ReturnType, resultLocal));
+                exprs.Add(TypedBridgeEmit.PushMethodReturn(L, method, resultLocal));
             }
 
             Expression body = Expression.Block(locals, exprs);
@@ -764,11 +764,7 @@ namespace ZLua.Emit
             }
             else
             {
-                exprs.Add(Expression.Call(
-                    EmitMethods.PushReturn,
-                    L,
-                    Expression.Constant(method.ReturnType, typeof(Type)),
-                    resultLocal));
+                exprs.Add(TypedBridgeEmit.PushMethodReturn(L, method, resultLocal));
             }
 
             Expression body = Expression.Block(locals, exprs);
@@ -846,11 +842,7 @@ namespace ZLua.Emit
             }
             else
             {
-                exprs.Add(Expression.Call(
-                    EmitMethods.PushReturn,
-                    L,
-                    Expression.Constant(method.ReturnType, typeof(Type)),
-                    resultLocal));
+                exprs.Add(TypedBridgeEmit.PushMethodReturn(L, method, resultLocal));
             }
 
             Expression body = Expression.Block(locals, exprs);

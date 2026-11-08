@@ -120,7 +120,15 @@ namespace ZLua.Emit
                 LuaMarshalBinding ret = LuaMarshalAsValidation.Current.ResolveReturnBinding(
                     methodInfo,
                     LuaMarshalDirection.CSharpToLua);
-                if (ret.IsComposite || ret.MarshalType == LuaMarshalType.ActualTypeUserData)
+                if (ret.IsComposite)
+                {
+                    return true;
+                }
+
+                // ActualTypeUserData has a typed return push. Keep the previous
+                // interpreted fallback for signatures the typed emitter cannot bind.
+                if (ret.MarshalType == LuaMarshalType.ActualTypeUserData
+                    && !BridgeMarshaling.CanExpressionEmitSignature(method))
                 {
                     return true;
                 }

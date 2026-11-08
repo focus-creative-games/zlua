@@ -119,11 +119,15 @@ namespace ZLua.Emit
         /// </summary>
         internal static bool CanExpressionEmit(MethodBase method)
         {
-            if (method == null || InterpretedMethodInvoker.NeedsInterpreted(method))
-            {
-                return false;
-            }
+            return method != null
+                && !InterpretedMethodInvoker.NeedsInterpreted(method)
+                && CanExpressionEmitSignature(method);
+        }
 
+        // Signature support only: unlike CanExpressionEmit, this does not ask
+        // NeedsInterpreted, which uses it to retain unsupported return-path fallbacks.
+        internal static bool CanExpressionEmitSignature(MethodBase method)
+        {
             ParameterInfo[] parameters = method.GetParameters();
             for (int i = 0; i < parameters.Length; i++)
             {
