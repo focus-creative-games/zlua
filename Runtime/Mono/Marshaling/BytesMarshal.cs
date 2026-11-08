@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Text;
 using ZLua.Utils;
@@ -27,6 +28,8 @@ namespace ZLua.Marshaling
 {
     internal static class BytesMarshal
     {
+        private const int StackBufferSize = 512;
+
         internal static void PushByteArray(IntPtr L, byte[] bytes)
         {
             if (bytes == null)
@@ -69,7 +72,7 @@ namespace ZLua.Marshaling
             return bytes;
         }
 
-        internal static void PushStringAsOctets(IntPtr L, string value)
+        internal static unsafe void PushStringAsOctets(IntPtr L, string value)
         {
             if (value == null)
             {
@@ -77,18 +80,62 @@ namespace ZLua.Marshaling
                 return;
             }
 
-            PushByteArray(L, Encoding.UTF8.GetBytes(value));
+            int byteCount = Encoding.UTF8.GetByteCount(value);
+            if (byteCount == 0)
+            {
+                LuaDll.lua_pushlstring(L, IntPtr.Zero, UIntPtr.Zero);
+                return;
+            }
+
+            if (byteCount <= StackBufferSize)
+            {
+                byte* buffer = stackalloc byte[StackBufferSize];
+                PushEncodedString(L, value, buffer, byteCount);
+                return;
+            }
+
+            // Each invocation owns its lease until lua_pushlstring has copied
+            // the bytes. Nested calls and other threads must rent independently.
+            byte[] rented = ArrayPool<byte>.Shared.Rent(byteCount);
+            try
+            {
+                fixed (byte* buffer = rented)
+                {
+                    PushEncodedString(L, value, buffer, byteCount);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
         }
 
-        internal static string ReadStringAsOctets(IntPtr L, int index)
+        private static unsafe void PushEncodedString(IntPtr L, string value, byte* buffer, int byteCount)
+        {
+            fixed (char* chars = value)
+            {
+                int written = Encoding.UTF8.GetBytes(chars, value.Length, buffer, byteCount);
+                LuaDll.lua_pushlstring(L, (IntPtr)buffer, (UIntPtr)written);
+            }
+        }
+
+        internal static unsafe string ReadStringAsOctets(IntPtr L, int index)
         {
             if (LuaDll.lua_type(L, index) == LuaDataType.Nil)
             {
                 return null;
             }
 
-            byte[] bytes = ReadByteArray(L, index);
-            return bytes == null ? null : Encoding.UTF8.GetString(bytes);
+            // lua_tolstring roots the resulting string in its stack slot. Decode
+            // it before the stack changes; no copied byte[] or pinned lease is needed.
+            IntPtr strPtr = LuaDll.lua_tolstring(L, index, out UIntPtr len);
+            if (strPtr == IntPtr.Zero || len == UIntPtr.Zero)
+            {
+                return string.Empty;
+            }
+
+            int length = checked((int)len.ToUInt64());
+            return Encoding.UTF8.GetString((byte*)strPtr, length);
         }
     }
 }
