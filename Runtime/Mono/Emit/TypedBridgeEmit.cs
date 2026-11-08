@@ -101,7 +101,7 @@ namespace ZLua.Emit
             return Expression.Condition(hasArg, popped, fallback);
         }
 
-        private static Expression PopArg(Expression L, Expression indexExpr, Type declaredType)
+        internal static Expression PopArg(Expression L, Expression indexExpr, Type declaredType)
         {
             if (TryGetPrimitivePop(declaredType, out MethodInfo pop, out Type resultType))
             {
