@@ -313,7 +313,7 @@ static void Lua2CSMarshalUnityVector2(lua_State* L, int valueIdx, void* address,
     if (header->klass != ctx->typeKlass)
         LuaException::ThrowFormat("zlua argument mismatch: cannot convert userdata %s.%s to struct: %s.%s", header->klass->namespaze, header->klass->name,
                                   ctx->typeKlass->namespaze, ctx->typeKlass->name);
-    *reinterpret_cast<UnityVector2*>(address) = *reinterpret_cast<const UnityVector2*>(header->Payload());
+    *reinterpret_cast<UnityVector2*>(address) = *reinterpret_cast<const UnityVector2*>(header->InlinePayload());
 }
 
 static void CS2LuaMarshalUnityVector2(lua_State* L, void* address, const MarshalMetaInfo* ctx)
@@ -330,7 +330,7 @@ static void Lua2CSMarshalUnityVector3(lua_State* L, int valueIdx, void* address,
     if (header->klass != ctx->typeKlass)
         LuaException::ThrowFormat("zlua argument mismatch: cannot convert userdata %s.%s to struct: %s.%s", header->klass->namespaze, header->klass->name,
                                   ctx->typeKlass->namespaze, ctx->typeKlass->name);
-    *reinterpret_cast<UnityVector3*>(address) = *reinterpret_cast<const UnityVector3*>(header->Payload());
+    *reinterpret_cast<UnityVector3*>(address) = *reinterpret_cast<const UnityVector3*>(header->InlinePayload());
 }
 
 static void CS2LuaMarshalUnityVector3(lua_State* L, void* address, const MarshalMetaInfo* ctx)
@@ -347,7 +347,7 @@ static void Lua2CSMarshalUnityVector4(lua_State* L, int valueIdx, void* address,
     if (header->klass != ctx->typeKlass)
         LuaException::ThrowFormat("zlua argument mismatch: cannot convert userdata %s.%s to struct: %s.%s", header->klass->namespaze, header->klass->name,
                                   ctx->typeKlass->namespaze, ctx->typeKlass->name);
-    *reinterpret_cast<UnityVector4*>(address) = *reinterpret_cast<const UnityVector4*>(header->Payload());
+    *reinterpret_cast<UnityVector4*>(address) = *reinterpret_cast<const UnityVector4*>(header->InlinePayload());
 }
 
 static void CS2LuaMarshalUnityVector4(lua_State* L, void* address, const MarshalMetaInfo* ctx)
@@ -1252,8 +1252,7 @@ static MarshalMetaInfo* CreateOutParamMeta(const MethodInfo* method, int argInde
 
     LuaMarshalAsData marshalAs;
     const uint32_t token = MetadataUtil::GetParameterToken(method, argIndex);
-    LuaMarshalAsResolveKind resolveKind =
-        TryResolveLuaMarshalAsDataForMethodSlot(method->klass->image, token, method, argIndex, klass, marshalAs);
+    LuaMarshalAsResolveKind resolveKind = TryResolveLuaMarshalAsDataForMethodSlot(method->klass->image, token, method, argIndex, klass, marshalAs);
 
     MarshalMetaInfo* meta = AllocMarshalMeta(byrefType);
     ApplySizeAndPassByValueAndKlass(meta, &klass->byval_arg, klass);

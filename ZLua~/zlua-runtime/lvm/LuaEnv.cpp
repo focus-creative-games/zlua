@@ -155,34 +155,29 @@ void LuaEnv::Shutdown()
     IL2CPP_ASSERT(s_L != nullptr);
 
     ProcessPendingRefReleases();
-    // Drop the managed moduleLoader root before tearing down registries / lua_State.
-    // ResetFromManaged → ShutdownState → here, then SetModuleLoader installs the new loader.
+    StructRegistry::BeginShutdown();
+    // Finalizers may call C#, read payloads or construct fresh userdata. Keep
+    // loader roots, metatables, object slots and binding contexts valid until
+    // lua_close has run every closing callback.
+    lua_close(s_L);
+    {
+        il2cpp::os::FastAutoLock lock(&s_pendingRefReleasesMutex);
+        s_L = nullptr;
+        s_pendingRefReleases.clear();
+    }
+
+    // The registry no longer exists: clear native caches without luaL_unref.
     LuaLoader::Clear();
-    MetaTableCache::Shutdown(s_L);
-    StructRegistry::Shutdown(s_L);
-    ObjectRegistry::Shutdown(s_L);
+    MetaTableCache::Shutdown(nullptr);
+    ObjectRegistry::Shutdown(nullptr);
     LuaGlobalRefs::Clear();
-    // State-local registry ref caches / bindings that embed luaL_ref numbers.
     TypeRegistry::Shutdown();
     MetaBinding::ShutdownState();
     MarshalMeta::InvalidateStateRefs();
     OpaqueValueMarshal::ShutdownState();
-
-    if (s_errorHandlerRef != LUA_NOREF)
-    {
-        luaL_unref(s_L, LUA_REGISTRYINDEX, s_errorHandlerRef);
-        s_errorHandlerRef = LUA_NOREF;
-    }
-
-    lua_close(s_L);
+    s_errorHandlerRef = LUA_NOREF;
+    StructRegistry::Shutdown(nullptr);
     StringMarshal::ClearScratch();
-    {
-        il2cpp::os::FastAutoLock lock(&s_pendingRefReleasesMutex);
-        s_L = nullptr;
-        // Finalizers may have queued refs after the initial drain. The closed
-        // state already released them; never carry them into the next state.
-        s_pendingRefReleases.clear();
-    }
 }
 
 lua_State* LuaEnv::GetState()

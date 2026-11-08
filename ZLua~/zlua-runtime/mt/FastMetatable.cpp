@@ -88,6 +88,7 @@ static void* ResolvePropertyTarget(lua_State* L, int index, FastInstanceKind kin
 extern "C" LUA_API int zlua_index_getter(lua_State* L)
 {
     using namespace zlua;
+    ZLUA_TRY_BEGIN()
     const FastMemberCtx* ctx = (const FastMemberCtx*)lua_touserdata(L, lua_upvalueindex(1));
     IL2CPP_ASSERT(ctx != nullptr);
 
@@ -118,11 +119,13 @@ extern "C" LUA_API int zlua_index_getter(lua_State* L)
     default:
         return luaL_error(L, "zlua: invalid index getter");
     }
+    ZLUA_TRY_END(L);
 }
 
 extern "C" LUA_API int zlua_index_setter(lua_State* L)
 {
     using namespace zlua;
+    ZLUA_TRY_BEGIN()
     const FastMemberCtx* ctx = (const FastMemberCtx*)lua_touserdata(L, lua_upvalueindex(1));
     IL2CPP_ASSERT(ctx != nullptr);
 
@@ -153,13 +156,13 @@ extern "C" LUA_API int zlua_index_setter(lua_State* L)
     default:
         return luaL_error(L, "zlua: invalid index setter");
     }
+    ZLUA_TRY_END(L);
 }
 
 namespace zlua
 {
 
-void FastMetatable::FillMemberTables(lua_State* L, TypeBinding* binding, const NameMetaMap* map, FastInstanceKind kind, int memberTableIndex,
-                                     int setterTableIndex)
+void FastMetatable::FillMemberTables(lua_State* L, TypeBinding* binding, const NameMetaMap* map, FastInstanceKind kind, int memberTableIndex, int setterTableIndex)
 {
     for (NameMetaMap::const_iterator it = map->begin(); it != map->end(); ++it)
     {
@@ -174,8 +177,7 @@ void FastMetatable::FillMemberTables(lua_State* L, TypeBinding* binding, const N
         case MetaKind::Field:
         case MetaKind::Property:
         {
-            const bool hasSetter = (info.kind == MetaKind::Field) ? (info.field->meta != nullptr && info.field->meta->lua2csWriter != nullptr)
-                                                                  : (info.property->setter != nullptr);
+            const bool hasSetter = (info.kind == MetaKind::Field) ? (info.field->meta != nullptr && info.field->meta->lua2csWriter != nullptr) : (info.property->setter != nullptr);
             /* Always install getter so write-only members error like Dispatch* (not silent nil). */
             FastMemberCtx* ctx = AllocCtx(binding, kind, info);
             lua_pushlightuserdata(L, ctx);

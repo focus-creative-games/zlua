@@ -103,7 +103,6 @@ struct FieldMarshalCtx
     };
 };
 
-
 struct PropertyMarshalCtx;
 
 typedef void (*FnPropertyGetter)(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx);
@@ -147,7 +146,7 @@ struct MethodMarshalCtx
     const MarshalMetaInfo** paramsMeta; // exclude this
     const MarshalMetaInfo* retMeta;
     const MethodDefaultArgs* defaults; // nullptr when method has no optional defaults
-    int32_t luaArity; // Σ paramsMeta[i]->stackSlots treating params as 1 slot (extension: from param 1)
+    int32_t luaArity;                  // Σ paramsMeta[i]->stackSlots treating params as 1 slot (extension: from param 1)
     /* CLR param index of params T[], or -1. Bind-time only; hot path never re-queries attributes. */
     int32_t paramsParamIndex;
     bool byVal;
@@ -220,7 +219,6 @@ struct MethodGroups
     size_t largeArgCountMethodCount;
 };
 
-
 enum class UserDataKind : uint8_t
 {
     Unknown,
@@ -239,23 +237,36 @@ struct UserDataHeader
     UserDataKind kind;
 };
 
+struct ByValUserDataHeader;
+uint8_t* GetPooledByValPayload(const ByValUserDataHeader* header);
+
 struct ByValUserDataHeader
 {
     UserDataHeader header;
+    uint8_t pooled; // Occupies existing padding; klass offset and header size stay unchanged.
     Il2CppClass* klass;
 
-    // int32_t totalSizeWithHeader;
-
-    uint8_t* Payload()
+    uint8_t* InlinePayload()
     {
         return reinterpret_cast<uint8_t*>(this + 1);
     }
 
-    const uint8_t* Payload() const
+    const uint8_t* InlinePayload() const
     {
         return reinterpret_cast<const uint8_t*>(this + 1);
     }
+
+    uint8_t* Payload()
+    {
+        return pooled ? GetPooledByValPayload(this) : InlinePayload();
+    }
+
+    const uint8_t* Payload() const
+    {
+        return pooled ? GetPooledByValPayload(this) : InlinePayload();
+    }
 };
+static_assert(sizeof(ByValUserDataHeader) == 2 * sizeof(void*), "ByVal header layout must stay unchanged");
 
 struct ZLuaObjectUserData
 {
@@ -300,6 +311,5 @@ struct LuaMethod : Il2CppObject
     int32_t funcRef;
     bool disposed;
 };
-
 
 } // namespace zlua

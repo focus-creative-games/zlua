@@ -22,19 +22,46 @@
 
 #include "../ZLuaCommon.h"
 #include "MarshalDefs.h"
+#include "ByValPayloadPool.h"
 
 namespace zlua
 {
+using StructPoolStats = ByValPayloadPool::Stats;
+
 class StructRegistry
 {
-  public:
+public:
     static void Initialize(lua_State* L);
+    static void BeginShutdown();
+    // Called only after lua_close: no page may disappear while a closing callback uses it.
     static void Shutdown(lua_State* L);
 
-    // Track a non-blittable ByVal userdata payload so GC can scan embedded references.
-    static void Register(ByValUserDataHeader* header);
+    static size_t GetPooledUserDataSize();
+    static void InitializeUserData(ByValUserDataHeader* header);
+    static void AllocatePayload(ByValUserDataHeader* header, size_t payloadSize);
     static void Unregister(ByValUserDataHeader* header);
+    static void AccountAllocation(lua_State* L, size_t payloadSize);
+    static StructPoolStats GetStats();
 
+    static void BeginCall();
+    static void EndCall();
     static int OnReleaseByValUserData(lua_State* L);
+};
+
+// Prevent a reentrant/manual __gc from recycling storage still used by a native
+// bridge. Pending slots are cleared/reused only after the outer bridge returns.
+class StructPayloadCallScope
+{
+public:
+    StructPayloadCallScope()
+    {
+        StructRegistry::BeginCall();
+    }
+    ~StructPayloadCallScope()
+    {
+        StructRegistry::EndCall();
+    }
+    StructPayloadCallScope(const StructPayloadCallScope&) = delete;
+    StructPayloadCallScope& operator=(const StructPayloadCallScope&) = delete;
 };
 } // namespace zlua

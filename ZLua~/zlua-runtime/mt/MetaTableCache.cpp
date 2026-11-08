@@ -47,24 +47,22 @@ void MetaTableCache::Initialize(lua_State* L)
 
 void MetaTableCache::Shutdown(lua_State* L)
 {
-    for (auto& kv : s_byValMetatableRefs)
-        luaL_unref(L, LUA_REGISTRYINDEX, kv.second);
+    // nullptr means lua_close already freed the registry. Keep refs usable until
+    // then so finalizers can still marshal existing and newly created values.
+    if (L != nullptr)
+    {
+        for (auto& kv : s_byValMetatableRefs)
+            luaL_unref(L, LUA_REGISTRYINDEX, kv.second);
+        for (auto& kv : s_byObjMetatableRefs)
+            luaL_unref(L, LUA_REGISTRYINDEX, kv.second);
+        if (s_byValCacheRef != LUA_NOREF)
+            luaL_unref(L, LUA_REGISTRYINDEX, s_byValCacheRef);
+        if (s_byObjCacheRef != LUA_NOREF)
+            luaL_unref(L, LUA_REGISTRYINDEX, s_byObjCacheRef);
+    }
     s_byValMetatableRefs.clear();
-
-    for (auto& kv : s_byObjMetatableRefs)
-        luaL_unref(L, LUA_REGISTRYINDEX, kv.second);
     s_byObjMetatableRefs.clear();
-
-    if (s_byValCacheRef != LUA_NOREF)
-    {
-        luaL_unref(L, LUA_REGISTRYINDEX, s_byValCacheRef);
-        s_byValCacheRef = LUA_NOREF;
-    }
-    if (s_byObjCacheRef != LUA_NOREF)
-    {
-        luaL_unref(L, LUA_REGISTRYINDEX, s_byObjCacheRef);
-        s_byObjCacheRef = LUA_NOREF;
-    }
+    s_byValCacheRef = s_byObjCacheRef = LUA_NOREF;
 }
 
 static void PushCachedMetatable(lua_State* L, Il2CppClass* klass, int cacheRef, const char* mtField)

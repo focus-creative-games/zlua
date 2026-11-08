@@ -47,10 +47,14 @@ ByValUserDataHeader* StructMarshal::GetByValHeader(lua_State* L, int index)
 
 static ByValUserDataHeader* CreateByValUserDataHeader(lua_State* L, Il2CppClass* klass, size_t payloadSize, int metatableRefIndex)
 {
-    const size_t totalSize = sizeof(ByValUserDataHeader) + payloadSize;
+    const size_t totalSize = klass->has_references ? StructRegistry::GetPooledUserDataSize() : sizeof(ByValUserDataHeader) + payloadSize;
     ByValUserDataHeader* header = static_cast<ByValUserDataHeader*>(LuaNewUserData(L, totalSize));
     header->header.kind = UserDataKind::ByVal;
     header->klass = klass;
+    header->pooled = klass->has_references ? 1 : 0;
+    // Initialize before installing a finalizer: later construction can fail.
+    if (klass->has_references)
+        StructRegistry::InitializeUserData(header);
     if (metatableRefIndex != LUA_NOREF)
     {
         lua_rawgeti(L, LUA_REGISTRYINDEX, metatableRefIndex);
@@ -61,6 +65,8 @@ static ByValUserDataHeader* CreateByValUserDataHeader(lua_State* L, Il2CppClass*
         MetaTableCache::PushByValMetatable(L, klass);
         lua_setmetatable(L, -2);
     }
+    if (klass->has_references)
+        StructRegistry::AllocatePayload(header, payloadSize);
     return header;
 }
 
@@ -70,7 +76,10 @@ void StructMarshal::PushValue(lua_State* L, void* dataAddr, Il2CppClass* klass, 
     ByValUserDataHeader* header = CreateByValUserDataHeader(L, klass, payloadSize, metatableRefIndex);
     std::memcpy(header->Payload(), dataAddr, payloadSize);
     if (klass->has_references)
-        StructRegistry::Register(header);
+    {
+        il2cpp::gc::GarbageCollector::SetWriteBarrier(reinterpret_cast<void**>(header->Payload()), payloadSize);
+        StructRegistry::AccountAllocation(L, payloadSize);
+    }
 }
 
 void* StructMarshal::PushZeroedValue(lua_State* L, Il2CppClass* klass)
@@ -81,7 +90,12 @@ void* StructMarshal::PushZeroedValue(lua_State* L, Il2CppClass* klass)
     void* payload = header->Payload();
     std::memset(payload, 0, payloadSize);
     if (klass->has_references)
-        StructRegistry::Register(header);
+    {
+        StructRegistry::AccountAllocation(L, payloadSize);
+        // A GC step can run user finalizers. Revalidate before handing a writable
+        // address to the constructor, in case a callback explicitly released it.
+        return header->Payload();
+    }
     return payload;
 }
 

@@ -70,7 +70,7 @@ static std::unordered_map<ObjectViewKey, int, ObjectViewKeyHash, ObjectViewKeyEq
 
 class ObjectSlotRegistry
 {
-  public:
+public:
     uint32_t RegisterObject(Il2CppObject* obj)
     {
         const uint32_t slotIndex = AllocateSlot();
@@ -110,7 +110,7 @@ class ObjectSlotRegistry
         _freeSlots.clear();
     }
 
-  private:
+private:
     // Larger initial capacity reduces RegisterRoot/UnregisterRoot churn on grow.
     static constexpr int32_t kInitialCapacity = 4096;
 
@@ -191,7 +191,8 @@ void ObjectRegistry::Shutdown(lua_State* L)
     s_objectSlots.Clear();
     if (s_objectCacheRef != LUA_NOREF)
     {
-        luaL_unref(L, LUA_REGISTRYINDEX, s_objectCacheRef);
+        if (L != nullptr)
+            luaL_unref(L, LUA_REGISTRYINDEX, s_objectCacheRef);
         s_objectCacheRef = LUA_NOREF;
     }
 }
@@ -201,7 +202,7 @@ static void RemoveFromObjectCache(lua_State* L, Il2CppObject* obj, Il2CppClass* 
     if (obj == nullptr || viewKlass == nullptr)
         return;
 
-    /* LuaEnv::Shutdown clears the cache before lua_close; __gc still runs and must no-op. */
+    /* A detached cache has no registry entry to update. */
     if (s_objectCacheRef == LUA_NOREF)
         return;
 

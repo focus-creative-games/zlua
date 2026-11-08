@@ -20,70 +20,137 @@
 
 #include "StructRegistry.h"
 #include "StructMarshal.h"
+#include "../utils/LuaException.h"
 
-#include "../utils/MetadataUtil.h"
-
-#include "gc/GarbageCollector.h"
-#include "vm/Class.h"
-
-#include <unordered_set>
+#include <new>
+#include <stdexcept>
 
 namespace zlua
 {
+namespace
+{
+// Explicitly cleared on domain shutdown. A process-lifetime instance avoids
+// invoking GC frees from a static destructor after IL2CPP's GC has shut down.
+ByValPayloadPool* const s_pool = new ByValPayloadPool();
+constexpr size_t kPressureBytes = 64 * 1024;
+size_t s_callDepth = 0;
+size_t s_pressure = 0;
+bool s_closing = false;
 
-static std::unordered_set<ByValUserDataHeader*> s_byValUserDataSet;
+ByValPayloadPool::Handle* Storage(ByValUserDataHeader* header)
+{
+    return reinterpret_cast<ByValPayloadPool::Handle*>(header->InlinePayload());
+}
+} // namespace
+
+uint8_t* GetPooledByValPayload(const ByValUserDataHeader* header)
+{
+    const auto* handle = reinterpret_cast<const ByValPayloadPool::Handle*>(header->InlinePayload());
+    uint8_t* data = s_pool->GetData(*handle);
+    if (data == nullptr)
+        LuaException::Throw("zlua: ByVal userdata has been released");
+    return data;
+}
+
+size_t StructRegistry::GetPooledUserDataSize()
+{
+    return sizeof(ByValUserDataHeader) + sizeof(ByValPayloadPool::Handle);
+}
+
+void StructRegistry::InitializeUserData(ByValUserDataHeader* header)
+{
+    new (header->InlinePayload()) ByValPayloadPool::Handle();
+}
+
+void StructRegistry::AllocatePayload(ByValUserDataHeader* header, size_t payloadSize)
+{
+    IL2CPP_ASSERT(header->pooled);
+    try
+    {
+        *Storage(header) = s_pool->Allocate(payloadSize);
+    }
+    catch (const std::bad_alloc&)
+    {
+        LuaException::Throw("zlua: unable to allocate ByVal payload page");
+    }
+    catch (const std::length_error&)
+    {
+        LuaException::Throw("zlua: ByVal payload is too large");
+    }
+}
+
+void StructRegistry::Unregister(ByValUserDataHeader* header)
+{
+    if (!header->pooled)
+        return;
+    if (s_callDepth == 0)
+        s_pool->Release(*Storage(header));
+    else
+        s_pool->Retire(*Storage(header));
+}
+
+void StructRegistry::BeginCall()
+{
+    ++s_callDepth;
+}
+
+void StructRegistry::EndCall()
+{
+    IL2CPP_ASSERT(s_callDepth != 0);
+    if (--s_callDepth == 0)
+        s_pool->DrainRetired();
+}
+
+void StructRegistry::AccountAllocation(lua_State* L, size_t payloadSize)
+{
+    if (s_closing)
+        return;
+    s_pressure = payloadSize > SIZE_MAX - s_pressure ? SIZE_MAX : s_pressure + payloadSize;
+    if (s_pressure < kPressureBytes)
+        return;
+#if defined(LUA_GCISRUNNING)
+    if (lua_gc(L, LUA_GCISRUNNING) == 0)
+        return; // Respect collectgarbage("stop").
+#endif
+    // Compensate for payload bytes no longer counted by Lua's allocator. Step
+    // only after initialization, with the userdata rooted in its Lua stack slot.
+    const size_t work = kPressureBytes / 1024;
+    s_pressure -= kPressureBytes;
+    lua_gc(L, LUA_GCSTEP, static_cast<int>(work));
+}
+
+StructPoolStats StructRegistry::GetStats()
+{
+    return s_pool->GetStats();
+}
 
 void StructRegistry::Initialize(lua_State* L)
 {
     (void)L;
-    IL2CPP_ASSERT(s_byValUserDataSet.empty());
+    IL2CPP_ASSERT(s_pool->GetStats().pages == 0 && s_callDepth == 0);
+    s_pool->Clear();
+    s_pressure = 0;
+    s_closing = false;
+}
+
+void StructRegistry::BeginShutdown()
+{
+    s_closing = true;
+    s_pool->BeginShutdown();
 }
 
 void StructRegistry::Shutdown(lua_State* L)
 {
     (void)L;
-    for (auto it = s_byValUserDataSet.begin(); it != s_byValUserDataSet.end(); ++it)
-    {
-        ByValUserDataHeader* header = *it;
-        if (header == nullptr)
-            continue;
-        il2cpp::gc::GarbageCollector::UnregisterRoot(reinterpret_cast<char*>(header->Payload()));
-    }
-    s_byValUserDataSet.clear();
-}
-
-void StructRegistry::Register(ByValUserDataHeader* header)
-{
-    IL2CPP_ASSERT(header != nullptr);
-    IL2CPP_ASSERT(header->header.kind == UserDataKind::ByVal);
-    IL2CPP_ASSERT(header->klass != nullptr);
-    // Intentional: each non-blittable ByVal payload needs its own GC root so embedded
-    // references remain visible. Blittable structs must not reach here.
-    IL2CPP_ASSERT(header->klass->has_references);
-    IL2CPP_ASSERT(s_byValUserDataSet.find(header) == s_byValUserDataSet.end());
-
-    const size_t payloadSize = (size_t)MetadataUtil::GetInstanceSizeWithoutHeader(header->klass);
-    il2cpp::gc::GarbageCollector::RegisterRoot(reinterpret_cast<char*>(header->Payload()), payloadSize);
-    s_byValUserDataSet.insert(header);
-}
-
-void StructRegistry::Unregister(ByValUserDataHeader* header)
-{
-    IL2CPP_ASSERT(header != nullptr);
-    if (s_byValUserDataSet.find(header) == s_byValUserDataSet.end())
-        return;
-
-    il2cpp::gc::GarbageCollector::UnregisterRoot(reinterpret_cast<char*>(header->Payload()));
-    s_byValUserDataSet.erase(header);
+    IL2CPP_ASSERT(s_callDepth == 0);
+    // Lua has closed; no live userdata or native call can use these addresses.
+    s_pool->Clear();
+    s_pressure = 0;
 }
 
 int StructRegistry::OnReleaseByValUserData(lua_State* L)
 {
-    ByValUserDataHeader* userdata = StructMarshal::GetByValHeaderUnchecked(L, 1);
-    IL2CPP_ASSERT(userdata != nullptr);
-    IL2CPP_ASSERT(userdata->klass->has_references);
-    Unregister(userdata);
+    Unregister(StructMarshal::GetByValHeaderUnchecked(L, 1));
     return 0;
 }
-
 } // namespace zlua

@@ -484,7 +484,9 @@ static int DispatchStaticNewIndex(lua_State* L, TypeBinding* binding, const Name
 
 int InstanceByValIndex(lua_State* L)
 {
+    ZLUA_TRY_BEGIN()
     return DispatchInstanceIndex<InstanceTarget::ResolveByValMethodTarget, MetaTableKind::StructByVal>(L);
+    ZLUA_TRY_END(L);
 }
 
 int InstanceByObjIndex(lua_State* L)
@@ -499,7 +501,9 @@ int InstanceReferenceIndex(lua_State* L)
 
 int InstanceByValNewIndex(lua_State* L)
 {
+    ZLUA_TRY_BEGIN()
     return DispatchInstanceNewIndex<InstanceTarget::ResolveByValMethodTarget, MetaTableKind::StructByVal>(L);
+    ZLUA_TRY_END(L);
 }
 
 int InstanceByObjNewIndex(lua_State* L)
