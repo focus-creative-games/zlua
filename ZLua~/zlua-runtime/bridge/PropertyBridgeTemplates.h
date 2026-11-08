@@ -323,18 +323,16 @@ inline void PropertyStaticSetterInvokerPrimitiveBuf(lua_State* L, void* target, 
 template <typename T>
 inline void PropertyInstanceGetterInvokerRefLike(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    (void)ctx;
     T ret = nullptr;
     method->invoker_method(method->methodPointer, method, target, nullptr, &ret);
-    TypedMarshal::PushByType(L, &ret, method->return_type);
+    ctx->meta->cs2luaWriter(L, &ret, ctx->meta);
 }
 
 template <typename T>
 inline void PropertyInstanceSetterInvokerRefLike(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
-    (void)ctx;
     T value = nullptr;
-    TypedMarshal::PopByType(L, valueIdx, &value, method->parameters[0]);
+    ctx->meta->lua2csWriter(L, valueIdx, &value, false, ctx->meta);
     void* params[1] = {&value};
     method->invoker_method(method->methodPointer, method, target, params, nullptr);
 }
@@ -343,19 +341,17 @@ template <typename T>
 inline void PropertyStaticGetterInvokerRefLike(lua_State* L, void* target, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    (void)ctx;
     T ret = nullptr;
     method->invoker_method(method->methodPointer, method, nullptr, nullptr, &ret);
-    TypedMarshal::PushByType(L, &ret, method->return_type);
+    ctx->meta->cs2luaWriter(L, &ret, ctx->meta);
 }
 
 template <typename T>
 inline void PropertyStaticSetterInvokerRefLike(lua_State* L, void* target, int valueIdx, const MethodInfo* method, const PropertyMarshalCtx* ctx)
 {
     (void)target;
-    (void)ctx;
     T value = nullptr;
-    TypedMarshal::PopByType(L, valueIdx, &value, method->parameters[0]);
+    ctx->meta->lua2csWriter(L, valueIdx, &value, false, ctx->meta);
     void* params[1] = {&value};
     method->invoker_method(method->methodPointer, method, nullptr, params, nullptr);
 }

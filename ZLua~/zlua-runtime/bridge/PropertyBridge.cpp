@@ -1,4 +1,4 @@
-﻿// Copyright 2026 Code Philosophy
+// Copyright 2026 Code Philosophy
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -47,6 +47,30 @@ namespace zlua
 {
 namespace
 {
+
+// Explicit marshal rules are resolved once when the property is bound.
+// Reference accessors keep their direct pointer ABI while honoring those writers.
+void PropPushConfiguredReference(lua_State* L, Il2CppObject* value, const PropertyMarshalCtx* ctx)
+{
+    ctx->meta->cs2luaWriter(L, &value, ctx->meta);
+}
+
+Il2CppObject* PropPopConfiguredReference(lua_State* L, int index, const PropertyMarshalCtx* ctx)
+{
+    Il2CppObject* value = nullptr;
+    ctx->meta->lua2csWriter(L, index, &value, false, ctx->meta);
+    return value;
+}
+
+void PropPushConfiguredValue(lua_State* L, void* value, const PropertyMarshalCtx* ctx)
+{
+    ctx->meta->cs2luaWriter(L, value, ctx->meta);
+}
+
+void PropPopConfiguredValue(lua_State* L, int index, void* value, const MethodInfo*, const PropertyMarshalCtx* ctx)
+{
+    ctx->meta->lua2csWriter(L, index, value, false, ctx->meta);
+}
 
 void PropPushObject(lua_State* L, Il2CppObject* v, const PropertyMarshalCtx* ctx)
 {
@@ -750,7 +774,7 @@ static bool TryGetIntrinsicPropertyAccessor(Il2CppClass* klass, bool isStatic, P
     }
 }
 
-PropertyAccessor PropertyBridge::ResolvePropertyAccessor(const PropertyInfo* property, bool isStatic)
+PropertyAccessor PropertyBridge::ResolvePropertyAccessor(const PropertyInfo* property, bool isStatic, const MarshalMetaInfo* meta)
 {
     PropertyAccessor accessor = {nullptr, nullptr};
     const Il2CppType* type = property->get != nullptr ? property->get->return_type : property->set->parameters[0];
@@ -783,6 +807,35 @@ PropertyAccessor PropertyBridge::ResolvePropertyAccessor(const PropertyInfo* pro
         accessor.getter = getterHasFullGenericSharing ? (FgsG) : (NormG);                                                                                                          \
         accessor.setter = setterHasFullGenericSharing ? (FgsS) : (NormS);                                                                                                          \
     } while (0)
+
+    if (meta->marshalType != LuaMarshalType::Default)
+    {
+        if (!MetadataUtil::IsValueTypeClass(meta->typeKlass))
+        {
+            // Full generic sharing passes reference arguments through invoker storage.
+            if (isStatic)
+            {
+                accessor.getter =
+                    getterHasFullGenericSharing ? FullGenericSharingPropertyStaticGetterObject : PropertyStaticGetterByValueCtx<Il2CppObject*, PropPushConfiguredReference>;
+                accessor.setter =
+                    setterHasFullGenericSharing ? FullGenericSharingPropertyStaticSetterObject : PropertyStaticSetterByValueCtx<Il2CppObject*, PropPopConfiguredReference>;
+            }
+            else
+            {
+                accessor.getter =
+                    getterHasFullGenericSharing ? FullGenericSharingPropertyInstanceGetterObject : PropertyInstanceGetterByValueCtx<Il2CppObject*, PropPushConfiguredReference>;
+                accessor.setter =
+                    setterHasFullGenericSharing ? FullGenericSharingPropertyInstanceSetterObject : PropertyInstanceSetterByValueCtx<Il2CppObject*, PropPopConfiguredReference>;
+            }
+        }
+        else
+        {
+            // A configured struct may use Table/OpaqueValue rather than its ABI fast path.
+            accessor.getter = isStatic ? PropertyStaticGetterInvokerBuf<PropPushConfiguredValue> : PropertyInstanceGetterInvokerBuf<PropPushConfiguredValue>;
+            accessor.setter = isStatic ? PropertyStaticSetterInvokerBuf<PropPopConfiguredValue> : PropertyInstanceSetterInvokerBuf<PropPopConfiguredValue>;
+        }
+        return accessor;
+    }
 
 restart:
     switch (type->type)

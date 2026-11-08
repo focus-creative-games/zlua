@@ -398,8 +398,7 @@ static int CallClosureOnStack(lua_State* L)
     return lua_gettop(L);
 }
 
-static bool TryInvokeGtap(lua_State* L, const MethodInfo* const* openMethods, size_t openCount, const TypeBinding* binding, bool isStatic,
-                          bool isByVal, int* outNrets)
+static bool TryInvokeGtap(lua_State* L, const MethodInfo* const* openMethods, size_t openCount, const TypeBinding* binding, bool isStatic, bool isByVal, int* outNrets)
 {
     *outNrets = 0;
     if (openMethods == nullptr || openCount == 0 || binding == nullptr)
@@ -429,13 +428,11 @@ static bool TryInvokeGtap(lua_State* L, const MethodInfo* const* openMethods, si
             continue;
 
         const MethodInfo* closedDef = open;
-        const Il2CppGenericInst* methodInst =
-            il2cpp::vm::MetadataCache::GetGenericInst(typeArgs.data(), (uint32_t)typeArgs.size());
+        const Il2CppGenericInst* methodInst = il2cpp::vm::MetadataCache::GetGenericInst(typeArgs.data(), (uint32_t)typeArgs.size());
         const MethodInfo* closed = nullptr;
         if (closedDef->is_inflated)
         {
-            closed = il2cpp::metadata::GenericMethod::GetMethod(closedDef->genericMethod->methodDefinition,
-                                                               closedDef->genericMethod->context.class_inst, methodInst);
+            closed = il2cpp::metadata::GenericMethod::GetMethod(closedDef->genericMethod->methodDefinition, closedDef->genericMethod->context.class_inst, methodInst);
         }
         else
         {
@@ -477,8 +474,7 @@ static bool TryInvokeGtap(lua_State* L, const MethodInfo* const* openMethods, si
     for (int i = 0; i < matchedPrefixCount; ++i)
         lua_remove(L, argStart);
 
-    const int closureRef = MetaBinding::InternClosedGenericMethod(L, matchedOpen, binding, isStatic, isByVal, matchedTypeArgs.data(),
-                                                                  (uint32_t)matchedTypeArgs.size());
+    const int closureRef = MetaBinding::InternClosedGenericMethod(L, matchedOpen, binding, isStatic, isByVal, matchedTypeArgs.data(), (uint32_t)matchedTypeArgs.size());
     LuaUtil::PushRef(L, closureRef);
     lua_insert(L, 1);
     *outNrets = CallClosureOnStack(L);
@@ -504,10 +500,9 @@ static int InvokeGtapThenFallback(lua_State* L)
     }
 
     const char* methodName = (gtap->openCount > 0 && gtap->openMethods[0] != nullptr) ? gtap->openMethods[0]->name : "?";
-    LuaException::ThrowFormat(
-        "zlua: cannot invoke open generic method %s without System.Type GTAP prefix "
-        "(use zlua.inflate, or pass zlua.typeof(...) prefixes)",
-        methodName);
+    LuaException::ThrowFormat("zlua: cannot invoke open generic method %s without System.Type GTAP prefix "
+                              "(use zlua.inflate, or pass zlua.typeof(...) prefixes)",
+                              methodName);
     return 0;
     ZLUA_TRY_END(L)
 }
@@ -519,22 +514,21 @@ static int InvokeMethodDirectGeneric(lua_State* L)
     const MethodMarshalCtx* ctx = (const MethodMarshalCtx*)lua_touserdata(L, lua_upvalueindex(kUpvalueIndexGroupsOrCtx));
     IL2CPP_ASSERT(ctx != nullptr && ctx->method != nullptr);
 
-    const MethodInfo* openMethods[1] = { ctx->method };
+    const MethodInfo* openMethods[1] = {ctx->method};
     const bool isStatic = MetadataUtil::IsStaticMethod(ctx->method);
     int nrets = 0;
     if (TryInvokeGtap(L, openMethods, 1, binding, isStatic, ctx->byVal, &nrets))
         return nrets;
 
-    LuaException::ThrowFormat(
-        "zlua: cannot invoke open generic method %s without System.Type GTAP prefix "
-        "(use zlua.inflate, or pass zlua.typeof(...) prefixes)",
-        ctx->method->name);
+    LuaException::ThrowFormat("zlua: cannot invoke open generic method %s without System.Type GTAP prefix "
+                              "(use zlua.inflate, or pass zlua.typeof(...) prefixes)",
+                              ctx->method->name);
     return 0;
     ZLUA_TRY_END(L)
 }
 
-static int CreateGtapWrapperClosureRef(lua_State* L, const TypeBinding* binding, const std::vector<const MethodInfo*>& openMethods,
-                                       int fallbackClosureRef, bool isStatic, bool isByVal)
+static int CreateGtapWrapperClosureRef(lua_State* L, const TypeBinding* binding, const std::vector<const MethodInfo*>& openMethods, int fallbackClosureRef, bool isStatic,
+                                       bool isByVal)
 {
     IL2CPP_ASSERT(!openMethods.empty());
     GtapMethodCtx* gtap = LuaMetadataAlloc::MallocAnyZeroed<GtapMethodCtx>();
@@ -554,8 +548,8 @@ static int CreateGtapWrapperClosureRef(lua_State* L, const TypeBinding* binding,
     return LuaUtil::ToLuaRef(L);
 }
 
-int MetaBinding::InternClosedGenericMethod(lua_State* L, const MethodInfo* openMethod, const TypeBinding* binding, bool isStatic, bool isByVal,
-                                           const Il2CppType* const* typeArgs, uint32_t typeArgCount)
+int MetaBinding::InternClosedGenericMethod(lua_State* L, const MethodInfo* openMethod, const TypeBinding* binding, bool isStatic, bool isByVal, const Il2CppType* const* typeArgs,
+                                           uint32_t typeArgCount)
 {
     IL2CPP_ASSERT(openMethod != nullptr && binding != nullptr && typeArgs != nullptr && typeArgCount > 0);
 
@@ -563,8 +557,7 @@ int MetaBinding::InternClosedGenericMethod(lua_State* L, const MethodInfo* openM
     const Il2CppGenericInst* methodInst = il2cpp::vm::MetadataCache::GetGenericInst(typeArgs, typeArgCount);
     if (method->is_inflated)
     {
-        method = il2cpp::metadata::GenericMethod::GetMethod(method->genericMethod->methodDefinition, method->genericMethod->context.class_inst,
-                                                           methodInst);
+        method = il2cpp::metadata::GenericMethod::GetMethod(method->genericMethod->methodDefinition, method->genericMethod->context.class_inst, methodInst);
     }
     else
     {
@@ -884,7 +877,7 @@ static void RegisterProperties(lua_State* L, Il2CppClass* klass, NameMetaMap& in
         pmCtx->valueTypeKlass = il2cpp::vm::Class::FromIl2CppType(type, true);
         pmCtx->meta = MarshalMeta::Create(L, property);
 
-        PropertyAccessor accessor = PropertyBridge::ResolvePropertyAccessor(property, isStatic);
+        PropertyAccessor accessor = PropertyBridge::ResolvePropertyAccessor(property, isStatic, pmCtx->meta);
 
         if (property->get != nullptr)
         {
@@ -1034,8 +1027,7 @@ static void RegisterGenericMethodGroup(lua_State* L, TypeBinding* binding, const
     if (existing != map.end())
     {
         // Non-generic already owns short name (e.g. GetComp(Type)): GTAP first, then fallback (§3.8.2).
-        existing->second.closureRef =
-            CreateGtapWrapperClosureRef(L, binding, overloads, existing->second.closureRef, isStatic, isByVal);
+        existing->second.closureRef = CreateGtapWrapperClosureRef(L, binding, overloads, existing->second.closureRef, isStatic, isByVal);
     }
     else if (overloads.size() == 1)
     {
@@ -1345,8 +1337,8 @@ static void CollectOpenGenericFromMap(lua_State* L, NameMetaMap& map, bool isSta
     }
 }
 
-bool MetaBinding::TryFindOpenGenericMethod(lua_State* L, Il2CppClass* ownerKlass, const char* nameOrSignature, int genericArity,
-                                           const MethodInfo** outMethod, bool* outIsStatic, bool* outIsByVal)
+bool MetaBinding::TryFindOpenGenericMethod(lua_State* L, Il2CppClass* ownerKlass, const char* nameOrSignature, int genericArity, const MethodInfo** outMethod, bool* outIsStatic,
+                                           bool* outIsByVal)
 {
     *outMethod = nullptr;
     *outIsStatic = false;

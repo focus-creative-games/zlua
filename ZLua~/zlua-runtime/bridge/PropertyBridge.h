@@ -37,7 +37,7 @@ class PropertyBridge
 {
 public:
     static void Initialize();
-    static PropertyAccessor ResolvePropertyAccessor(const PropertyInfo* property, bool isStatic);
+    static PropertyAccessor ResolvePropertyAccessor(const PropertyInfo* property, bool isStatic, const MarshalMetaInfo* meta);
 
     // Single choke point for every property access, so HybridCLR's lazy
     // methodPointer/invoker_method init happens once here and covers all accessor
