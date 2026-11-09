@@ -43,9 +43,29 @@ public:
     static void AccountAllocation(lua_State* L, size_t payloadSize);
     static StructPoolStats GetStats();
 
+    static size_t GetCallDepth();
+    // Protected Lua calls may longjmp past native scope destructors.
+    static void RestoreCallDepth(size_t depth);
     static void BeginCall();
     static void EndCall();
     static int OnReleaseByValUserData(lua_State* L);
+};
+
+// A protected call always returns to this native frame, even after Lua longjmp.
+// Restore its entry depth, preserving any outer bridge that still owns pointers.
+class StructPayloadProtectedCallScope
+{
+public:
+    StructPayloadProtectedCallScope() : _depth(StructRegistry::GetCallDepth()) {}
+    ~StructPayloadProtectedCallScope()
+    {
+        StructRegistry::RestoreCallDepth(_depth);
+    }
+    StructPayloadProtectedCallScope(const StructPayloadProtectedCallScope&) = delete;
+    StructPayloadProtectedCallScope& operator=(const StructPayloadProtectedCallScope&) = delete;
+
+private:
+    size_t _depth;
 };
 
 // Prevent a reentrant/manual __gc from recycling storage still used by a native

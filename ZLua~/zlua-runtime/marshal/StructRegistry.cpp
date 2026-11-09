@@ -89,6 +89,19 @@ void StructRegistry::Unregister(ByValUserDataHeader* header)
         s_pool->Retire(*Storage(header));
 }
 
+size_t StructRegistry::GetCallDepth()
+{
+    return s_callDepth;
+}
+
+void StructRegistry::RestoreCallDepth(size_t depth)
+{
+    IL2CPP_ASSERT(depth <= s_callDepth);
+    s_callDepth = depth;
+    if (depth == 0)
+        s_pool->DrainRetired();
+}
+
 void StructRegistry::BeginCall()
 {
     ++s_callDepth;

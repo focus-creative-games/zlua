@@ -50,6 +50,14 @@ extern "C"
 
 #include <stdint.h>
 
+namespace zlua
+{
+// Includes payload-scope recovery when Lua errors bypass C++ destructors.
+int ProtectedLuaCall(lua_State* L, int nargs, int nresults, int errfunc);
+// Loading can run GC finalizers; protect the entire load-and-call boundary.
+int ProtectedLuaDoString(lua_State* L, const char* chunk);
+} // namespace zlua
+
 /* Lua 5.2+: LUA_OK. 5.1 documents success as status 0 without the name. */
 #if !defined(LUA_OK)
 #define LUA_OK 0
@@ -207,7 +215,7 @@ inline void zlua_luaL_traceback(lua_State* L, lua_State* L1, const char* msg, in
         lua_pushnil(L);
     /* lua_pcall(debug.traceback) inserts one frame; bump level to match native luaL_traceback. */
     lua_pushinteger(L, level + 1);
-    if (lua_pcall(L, 2, 1, 0) != LUA_OK)
+    if (zlua::ProtectedLuaCall(L, 2, 1, 0) != LUA_OK)
     {
         lua_settop(L, top);
         lua_pushstring(L, msg != nullptr ? msg : "");

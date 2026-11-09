@@ -159,7 +159,10 @@ void LuaEnv::Shutdown()
     // Finalizers may call C#, read payloads or construct fresh userdata. Keep
     // loader roots, metatables, object slots and binding contexts valid until
     // lua_close has run every closing callback.
-    lua_close(s_L);
+    {
+        StructPayloadProtectedCallScope scope;
+        lua_close(s_L);
+    }
     {
         il2cpp::os::FastAutoLock lock(&s_pendingRefReleasesMutex);
         s_L = nullptr;
@@ -235,7 +238,7 @@ int LuaEnv::PushErrorHandler()
 void LuaEnv::DoStringIgnoreResult(const char* chunk)
 {
     const int oldTop = lua_gettop(s_L);
-    if (luaL_dostring(s_L, chunk) != LUA_OK)
+    if (ProtectedLuaDoString(s_L, chunk) != LUA_OK)
     {
         const std::string err = LuaUtil::FormatErrorObject(s_L, -1);
         lua_settop(s_L, oldTop);

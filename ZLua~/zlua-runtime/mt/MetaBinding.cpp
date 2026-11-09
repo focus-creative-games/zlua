@@ -80,6 +80,8 @@ struct MethodMarshalShared
     int32_t luaArity;
     int32_t paramsParamIndex; // -1 if none
     bool isExtension;
+    MethodMarshalCtx* byObjCtx;
+    MethodMarshalCtx* byValCtx;
 };
 
 /// Process-lifetime cache (MethodInfo* → shared marshal layout). Not cleared in ShutdownState:
@@ -330,6 +332,10 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
         s_methodMarshalShared.insert({method, shared});
     }
 
+    MethodMarshalCtx*& cachedCtx = isByVal ? shared->byValCtx : shared->byObjCtx;
+    if (cachedCtx != nullptr)
+        return cachedCtx;
+
     const bool isStatic = MetadataUtil::IsStaticMethod(method);
     FnResolveMethodThis resolveThis = shared->isExtension ? nullptr : InstanceTarget::GetResolveMethodThisFunc(method->klass, isStatic, isByVal);
     MethodMarshalCtx* ctx = LuaMetadataAlloc::MallocAnyZeroed<MethodMarshalCtx>();
@@ -344,6 +350,7 @@ MethodMarshalCtx* MetaBinding::CreateMethodMarshalCtx(lua_State* L, const Method
     ctx->byVal = isByVal;
     ctx->sealed = shared->isExtension ? true : MetadataUtil::IsMethodSealed(method, isByVal);
     ctx->isExtension = shared->isExtension;
+    cachedCtx = ctx;
     return ctx;
 }
 
@@ -352,7 +359,8 @@ struct GtapMethodCtx
     const TypeBinding* binding;
     bool isStatic;
     bool isByVal;
-    int fallbackClosureRef; // LUA_NOREF when open-generic only
+    const MethodMarshalCtx* fallbackMethod;
+    const MethodGroups* fallbackGroups;
     size_t openCount;
     const MethodInfo** openMethods;
 };
@@ -390,25 +398,27 @@ static bool TryReadSystemTypePrefix(lua_State* L, int argStart, int count, std::
     return true;
 }
 
-static int CallClosureOnStack(lua_State* L)
+static const MethodMarshalCtx* FindBestMethod(lua_State* L, const TypeBinding* binding, const MethodGroups* groups, int argStart);
+static int InternClosedMethod(lua_State* L, const MethodInfo* method, const TypeBinding* binding, bool isStatic, bool isByVal);
+
+static int InvokeResolvedGtapMethod(lua_State* L, const MethodMarshalCtx* ctx, bool isStatic)
 {
-    // Stack: [closure][args...]
-    const int nargs = lua_gettop(L) - 1;
-    lua_call(L, nargs, LUA_MULTRET);
-    return lua_gettop(L);
+    if (ctx->isExtension)
+        return InvokeExtensionMethodCore(L, ctx);
+    void* target = isStatic ? nullptr : ctx->resolveThis(L, 1);
+    return MethodBridge::InvokeLua2Cs(L, target, isStatic ? 1 : 2, ctx);
 }
 
-static bool TryInvokeGtap(lua_State* L, const MethodInfo* const* openMethods, size_t openCount, const TypeBinding* binding, bool isStatic, bool isByVal, int* outNrets)
+static const MethodMarshalCtx* ResolveGtapMethod(lua_State* L, const MethodInfo* const* openMethods, size_t openCount, bool isStatic, bool isByVal, int* prefixCount)
 {
-    *outNrets = 0;
-    if (openMethods == nullptr || openCount == 0 || binding == nullptr)
-        return false;
+    *prefixCount = 0;
+    if (openMethods == nullptr || openCount == 0)
+        return nullptr;
 
     const int argStart = isStatic ? 1 : 2;
     const int top = lua_gettop(L);
 
-    const MethodInfo* matchedOpen = nullptr;
-    std::vector<const Il2CppType*> matchedTypeArgs;
+    const MethodMarshalCtx* matched = nullptr;
     int matchedPrefixCount = 0;
     int matchCount = 0;
 
@@ -462,22 +472,31 @@ static bool TryInvokeGtap(lua_State* L, const MethodInfo* const* openMethods, si
         matchCount++;
         if (matchCount == 1)
         {
-            matchedOpen = open;
-            matchedTypeArgs = std::move(typeArgs);
+            matched = closedCtx;
             matchedPrefixCount = n;
         }
     }
 
-    if (matchCount != 1 || matchedOpen == nullptr)
+    if (matchCount != 1)
+        return nullptr;
+    *prefixCount = matchedPrefixCount;
+    return matched;
+}
+
+static bool TryInvokeGtap(lua_State* L, const MethodInfo* const* openMethods, size_t openCount, const TypeBinding* binding, bool isStatic, bool isByVal, int* outNrets)
+{
+    int prefixCount = 0;
+    const MethodMarshalCtx* ctx = ResolveGtapMethod(L, openMethods, openCount, isStatic, isByVal, &prefixCount);
+    if (ctx == nullptr)
         return false;
 
-    for (int i = 0; i < matchedPrefixCount; ++i)
+    // Preserve the shared inflate/GTAP closure intern, but dispatch through its
+    // native context. Matching's temporary vectors have already been destroyed.
+    InternClosedMethod(L, ctx->method, binding, isStatic, isByVal);
+    const int argStart = isStatic ? 1 : 2;
+    for (int i = 0; i < prefixCount; ++i)
         lua_remove(L, argStart);
-
-    const int closureRef = MetaBinding::InternClosedGenericMethod(L, matchedOpen, binding, isStatic, isByVal, matchedTypeArgs.data(), (uint32_t)matchedTypeArgs.size());
-    LuaUtil::PushRef(L, closureRef);
-    lua_insert(L, 1);
-    *outNrets = CallClosureOnStack(L);
+    *outNrets = InvokeResolvedGtapMethod(L, ctx, isStatic);
     return true;
 }
 
@@ -492,12 +511,11 @@ static int InvokeGtapThenFallback(lua_State* L)
     if (TryInvokeGtap(L, gtap->openMethods, gtap->openCount, binding, gtap->isStatic, gtap->isByVal, &nrets))
         return nrets;
 
-    if (gtap->fallbackClosureRef != LUA_NOREF)
-    {
-        LuaUtil::PushRef(L, gtap->fallbackClosureRef);
-        lua_insert(L, 1);
-        return CallClosureOnStack(L);
-    }
+    const MethodMarshalCtx* fallback = gtap->fallbackMethod;
+    if (gtap->fallbackGroups != nullptr)
+        fallback = FindBestMethod(L, binding, gtap->fallbackGroups, gtap->isStatic ? 1 : 2);
+    if (fallback != nullptr)
+        return InvokeResolvedGtapMethod(L, fallback, gtap->isStatic);
 
     const char* methodName = (gtap->openCount > 0 && gtap->openMethods[0] != nullptr) ? gtap->openMethods[0]->name : "?";
     LuaException::ThrowFormat("zlua: cannot invoke open generic method %s without System.Type GTAP prefix "
@@ -535,7 +553,23 @@ static int CreateGtapWrapperClosureRef(lua_State* L, const TypeBinding* binding,
     gtap->binding = binding;
     gtap->isStatic = isStatic;
     gtap->isByVal = isByVal;
-    gtap->fallbackClosureRef = fallbackClosureRef;
+    if (fallbackClosureRef != LUA_NOREF)
+    {
+        // Extract the existing non-generic dispatch metadata once at binding.
+        LuaUtil::PushRef(L, fallbackClosureRef);
+        lua_getupvalue(L, -1, kUpvalueIndexClosureKind);
+        const ClosureKind kind = static_cast<ClosureKind>(static_cast<int>(lua_tonumber(L, -1)));
+        lua_pop(L, 1);
+        lua_getupvalue(L, -1, kUpvalueIndexGroupsOrCtx);
+        if (kind == ClosureKind::Direct)
+            gtap->fallbackMethod = static_cast<const MethodMarshalCtx*>(lua_touserdata(L, -1));
+        else
+        {
+            IL2CPP_ASSERT(kind == ClosureKind::Indirect);
+            gtap->fallbackGroups = static_cast<const MethodGroups*>(lua_touserdata(L, -1));
+        }
+        lua_pop(L, 2);
+    }
     gtap->openCount = openMethods.size();
     gtap->openMethods = LuaMetadataAlloc::CallocArray<const MethodInfo*>(openMethods.size());
     for (size_t i = 0; i < openMethods.size(); ++i)
@@ -566,6 +600,11 @@ int MetaBinding::InternClosedGenericMethod(lua_State* L, const MethodInfo* openM
     if (method == nullptr)
         LuaException::Throw("zlua.inflate MakeGenericMethod failed: could not construct closed method");
 
+    return InternClosedMethod(L, method, binding, isStatic, isByVal);
+}
+
+static int InternClosedMethod(lua_State* L, const MethodInfo* method, const TypeBinding* binding, bool isStatic, bool isByVal)
+{
     // Intern key includes isStatic/isByVal via separate NameMetaMaps (static / byobj / byval).
     std::string methodSignature = MetadataUtil::CreateMethodNameWithParametersAndGenericArguments(method);
     NameMetaMap& nmm = isStatic ? binding->staticMap : (isByVal ? binding->byvalInstanceMap : binding->byobjInstanceMap);
@@ -573,7 +612,7 @@ int MetaBinding::InternClosedGenericMethod(lua_State* L, const MethodInfo* openM
     if (it != nmm.end())
         return it->second.closureRef;
 
-    int closureRef = CreateDirectMethodClosureRef(L, method, binding, MetadataUtil::IsStaticMethod(method), isByVal);
+    int closureRef = MetaBinding::CreateDirectMethodClosureRef(L, method, binding, MetadataUtil::IsStaticMethod(method), isByVal);
     MetaInfo newMeta = {};
     newMeta.kind = MetaKind::Method;
     newMeta.closureRef = closureRef;

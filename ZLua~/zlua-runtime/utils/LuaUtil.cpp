@@ -32,6 +32,19 @@
 
 namespace zlua
 {
+int ProtectedLuaCall(lua_State* L, int nargs, int nresults, int errfunc)
+{
+    StructPayloadProtectedCallScope scope;
+    return lua_pcall(L, nargs, nresults, errfunc);
+}
+
+int ProtectedLuaDoString(lua_State* L, const char* chunk)
+{
+    StructPayloadProtectedCallScope scope;
+    const int status = luaL_loadstring(L, chunk);
+    return status == LUA_OK ? lua_pcall(L, 0, LUA_MULTRET, 0) : status;
+}
+
 bool LuaUtil::IsStrictLuaInteger(lua_State* L, int index, lua_Integer& value)
 {
     if (lua_isinteger(L, index))
@@ -84,7 +97,7 @@ std::string LuaUtil::FormatErrorObject(lua_State* L, int index)
     LuaStackGuard guard(L);
     lua_pushcfunction(L, ErrorObjectToString);
     lua_pushvalue(L, index);
-    if (lua_pcall(L, 1, 1, 0) == LUA_OK)
+    if (ProtectedLuaCall(L, 1, 1, 0) == LUA_OK)
     {
         size_t len = 0;
         const char* str = lua_tolstring(L, -1, &len);
@@ -99,7 +112,7 @@ std::string LuaUtil::FormatErrorObject(lua_State* L, int index)
 
 void LuaUtil::PCall(lua_State* L, int nargs, int nresults, int errfunc)
 {
-    if (lua_pcall(L, nargs, nresults, errfunc) != LUA_OK)
+    if (ProtectedLuaCall(L, nargs, nresults, errfunc) != LUA_OK)
     {
         LuaException::Throw(FormatErrorObject(L, -1));
     }

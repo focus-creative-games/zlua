@@ -78,7 +78,7 @@ int LuaGlobalRefs::GetModuleRef(const char* moduleName)
     }
 
     lua_pushstring(L, moduleName);
-    if (lua_pcall(L, 1, 1, errFunc) != LUA_OK)
+    if (ProtectedLuaCall(L, 1, 1, errFunc) != LUA_OK)
     {
         std::string msg = std::string("Error requiring lua module '") + moduleName + "': " + LuaUtil::FormatErrorObject(L, -1);
         LuaException::Throw(msg.c_str());
