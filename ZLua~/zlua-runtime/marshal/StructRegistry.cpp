@@ -122,7 +122,7 @@ void StructRegistry::AccountAllocation(lua_State* L, size_t payloadSize)
     if (s_pressure < kPressureBytes)
         return;
 #if defined(LUA_GCISRUNNING)
-    if (lua_gc(L, LUA_GCISRUNNING) == 0)
+    if (lua_gc(L, LUA_GCISRUNNING, 0) == 0)
         return; // Respect collectgarbage("stop").
 #endif
     // Compensate for payload bytes no longer counted by Lua's allocator. Step
