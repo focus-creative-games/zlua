@@ -22,6 +22,8 @@
 #include <vector>
 
 #include "LuaEnv.h"
+#include "vm/Thread.h"
+#include "vm/Exception.h"
 
 #include "LuaGlobalRefs.h"
 #include "LuaLoader.h"
@@ -57,6 +59,15 @@ static int s_errorHandlerRef = LUA_NOREF;
 static std::vector<int> s_pendingRefReleases;
 static baselib::ReentrantLock s_pendingRefReleasesMutex;
 static const MethodInfo* s_debugLogMethod = nullptr;
+
+void LuaEnv::EnsureMainThread()
+{
+    // IL2CPP sets its main thread before managed code runs. Cache per native
+    // thread, not per domain, so delegate calls need no locks or managed calls.
+    static thread_local const bool isMainThread = il2cpp::vm::Thread::Current() != nullptr && il2cpp::vm::Thread::Current() == il2cpp::vm::Thread::Main();
+    if (!isMainThread)
+        il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetInvalidOperationException("ZLua can only be called from the Unity main thread."));
+}
 
 void LuaEnv::RegisterGlobals()
 {
@@ -130,6 +141,7 @@ void LuaEnv::RegisterLibs()
 
 void LuaEnv::Initialize()
 {
+    EnsureMainThread();
     IL2CPP_ASSERT(s_L == nullptr);
     // Refuse to wrap: even a pointer-sized counter must never revive an old domain.
     if (s_domainId == UINTPTR_MAX)
@@ -152,6 +164,7 @@ void LuaEnv::Initialize()
 
 void LuaEnv::Shutdown()
 {
+    EnsureMainThread();
     IL2CPP_ASSERT(s_L != nullptr);
 
     ProcessPendingRefReleases();
@@ -195,6 +208,7 @@ uintptr_t LuaEnv::GetDomainId()
 
 lua_State* LuaEnv::GetStateForInvoke(Il2CppObject* target)
 {
+    EnsureMainThread();
     if (s_L == nullptr)
     {
         LuaException::Throw("ZLua is not initialized. Call LuaAppDomain.Initialize first.");
@@ -237,6 +251,7 @@ int LuaEnv::PushErrorHandler()
 
 void LuaEnv::DoStringIgnoreResult(const char* chunk)
 {
+    EnsureMainThread();
     const int oldTop = lua_gettop(s_L);
     if (ProtectedLuaDoString(s_L, chunk) != LUA_OK)
     {
@@ -259,6 +274,7 @@ void LuaEnv::AddPendingRef(uintptr_t domainId, int refIndex)
 
 void LuaEnv::ProcessPendingRefReleases()
 {
+    EnsureMainThread();
     il2cpp::os::FastAutoLock lock(&s_pendingRefReleasesMutex);
     if (s_L == nullptr)
     {

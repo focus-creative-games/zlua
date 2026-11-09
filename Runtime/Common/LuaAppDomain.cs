@@ -80,6 +80,7 @@ namespace ZLua
 
         internal static void ProcessPendingRefReleases()
         {
+            LuaMainThread.EnsureMainThread();
             s_runtime?.ProcessPendingRefReleases();
         }
 
@@ -88,6 +89,7 @@ namespace ZLua
         /// </summary>
         internal static void FlushPendingReset()
         {
+            LuaMainThread.EnsureMainThread();
             if (s_pendingResetLoader == null || s_runtime == null)
             {
                 return;
@@ -101,6 +103,7 @@ namespace ZLua
 
         private static void EnsureRuntime()
         {
+            LuaMainThread.EnsureMainThread();
             if (s_runtime != null)
             {
                 return;

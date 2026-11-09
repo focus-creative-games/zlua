@@ -51,6 +51,7 @@ namespace ZLua
 
         public static void Initialize(Func<string, object> moduleLoader)
         {
+            LuaMainThread.EnsureMainThread();
             if (_luaEnv != null)
             {
                 throw new InvalidOperationException(
@@ -62,6 +63,7 @@ namespace ZLua
 
         public static void Reset(Func<string, object> moduleLoader)
         {
+            LuaMainThread.EnsureMainThread();
             ShutdownState();
             CreateEnv(moduleLoader);
         }
@@ -200,6 +202,7 @@ namespace ZLua
 
         private static Delegate GetFunction(Type delegateType, string luaModule, string luaMethodName)
         {
+            LuaMainThread.EnsureMainThread();
             if (delegateType == null)
             {
                 throw new ArgumentNullException(nameof(delegateType));

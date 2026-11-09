@@ -26,7 +26,8 @@ namespace zlua
 {
 class LuaEnv
 {
-  public:
+public:
+    static void EnsureMainThread();
     static void Initialize();
     static void Shutdown();
 
@@ -44,7 +45,7 @@ class LuaEnv
     static void AddPendingRef(uintptr_t domainId, int refIndex);
     static void ProcessPendingRefReleases();
 
-  private:
+private:
     static void RegisterGlobals();
     static void RegisterLibs();
     static void RegisterPrintCallback();

@@ -52,6 +52,7 @@ namespace ZLua.Lvm
         {
             get
             {
+                LuaMainThread.EnsureMainThread();
                 EnsureNotDisposed();
                 if (_state == IntPtr.Zero)
                 {
@@ -70,6 +71,7 @@ namespace ZLua.Lvm
 
         public LuaEnv()
         {
+            LuaMainThread.EnsureMainThread();
             _state = LuaDll.luaL_newstate();
             if (_state == IntPtr.Zero)
             {
@@ -90,6 +92,7 @@ namespace ZLua.Lvm
 
         public void SetModuleLoader(Func<string, object> moduleLoader)
         {
+            LuaMainThread.EnsureMainThread();
             _moduleLoader = moduleLoader;
             s_activeEnv = this;
             if (moduleLoader != null)
@@ -131,6 +134,7 @@ namespace ZLua.Lvm
         /// </summary>
         public void StartDebugger(int port = 9966, bool waitIde = false)
         {
+            LuaMainThread.EnsureMainThread();
             if (_emmyDebuggerStarted)
             {
                 return;
@@ -170,6 +174,7 @@ namespace ZLua.Lvm
 
         public void EnsureModuleLoaded(string moduleName)
         {
+            LuaMainThread.EnsureMainThread();
             if (string.IsNullOrWhiteSpace(moduleName) || _moduleRefs.ContainsKey(moduleName))
             {
                 return;
@@ -221,6 +226,7 @@ namespace ZLua.Lvm
 
         public int GetOrCreateModuleFunctionRef(string moduleName, string methodName)
         {
+            LuaMainThread.EnsureMainThread();
             string key = moduleName + "::" + methodName;
             if (_moduleFunctionRefs.TryGetValue(key, out int cachedRef))
             {
@@ -254,6 +260,7 @@ namespace ZLua.Lvm
 
         public void DoStringIgnoreResult(string chunk)
         {
+            LuaMainThread.EnsureMainThread();
             // Internal init only (before/around ErrFunc registration); no errfunc — not a public API path.
             int oldTop = LuaDll.lua_gettop(L);
             LuaPrintBuffer.EnterManagedPcall();
@@ -283,6 +290,7 @@ namespace ZLua.Lvm
 
         public void ProcessPendingRefReleases()
         {
+            LuaMainThread.EnsureMainThread();
             lock (_freePendingRefs)
             {
                 if (_freePendingRefs.Count == 0 || !IsAlive)
@@ -342,6 +350,7 @@ namespace ZLua.Lvm
 
         public void Dispose()
         {
+            LuaMainThread.EnsureMainThread();
             if (_disposed)
             {
                 return;

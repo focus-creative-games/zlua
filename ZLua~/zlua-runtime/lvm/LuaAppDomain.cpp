@@ -82,6 +82,7 @@ void LuaAppDomain::ShutdownState()
 
 void LuaAppDomain::Initialize()
 {
+    LuaEnv::EnsureMainThread();
     InitializeProcessOnce();
     if (LuaEnv::GetState() == nullptr)
     {
@@ -91,6 +92,7 @@ void LuaAppDomain::Initialize()
 
 void LuaAppDomain::InitializeFromManaged(Il2CppDelegate* moduleLoaderDelegate)
 {
+    LuaEnv::EnsureMainThread();
     if (moduleLoaderDelegate == nullptr)
     {
         il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetArgumentNullException("loader delegate is null"));
@@ -103,8 +105,7 @@ void LuaAppDomain::InitializeFromManaged(Il2CppDelegate* moduleLoaderDelegate)
     }
     else if (s_hostInitialized)
     {
-        il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetInvalidOperationException(
-            "ZLua is already initialized. Call LuaAppDomain.Reset to rebuild the Lua domain."));
+        il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetInvalidOperationException("ZLua is already initialized. Call LuaAppDomain.Reset to rebuild the Lua domain."));
     }
 
     LuaLoader::SetModuleLoader(moduleLoaderDelegate);
@@ -113,6 +114,7 @@ void LuaAppDomain::InitializeFromManaged(Il2CppDelegate* moduleLoaderDelegate)
 
 void LuaAppDomain::ResetFromManaged(Il2CppDelegate* moduleLoaderDelegate)
 {
+    LuaEnv::EnsureMainThread();
     if (moduleLoaderDelegate == nullptr)
     {
         il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetArgumentNullException("loader delegate is null"));

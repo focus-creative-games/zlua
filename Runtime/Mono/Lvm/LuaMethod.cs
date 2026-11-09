@@ -32,6 +32,7 @@ namespace ZLua
         {
             get
             {
+                LuaMainThread.EnsureMainThread();
                 if (_env == null || !_env.IsAlive)
                 {
                     throw new InvalidOperationException(
@@ -42,7 +43,10 @@ namespace ZLua
             }
         }
 
-        public int RefIndex { get; }
+        public int RefIndex
+        {
+            get;
+        }
 
         internal LuaEnv Env => _env;
 

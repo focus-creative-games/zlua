@@ -58,9 +58,9 @@ static void LuaIl2CppAppDomain_ProcessPendingRefReleases()
     LuaEnv::ProcessPendingRefReleases();
 }
 
-static Il2CppObject* LuaIl2CppAppDomain_GetFunctionInternal(Il2CppReflectionType* delegateTypeObj, Il2CppString* luaModule,
-                                                           Il2CppString* luaMethodName)
+static Il2CppObject* LuaIl2CppAppDomain_GetFunctionInternal(Il2CppReflectionType* delegateTypeObj, Il2CppString* luaModule, Il2CppString* luaMethodName)
 {
+    LuaEnv::EnsureMainThread();
     if (delegateTypeObj == nullptr)
     {
         il2cpp::vm::Exception::Raise(il2cpp::vm::Exception::GetArgumentNullException("delegateType"));

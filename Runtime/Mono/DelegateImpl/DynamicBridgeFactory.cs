@@ -327,17 +327,17 @@ namespace ZLua.DelegateImpl
             Expression tryBody = Expression.Block(
                 invokeStatements.Concat(new[] { returnExpression }));
 
-            // If getLuaState throws (env Reset/disposed), L stays IntPtr.Zero — never lua_settop(0).
+            // Validate thread/domain ownership before entering cleanup that mutates shared state.
             Expression restoreStack = Expression.IfThen(
                 Expression.NotEqual(luaStateVar, Expression.Constant(IntPtr.Zero)),
                 Expression.Call(LuaSetTop, luaStateVar, oldTopVar));
 
             Expression body = Expression.Block(
                 locals,
+                getLuaState,
                 needsOpaqueScope ? (Expression)Expression.Assign(opaqueStart, Expression.Constant(-1)) : Expression.Empty(),
                 Expression.TryFinally(
                     Expression.Block(
-                        getLuaState,
                         saveTop,
                         Expression.Call(EnterManagedPcall),
                         tryBody),
