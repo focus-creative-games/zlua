@@ -30,6 +30,10 @@ namespace ZLua.Utils
         {
             patchFile = null;
             patchKey = null;
+            if (!EngineVersionUtil.IsSupportedUnityVersion(unityVersion))
+            {
+                return false;
+            }
             string root = patchRoot ?? CommonPaths.ActiveLibil2cppPatchesPath;
             if (!Directory.Exists(root))
             {

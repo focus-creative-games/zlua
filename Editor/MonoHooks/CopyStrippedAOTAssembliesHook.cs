@@ -1,4 +1,4 @@
-﻿// Copyright 2026 Code Philosophy
+// Copyright 2026 Code Philosophy
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -30,7 +30,7 @@ using System.IO;
 
 namespace ZLua.MonoHook
 {
-#if UNITY_2021_1_OR_NEWER && !UNITY_2023_1_OR_NEWER
+#if (UNITY_2022_3 || TUANJIE_2022_3_OR_NEWER) && !UNITY_2023_1_OR_NEWER
     [InitializeOnLoad]
     public class CopyStrippedAOTAssembliesHook
     {

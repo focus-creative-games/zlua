@@ -1,4 +1,4 @@
-﻿// Copyright 2026 Code Philosophy
+// Copyright 2026 Code Philosophy
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -57,24 +57,28 @@ namespace ZLua.Commands
                 options |= BuildOptions.EnableDeepProfilingSupport;
             }
 
-#if UNITY_2021_2_OR_NEWER
             options |= BuildOptions.CleanBuildCache;
-#endif
 
             return options;
         }
 
         private static string GetLocationPathName(string buildDir, BuildTarget target)
         {
-            switch(target)
+            switch (target)
             {
-                case BuildTarget.StandaloneWindows:
-                case BuildTarget.StandaloneWindows64: return $"{buildDir}/{PlayerSettings.productName}.exe";
-                case BuildTarget.StandaloneOSX: return buildDir;
-                case BuildTarget.iOS: return buildDir;
-                case BuildTarget.Android: return buildDir;
-                case BuildTarget.StandaloneLinux64: return $"{buildDir}/{PlayerSettings.productName}";
-                default: return buildDir;
+            case BuildTarget.StandaloneWindows:
+            case BuildTarget.StandaloneWindows64:
+                return $"{buildDir}/{PlayerSettings.productName}.exe";
+            case BuildTarget.StandaloneOSX:
+                return buildDir;
+            case BuildTarget.iOS:
+                return buildDir;
+            case BuildTarget.Android:
+                return buildDir;
+            case BuildTarget.StandaloneLinux64:
+                return $"{buildDir}/{PlayerSettings.productName}";
+            default:
+                return buildDir;
             }
         }
 
@@ -107,36 +111,36 @@ namespace ZLua.Commands
 
                 switch (target)
                 {
-                    case BuildTarget.StandaloneWindows:
-                    case BuildTarget.StandaloneWindows64:
-                    {
-    #if UNITY_EDITOR_WIN
+                case BuildTarget.StandaloneWindows:
+                case BuildTarget.StandaloneWindows64:
+                {
+#if UNITY_EDITOR_WIN
                         UnityEditor.WindowsStandalone.UserBuildSettings.createSolution = true;
-    #endif
-                            break;
-                    }
-                    case BuildTarget.StandaloneOSX:
-                    {
-    #if UNITY_EDITOR_OSX
+#endif
+                    break;
+                }
+                case BuildTarget.StandaloneOSX:
+                {
+#if UNITY_EDITOR_OSX
                         UnityEditor.OSXStandalone.UserBuildSettings.createXcodeProject = true;
-    #endif
-                        break;
-                    }
-    #if TUANJIE_2022_3_OR_NEWER
+#endif
+                    break;
+                }
+#if TUANJIE_2022_3_OR_NEWER
                     case BuildTarget.HMIAndroid:
-    #endif
-                    case BuildTarget.Android:
-                    {
-                        EditorUserBuildSettings.exportAsGoogleAndroidProject = true;
-                        break;
-                    }
-    #if TUANJIE_2022_3_OR_NEWER
+#endif
+                case BuildTarget.Android:
+                {
+                    EditorUserBuildSettings.exportAsGoogleAndroidProject = true;
+                    break;
+                }
+#if TUANJIE_2022_3_OR_NEWER
                     case BuildTarget.OpenHarmony:
                     {
                         EditorUserBuildSettings.exportAsOpenHarmonyProject = true;
                         break;
                     }
-    #endif
+#endif
                 }
 
                 Debug.Log($"GenerateStripedAOTDlls build option:{buildOptions}");
@@ -170,29 +174,29 @@ namespace ZLua.Commands
 
                 switch (target)
                 {
-                    case BuildTarget.StandaloneWindows:
-                    case BuildTarget.StandaloneWindows64:
-                    {
+                case BuildTarget.StandaloneWindows:
+                case BuildTarget.StandaloneWindows64:
+                {
 #if UNITY_EDITOR_WIN
                         UnityEditor.WindowsStandalone.UserBuildSettings.createSolution = oldCreateSolution;
 #endif
-                        break;
-                    }
-                    case BuildTarget.StandaloneOSX:
-                    {
+                    break;
+                }
+                case BuildTarget.StandaloneOSX:
+                {
 #if UNITY_EDITOR_OSX
                             UnityEditor.OSXStandalone.UserBuildSettings.createXcodeProject = oldCreateSolution;
 #endif
-                        break;
-                    }
+                    break;
+                }
 #if TUANJIE_2022_3_OR_NEWER
                     case BuildTarget.HMIAndroid:
 #endif
-                    case BuildTarget.Android:
-                    {
-                        EditorUserBuildSettings.exportAsGoogleAndroidProject = oldExportAndroidProj;
-                        break;
-                    }
+                case BuildTarget.Android:
+                {
+                    EditorUserBuildSettings.exportAsGoogleAndroidProject = oldExportAndroidProj;
+                    break;
+                }
 #if TUANJIE_2022_3_OR_NEWER
                     case BuildTarget.OpenHarmony:
                     {

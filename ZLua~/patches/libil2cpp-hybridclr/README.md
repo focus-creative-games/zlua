@@ -15,10 +15,8 @@ patch here is always `X.Y.0.patch`.
 | `6000.0` | `6000.0.0.patch` | `6000.0.x` |
 | `6000.3` | `6000.3.0.patch` | `6000.3.x` |
 
-Only these series exist because HybridCLR itself supports only these (see
-`Data~/hybridclr_version.json` in the HybridCLR package). Unity `2021.3` and
-`6000.5` have zlua patches under `patches/libil2cpp/` but no HybridCLR support,
-so enabling the toggle on them fails with an explicit error.
+These are the supported Unity LTS lines for ZLua and its HybridCLR integration.
+Unity 2021 and non-LTS Update releases are not supported.
 
 ## Content
 

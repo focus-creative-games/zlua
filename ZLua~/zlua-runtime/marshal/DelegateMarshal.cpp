@@ -43,21 +43,13 @@
 namespace zlua
 {
 // Layout must match GenericMethod.cpp for the active Unity version.
-#if ZLUA_UNITY_VERSION < 20220000
-// Unity 2021: SharedGenericMethodInfo
-struct FgsMethodInfoCopy : MethodInfo
-{
-    Il2CppMethodPointer virtualCallMethodPointer;
-};
-#else
-// Unity 2022+: FullySharedGenericMethodInfo
+// FullySharedGenericMethodInfo layout.
 struct FgsMethodInfoCopy : MethodInfo
 {
     Il2CppMethodPointer rawVirtualMethodPointer;
     Il2CppMethodPointer rawDirectMethodPointer;
     InvokerMethod rawInvokerMethod;
 };
-#endif
 
 // Per-delegateClass construction recipe (computed once).
 struct LuaDelegateCtorCache
@@ -73,7 +65,7 @@ struct LuaDelegateCtorCache
 
 std::unordered_map<const Il2CppClass*, const LuaDelegateCtorCache*> s_luaDelegateCtorByClass;
 
-// Like HybridCLR InterpreterInvoke (Unity 2021+ InvokerMethod with __ret).
+// Like HybridCLR InterpreterInvoke (InvokerMethod with __ret).
 // Not InterpreterDelegateInvoke — ZLua lua→delegate never carries a multicast
 // list.
 // static void LuaDelegateInvoke(Il2CppMethodPointer, const MethodInfo* method, void* __this, void** __args, void* __ret)

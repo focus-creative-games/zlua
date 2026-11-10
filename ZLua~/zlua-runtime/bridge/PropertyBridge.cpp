@@ -793,13 +793,8 @@ PropertyAccessor PropertyBridge::ResolvePropertyAccessor(const PropertyInfo* pro
         return accessor;
     }
 
-#if ZLUA_UNITY_VERSION < 20220000
-    const bool getterHasFullGenericSharing = property->get != nullptr && il2cpp::vm::Method::HasFullGenericSharingSignature(property->get);
-    const bool setterHasFullGenericSharing = property->set != nullptr && il2cpp::vm::Method::HasFullGenericSharingSignature(property->set);
-#else
     const bool getterHasFullGenericSharing = false;
     const bool setterHasFullGenericSharing = false;
-#endif
 
 #define ZLUA_SELECT_PROP_ACCESSOR(FgsG, FgsS, NormG, NormS)                                                                                                                        \
     do                                                                                                                                                                             \

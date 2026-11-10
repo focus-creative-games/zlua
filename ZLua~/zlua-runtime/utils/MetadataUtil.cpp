@@ -352,8 +352,7 @@ static void AppendMethodGenericArguments(std::string& name, const MethodInfo* me
     {
         if (i != 0)
             name += ',';
-        Il2CppMetadataGenericParameterHandle param =
-            il2cpp::vm::MetadataCache::GetGenericParameterFromIndex(container, i);
+        Il2CppMetadataGenericParameterHandle param = il2cpp::vm::MetadataCache::GetGenericParameterFromIndex(container, i);
         name += il2cpp::vm::MetadataCache::GetGenericParameterName(param);
     }
     name += '>';
@@ -695,28 +694,11 @@ bool MetadataUtil::TryReadLuaExtensionTypes(Il2CppClass* klass, std::vector<Il2C
 
     Il2CppObject** attrArray = nullptr;
     int32_t count = 0;
-#if ZLUA_UNITY_VERSION >= 20220000
     Il2CppArray* attrs = il2cpp::vm::Reflection::GetCustomAttrsInfo((Il2CppObject*)typeObj, s_luaExtensionAttributeClass);
     if (attrs == nullptr || attrs->max_length == 0)
         return false;
     attrArray = il2cpp_array_addr(attrs, Il2CppObject*, 0);
     count = (int32_t)attrs->max_length;
-#else
-    CustomAttributesCache* cache = il2cpp::vm::Reflection::GetCustomAttrsInfo((Il2CppObject*)typeObj);
-    if (cache == nullptr || cache->count == 0)
-        return false;
-    std::vector<Il2CppObject*> luaExtensionAttrs;
-    for (int i = 0; i < cache->count; i++)
-    {
-        Il2CppObject* attr = cache->attributes[i];
-        if (attr != nullptr && il2cpp::vm::Class::IsAssignableFrom(s_luaExtensionAttributeClass, attr->klass))
-        {
-            luaExtensionAttrs.push_back(attr);
-        }
-    }
-    attrArray = luaExtensionAttrs.data();
-    count = (int32_t)luaExtensionAttrs.size();
-#endif
 
     std::unordered_set<Il2CppClass*> seen;
     for (int32_t a = 0; a < count; ++a)
@@ -1303,8 +1285,7 @@ bool MetadataUtil::MethodGenericTypeArgsSatisfyConstraints(const MethodInfo* ope
 
     for (uint32_t i = 0; i < typeArgCount; ++i)
     {
-        Il2CppMetadataGenericParameterHandle gp =
-            il2cpp::vm::MetadataCache::GetGenericParameterFromIndex(container, (GenericContainerParameterIndex)i);
+        Il2CppMetadataGenericParameterHandle gp = il2cpp::vm::MetadataCache::GetGenericParameterFromIndex(container, (GenericContainerParameterIndex)i);
         Il2CppClass* argKlass = il2cpp::vm::Class::FromIl2CppType(typeArgs[i]);
         if (argKlass == nullptr)
             return false;
@@ -1331,8 +1312,7 @@ bool MetadataUtil::MethodGenericTypeArgsSatisfyConstraints(const MethodInfo* ope
         const int16_t constraintCount = il2cpp::vm::MetadataCache::GetGenericConstraintCount(gp);
         for (int16_t c = 0; c < constraintCount; ++c)
         {
-            const Il2CppType* constraintType =
-                il2cpp::vm::MetadataCache::GetGenericParameterConstraintFromIndex(gp, (GenericParameterConstraintIndex)c);
+            const Il2CppType* constraintType = il2cpp::vm::MetadataCache::GetGenericParameterConstraintFromIndex(gp, (GenericParameterConstraintIndex)c);
             if (constraintType == nullptr)
                 continue;
 
@@ -1340,8 +1320,7 @@ bool MetadataUtil::MethodGenericTypeArgsSatisfyConstraints(const MethodInfo* ope
             const Il2CppType* effectiveConstraint = constraintType;
             if (constraintType->type == IL2CPP_TYPE_MVAR || constraintType->type == IL2CPP_TYPE_VAR)
             {
-                Il2CppMetadataGenericParameterHandle constraintGp =
-                    il2cpp::vm::MetadataCache::GetGenericParameterFromType(constraintType);
+                Il2CppMetadataGenericParameterHandle constraintGp = il2cpp::vm::MetadataCache::GetGenericParameterFromType(constraintType);
                 Il2CppGenericParameterInfo info = il2cpp::vm::MetadataCache::GetGenericParameterInfo(constraintGp);
                 if ((uint32_t)info.num >= typeArgCount)
                     return false;
@@ -1380,7 +1359,7 @@ uint32_t MetadataUtil::GetParameterToken(const MethodInfo* method, int paramInde
 #if ZLUA_SUPPORT_METHOD_RETURN_TYPE_CUSTOM_ATTRIBUTE
         return il2cpp::vm::MetadataCache::GetReturnParameterToken(methodHandle);
 #else
-        // Unity 2021.3 MetadataCache has no GetReturnParameterToken.
+        // Unity 2022.3 before 33 has no GetReturnParameterToken.
         return 0;
 #endif
     }

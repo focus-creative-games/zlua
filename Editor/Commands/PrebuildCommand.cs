@@ -1,4 +1,4 @@
-﻿// Copyright 2026 Code Philosophy
+// Copyright 2026 Code Philosophy
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -59,7 +59,7 @@ namespace ZLua.Commands
             string strippedAotAssemblyDir = CommonPaths.GetManagedStrippedDuplicatePath(target);
 
             // With HybridCLR present ZLua's StripAssembliesTo hook stands down (both
-            // packages patch the same native method), so on Unity 2021.1-2022 this
+            // packages patch the same native method), so on Unity 2022.3 this
             // directory can come up empty. Mirror HybridCLR's copy of the same artifacts.
             if (!ZLua.Utils.StrippedAotAssemblyDir.EnsurePopulated(target))
             {

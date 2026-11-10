@@ -16,6 +16,26 @@ namespace ZLua.Utils
             @"(\d+)\.(\d+)\.(\d+)",
             RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+        /// <summary>Supported LTS lines; Tuanjie exposes a 2022.3.x engine version.</summary>
+        public static bool IsSupportedUnityVersion(string version)
+        {
+            if (!UnityIl2CppPatchUtil.TryParseUnityTriplet(version, out int major, out int minor, out _))
+            {
+                return false;
+            }
+            return (major == 2022 && minor == 3) || (major == 6000 && (minor == 0 || minor == 3));
+        }
+
+        public static void EnsureSupportedUnityVersion()
+        {
+            if (!IsSupportedUnityVersion(Application.unityVersion))
+            {
+                throw new NotSupportedException(
+                    $"[ZLua] Unsupported Unity version {Application.unityVersion}. " +
+                    "Use Unity 2022.3 LTS, Unity 6.0/6.3 LTS, or Tuanjie based on Unity 2022.3.");
+            }
+        }
+
         /// <summary>True when running under Tuanjie Engine (not stock Unity).</summary>
         public static bool IsTuanjieEngine(string unityVersionStr = null)
         {

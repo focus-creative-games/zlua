@@ -1,5 +1,6 @@
 {
   "name": "com.code-philosophy.zlua",
+  "unity": "2022.3",
   "version": "1.2.0",
   "displayName": "ZLua",
   "description": "ZLua is a high-performance, rock-solid, and elegantly designed modern Lua solution for Unity, aggressively optimized for IL2CPP and .NET.",

@@ -72,12 +72,27 @@ namespace MonoHook
     public unsafe class MethodHook
     {
         public string tag;
-        public bool isHooked { get; private set; }
-        public bool isPlayModeHook { get; private set; }
+        public bool isHooked
+        {
+            get; private set;
+        }
+        public bool isPlayModeHook
+        {
+            get; private set;
+        }
 
-        public MethodBase targetMethod { get; private set; }       // 需要被hook的目标方法
-        public MethodBase replacementMethod { get; private set; }  // 被hook后的替代方法
-        public MethodBase proxyMethod { get; private set; }        // 目标方法的代理方法(可以通过此方法调用被hook后的原方法)
+        public MethodBase targetMethod
+        {
+            get; private set;
+        }       // 需要被hook的目标方法
+        public MethodBase replacementMethod
+        {
+            get; private set;
+        }  // 被hook后的替代方法
+        public MethodBase proxyMethod
+        {
+            get; private set;
+        }        // 目标方法的代理方法(可以通过此方法调用被hook后的原方法)
 
         private IntPtr _targetPtr;          // 目标方法被 jit 后的地址指针
         private IntPtr _replacementPtr;
@@ -85,21 +100,9 @@ namespace MonoHook
 
         private CodePatcher _codePatcher;
 
-#if UNITY_EDITOR && !UNITY_2020_3_OR_NEWER
-        /// <summary>
-        /// call `MethodInfo.MethodHandle.GetFunctionPointer()` 
-        /// will visit static class `UnityEditor.IMGUI.Controls.TreeViewGUI.Styles` and invoke its static constructor,
-        /// and init static filed `foldout`, but `GUISKin.current` is null now,
-        /// so we should wait until `GUISKin.current` has a valid value
-        /// </summary>
-        private static FieldInfo s_fi_GUISkin_current;
-#endif
 
         static MethodHook()
         {
-#if UNITY_EDITOR && !UNITY_2020_3_OR_NEWER
-            s_fi_GUISkin_current = typeof(GUISkin).GetField("current", BindingFlags.Static | BindingFlags.NonPublic);
-#endif
         }
 
         /// <summary>
@@ -110,9 +113,9 @@ namespace MonoHook
         /// <param name="proxyMethod">如果还需要调用原始目标方法，可以通过此参数的方法调用，如果不需要可以填 null</param>
         public MethodHook(MethodBase targetMethod, MethodBase replacementMethod, MethodBase proxyMethod, string data = "")
         {
-            this.targetMethod       = targetMethod;
-            this.replacementMethod  = replacementMethod;
-            this.proxyMethod        = proxyMethod;
+            this.targetMethod = targetMethod;
+            this.replacementMethod = replacementMethod;
+            this.proxyMethod = proxyMethod;
             this.tag = data;
 
             CheckMethod();
@@ -126,14 +129,7 @@ namespace MonoHook
             if (isHooked)
                 return;
 
-#if UNITY_EDITOR && !UNITY_2020_3_OR_NEWER 
-            if (s_fi_GUISkin_current.GetValue(null) != null)
-                DoInstall();
-            else
-                EditorApplication.update += OnEditorUpdate;
-#else
             DoInstall();
-#endif
             isPlayModeHook = Application.isPlaying;
         }
 
@@ -191,36 +187,13 @@ namespace MonoHook
             if (targetMethod.IsAbstract)
                 throw new Exception($"WRANING: you can not hook abstract method [{methodName}]");
 
-#if UNITY_EDITOR && !UNITY_2020_3_OR_NEWER
-            int minMethodBodySize = 10;
-
-            {
-                if ((targetMethod.MethodImplementationFlags & MethodImplAttributes.InternalCall) != MethodImplAttributes.InternalCall)
-                {
-                    int codeSize = targetMethod.GetMethodBody().GetILAsByteArray().Length; // GetMethodBody can not call on il2cpp
-                    if (codeSize < minMethodBodySize)
-                        UnityEngine.Debug.LogWarning($"WRANING: you can not hook method [{methodName}], cause its method body is too short({codeSize}), will random crash on IL2CPP release mode");
-                }
-            }
-
-            if(proxyMethod != null)
-            {
-                methodName = $"{proxyMethod.DeclaringType.Name}.{proxyMethod.Name}";
-                int codeSize = proxyMethod.GetMethodBody().GetILAsByteArray().Length;
-                if (codeSize < minMethodBodySize)
-                    UnityEngine.Debug.LogWarning($"WRANING: size of method body[{methodName}] is too short({codeSize}), will random crash on IL2CPP release mode, please fill some dummy code inside");
-
-                if ((proxyMethod.MethodImplementationFlags & MethodImplAttributes.NoOptimization) != MethodImplAttributes.NoOptimization)
-                    throw new Exception($"WRANING: method [{methodName}] must has a Attribute `MethodImpl(MethodImplOptions.NoOptimization)` to prevent code call to this optimized by compiler(pass args by shared stack)");
-            }
-#endif
         }
 
         private void CreateCodePatcher()
         {
             long addrOffset = Math.Abs(_targetPtr.ToInt64() - _proxyPtr.ToInt64());
-            
-            if(_proxyPtr != IntPtr.Zero)
+
+            if (_proxyPtr != IntPtr.Zero)
                 addrOffset = Math.Max(addrOffset, Math.Abs(_targetPtr.ToInt64() - _proxyPtr.ToInt64()));
 
             if (LDasm.IsARM())
@@ -238,7 +211,7 @@ namespace MonoHook
             {
                 if (IntPtr.Size == 8)
                 {
-                    if(addrOffset < 0x7fffffff) // 2G
+                    if (addrOffset < 0x7fffffff) // 2G
                         _codePatcher = new CodePatcher_x64_near(_targetPtr, _replacementPtr, _proxyPtr);
                     else
                         _codePatcher = new CodePatcher_x64_far(_targetPtr, _replacementPtr, _proxyPtr);
@@ -263,7 +236,7 @@ namespace MonoHook
             if (proxyMethod != null && _proxyPtr == null)
                 return false;
 
-            if(_replacementPtr == _targetPtr)
+            if (_replacementPtr == _targetPtr)
             {
                 throw new Exception($"the addresses of target method {targetMethod.Name} and replacement method {replacementMethod.Name} can not be same");
             }
@@ -358,22 +331,6 @@ namespace MonoHook
             }
         }
 
-#if UNITY_EDITOR && !UNITY_2020_3_OR_NEWER
-        private void OnEditorUpdate()
-        {
-            if (s_fi_GUISkin_current.GetValue(null) != null)
-            {
-                try
-                {
-                    DoInstall();
-                }
-                finally
-                {
-                    EditorApplication.update -= OnEditorUpdate;
-                }
-            }
-        }
-#endif
 
         #endregion
     }

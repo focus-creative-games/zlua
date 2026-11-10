@@ -30,7 +30,7 @@ namespace ZLua.Utils
     /// Makes sure ZLua's stripped-AOT dll directory is populated before codegen reads it.
     /// <para>
     /// ZLua normally fills <c>Library/ZLua/ManagedStripped/{target}</c> from two places:
-    /// a MonoHook on <c>AssemblyStripper.StripAssembliesTo</c> (Unity 2021.1–2022) and an
+    /// a MonoHook on <c>AssemblyStripper.StripAssembliesTo</c> (Unity 2022.3) and an
     /// <c>IPostprocessBuildWithReport</c> that reads Unity's
     /// <c>Library/Bee/artifacts/.../ManagedStripped</c>. With HybridCLR present the hook
     /// stands down (both packages patch the same native method), so on those Unity

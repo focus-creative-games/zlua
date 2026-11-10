@@ -241,12 +241,6 @@ FnLua2CsInvoker MethodBridge::ResolveMethodInvoker(const MethodInfo* method)
     {
         return SelectDefaultInvoker(method);
     }
-#if ZLUA_UNITY_VERSION < 20220000
-    if (il2cpp::vm::Method::HasFullGenericSharingSignature(method))
-    {
-        return SelectDefaultInvoker(method);
-    }
-#endif
     s_methodNameCache.clear();
     MetadataUtil::CreateStubName(method, s_methodNameCache);
     auto it = s_name2Invokers.find(s_methodNameCache.c_str());

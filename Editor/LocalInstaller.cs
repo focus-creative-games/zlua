@@ -55,10 +55,14 @@ namespace ZLua
         public UnityVersion CurVersion => _curVersion;
 
         /// <summary>True when Install changed API-family defines or series DLL expectation.</summary>
-        public bool RequiresEditorRestart { get; private set; }
+        public bool RequiresEditorRestart
+        {
+            get; private set;
+        }
 
         public LocalInstaller()
         {
+            EngineVersionUtil.EnsureSupportedUnityVersion();
             _curVersion = new UnityVersion(Application.unityVersion);
         }
 

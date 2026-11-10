@@ -39,25 +39,24 @@ namespace ZLua.BuildProcessors
 
         public int callbackOrder => 0;
 
-#if UNITY_2021_1_OR_NEWER
-        public static string GetStripAssembliesDir2021(BuildTarget target)
+        public static string GetStripAssembliesDir(BuildTarget target)
         {
             switch (target)
             {
-                case BuildTarget.StandaloneWindows:
-                    case BuildTarget.StandaloneWindows64:
-                    return $"Library/Bee/artifacts/WinPlayerBuildProgram/ManagedStripped";
-                case BuildTarget.StandaloneLinux64:
-                    return $"Library/Bee/artifacts/LinuxPlayerBuildProgram/ManagedStripped";
-                case BuildTarget.WSAPlayer:
-                    return $"Library/Bee/artifacts/UWPPlayerBuildProgram/ManagedStripped";
-                case BuildTarget.Android:
-                    return $"Library/Bee/artifacts/Android/ManagedStripped";
+            case BuildTarget.StandaloneWindows:
+            case BuildTarget.StandaloneWindows64:
+                return $"Library/Bee/artifacts/WinPlayerBuildProgram/ManagedStripped";
+            case BuildTarget.StandaloneLinux64:
+                return $"Library/Bee/artifacts/LinuxPlayerBuildProgram/ManagedStripped";
+            case BuildTarget.WSAPlayer:
+                return $"Library/Bee/artifacts/UWPPlayerBuildProgram/ManagedStripped";
+            case BuildTarget.Android:
+                return $"Library/Bee/artifacts/Android/ManagedStripped";
 #if TUANJIE_2022_3_OR_NEWER
                 case BuildTarget.HMIAndroid:
                     return $"Library/Bee/artifacts/HMIAndroid/ManagedStripped";
 #endif
-                case BuildTarget.iOS:
+            case BuildTarget.iOS:
 #if UNITY_TVOS
                 case BuildTarget.tvOS:
 #endif
@@ -70,17 +69,17 @@ namespace ZLua.BuildProcessors
                 return $"Library/Bee/artifacts/iOS/ManagedStripped";
 #endif
 #endif
-                case BuildTarget.WebGL:
-                    return $"Library/Bee/artifacts/WebGL/ManagedStripped";
-                case BuildTarget.StandaloneOSX:
-                    return $"Library/Bee/artifacts/MacStandalonePlayerBuildProgram/ManagedStripped";
-                case BuildTarget.PS4:
-                    return $"Library/Bee/artifacts/PS4PlayerBuildProgram/ManagedStripped";
-                case BuildTarget.PS5:
-                    return $"Library/Bee/artifacts/PS5PlayerBuildProgram/ManagedStripped";
-                case BuildTarget.GameCoreXboxOne:
-                case BuildTarget.GameCoreXboxSeries:
-                    return $"Library/Bee/artifacts/GameCorePlayerBuildProgram/ManagedStripped";
+            case BuildTarget.WebGL:
+                return $"Library/Bee/artifacts/WebGL/ManagedStripped";
+            case BuildTarget.StandaloneOSX:
+                return $"Library/Bee/artifacts/MacStandalonePlayerBuildProgram/ManagedStripped";
+            case BuildTarget.PS4:
+                return $"Library/Bee/artifacts/PS4PlayerBuildProgram/ManagedStripped";
+            case BuildTarget.PS5:
+                return $"Library/Bee/artifacts/PS5PlayerBuildProgram/ManagedStripped";
+            case BuildTarget.GameCoreXboxOne:
+            case BuildTarget.GameCoreXboxSeries:
+                return $"Library/Bee/artifacts/GameCorePlayerBuildProgram/ManagedStripped";
 #if UNITY_WEIXINMINIGAME
                 case BuildTarget.WeixinMiniGame:
                     return $"Library/Bee/artifacts/WeixinMiniGame/ManagedStripped";
@@ -89,24 +88,10 @@ namespace ZLua.BuildProcessors
                 case BuildTarget.OpenHarmony:
                     return $"Library/Bee/artifacts/OpenHarmonyPlayerBuildProgram/ManagedStripped";
 #endif
-                default: return "";
+            default:
+                return "";
             }
         }
-#else
-        private string GetStripAssembliesDir2020(BuildTarget target)
-        {
-            string subPath = target == BuildTarget.Android ?
-                "assets/bin/Data/Managed" :
-                "Data/Managed/";
-            return $"Temp/StagingArea/{subPath}";
-        }
-
-        public void OnBeforeConvertRun(BuildReport report, Il2CppBuildPipelineData data)
-        {
-            BuildTarget target = report.summary.platform;
-            CopyStripDlls(GetStripAssembliesDir2020(target), target);
-        }
-#endif
 
         public static void CopyStripDlls(string srcStripDllPath, BuildTarget target)
         {
@@ -147,7 +132,7 @@ namespace ZLua.BuildProcessors
                 return;
             }
             BuildTarget target = report.summary.platform;
-            string srcStripDllPath = GetStripAssembliesDir2021(target);
+            string srcStripDllPath = GetStripAssembliesDir(target);
             if (!string.IsNullOrEmpty(srcStripDllPath) && Directory.Exists(srcStripDllPath))
             {
                 CopyStripDlls(srcStripDllPath, target);
