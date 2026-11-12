@@ -283,7 +283,7 @@ namespace ZLua
 #endif
                 DirectoryUtil.CopyDir(editorIl2cppPath, CommonPaths.LocalIl2CppPath, true);
 #if NEW_IL2CPP_PATH
-                string buildDir = $"{CommonDirs.LocalIl2CppPath}/build";
+                string buildDir = $"{CommonPaths.LocalIl2CppPath}/build";
                 if (RuntimeInformation.ProcessArchitecture == Architecture.Arm
                     || RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
                 {
