@@ -121,7 +121,8 @@ namespace ZLua.Utils
                 }
                 break;
             }
-            default: throw new CodeGenException($"Unsupported type: {t.ElementType}");
+            default:
+                throw new CodeGenException($"Unsupported type: {t.ElementType}");
             }
             return EnscapeAsValidCppSymbol($"{baseName}_{ToMd5Upper(sb.ToString())}");
         }
@@ -155,7 +156,7 @@ namespace ZLua.Utils
 
             MethodDesc methodDesc = MethodDesc.CreateMethodDesc(method, klassInst, methodInst, false);
             var sb = new StringBuilder();
-            sb.Append(GetFullNameWithPlusAsSeparator(methodDesc.ReturnInfo.type));
+            sb.Append(CreateCanonicalTypeName(methodDesc.ReturnInfo.type));
             sb.Append('(');
             int index = 0;
             foreach (var param in methodDesc.ParamInfos)
@@ -164,7 +165,7 @@ namespace ZLua.Utils
                 {
                     sb.Append(',');
                 }
-                sb.Append(GetFullNameWithPlusAsSeparator(param.type));
+                sb.Append(CreateCanonicalTypeName(param.type));
                 ++index;
             }
             sb.Append(')');
@@ -355,6 +356,38 @@ namespace ZLua.Utils
         }
 
 
+        /// <summary>
+        /// Full type key shared with MetadataUtil::GetLuaFullName and Mono TypeRegistry:
+        /// nested '+', generic '[...]', arrays '[]' / '[*]' / '[,]', and '&' / '*'.
+        /// ABI-reduced stub names intentionally use a different format.
+        /// </summary>
+        public static string CreateCanonicalTypeName(TypeSig typeSig)
+        {
+            TypeSig type = typeSig.RemovePinnedAndModifiers();
+            switch (type.ElementType)
+            {
+            case ElementType.ByRef:
+                return CreateCanonicalTypeName(type.Next) + "&";
+            case ElementType.Ptr:
+                return CreateCanonicalTypeName(type.Next) + "*";
+            case ElementType.SZArray:
+                return CreateCanonicalTypeName(type.Next) + "[]";
+            case ElementType.Array:
+            {
+                uint rank = ((ArraySig)type).Rank;
+                return CreateCanonicalTypeName(type.Next) + "[" + (rank == 1 ? "*" : new string(',', checked((int)rank - 1))) + "]";
+            }
+            case ElementType.GenericInst:
+            {
+                var generic = (GenericInstSig)type;
+                return generic.GenericType.FullName.Replace('/', '+') + "["
+                    + string.Join(",", generic.GenericArguments.Select(CreateCanonicalTypeName)) + "]";
+            }
+            default:
+                return type.FullName.Replace('/', '+');
+            }
+        }
+
         private static string GetFullNameWithPlusAsSeparator(TypeSig typeSig)
         {
             return typeSig.FullName.Replace('/', '+');
@@ -374,28 +407,48 @@ namespace ZLua.Utils
             }
             switch (t.ElementType)
             {
-            case ElementType.Void: return "V";
-            case ElementType.Boolean: return "B";
-            case ElementType.Char: return "U2";
-            case ElementType.I1: return "I1";
-            case ElementType.U1: return "U1";
-            case ElementType.I2: return "I2";
-            case ElementType.U2: return "U2";
-            case ElementType.I4: return "I4";
-            case ElementType.U4: return "U4";
-            case ElementType.I8: return "I8";
-            case ElementType.U8: return "U8";
-            case ElementType.R4: return "R4";
-            case ElementType.R8: return "R8";
-            case ElementType.I: return "I";
-            case ElementType.U: return "U";
-            case ElementType.TypedByRef: return "TypedByRef";
+            case ElementType.Void:
+                return "V";
+            case ElementType.Boolean:
+                return "B";
+            case ElementType.Char:
+                return "U2";
+            case ElementType.I1:
+                return "I1";
+            case ElementType.U1:
+                return "U1";
+            case ElementType.I2:
+                return "I2";
+            case ElementType.U2:
+                return "U2";
+            case ElementType.I4:
+                return "I4";
+            case ElementType.U4:
+                return "U4";
+            case ElementType.I8:
+                return "I8";
+            case ElementType.U8:
+                return "U8";
+            case ElementType.R4:
+                return "R4";
+            case ElementType.R8:
+                return "R8";
+            case ElementType.I:
+                return "I";
+            case ElementType.U:
+                return "U";
+            case ElementType.TypedByRef:
+                return "TypedByRef";
             case ElementType.Ptr:
-            case ElementType.FnPtr: return "P";
-            case ElementType.Object: return "O";
-            case ElementType.String: return "S";
+            case ElementType.FnPtr:
+                return "P";
+            case ElementType.Object:
+                return "O";
+            case ElementType.String:
+                return "S";
             case ElementType.SZArray:
-            case ElementType.Array: return "A";
+            case ElementType.Array:
+                return "A";
             case ElementType.Class:
                 return GetShortReducedClassMarshalTypeName(t);
             case ElementType.ValueType:

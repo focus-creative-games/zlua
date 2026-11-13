@@ -349,6 +349,10 @@ namespace ZLua.Mt
                 else
                 {
                     sb.Append('[');
+                    if (rank == 1)
+                    {
+                        sb.Append('*');
+                    }
                     for (int i = 1; i < rank; i++)
                     {
                         sb.Append(',');

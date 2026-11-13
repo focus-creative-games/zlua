@@ -37,7 +37,10 @@ namespace ZLua
         /// Process-wide registry. Null until the first <see cref="LoadCurrent"/>.
         /// Each load publishes a new instance and leaves the previous one unchanged.
         /// </summary>
-        public static LuaMarshalAsXmlRegistry Current { get; private set; }
+        public static LuaMarshalAsXmlRegistry Current
+        {
+            get; private set;
+        }
 
         /// <summary>Load XML into a new registry and publish it as <see cref="Current"/>.</summary>
         public static void LoadCurrent(IEnumerable<string> configuredPaths, string projectRoot)
@@ -336,34 +339,7 @@ namespace ZLua
 
         public static string FormatTypeName(Type type)
         {
-            if (type == null)
-            {
-                return "System.Void";
-            }
-
-            if (type.IsByRef)
-            {
-                return FormatTypeName(type.GetElementType()) + "&";
-            }
-
-            if (type.IsArray)
-            {
-                Type element = type.GetElementType();
-                int rank = type.GetArrayRank();
-                if (rank == 1 && type.Name.EndsWith("[]", StringComparison.Ordinal))
-                {
-                    return FormatTypeName(element) + "[]";
-                }
-
-                return FormatTypeName(element) + "[" + new string(',', rank - 1) + "]";
-            }
-
-            if (type.IsGenericParameter)
-            {
-                return type.Name;
-            }
-
-            return type.FullName ?? type.Name;
+            return type == null ? "System.Void" : ZLua.Mt.TypeRegistry.GetLuaFullName(type);
         }
 
         private bool TryGetMember(Assembly assembly, int token, out LuaMarshalAsXmlRule rule)
@@ -431,84 +407,84 @@ namespace ZLua
 
             switch (rule.Kind)
             {
-                case LuaMarshalAsXmlTargetKind.Type:
-                    if (type.IsGenericTypeDefinition || type.IsGenericType)
-                    {
-                        throw new LuaMarshalAsConfigurationException(
-                            "[ZLua] MarshalAs XML type-level rule cannot target a generic type: "
-                            + rule.TypeFullName + " in " + rule.SourcePath);
-                    }
-
-                    PutMember(maps, type.MetadataToken, rule);
-                    break;
-
-                case LuaMarshalAsXmlTargetKind.Field:
+            case LuaMarshalAsXmlTargetKind.Type:
+                if (type.IsGenericTypeDefinition || type.IsGenericType)
                 {
-                    FieldInfo field = type.GetField(
-                        rule.MemberName,
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-                    if (field == null)
-                    {
-                        throw new LuaMarshalAsConfigurationException(
-                            "[ZLua] MarshalAs XML Field '" + rule.MemberName + "' not found on "
-                            + type.FullName + " in " + rule.SourcePath);
-                    }
-
-                    // Field/Property/Param/Return may target open slots (T / List<T>); §3 checked at resolve.
-                    PutMember(maps, field.MetadataToken, rule);
-                    break;
-                }
-
-                case LuaMarshalAsXmlTargetKind.Property:
-                {
-                    PropertyInfo property = type.GetProperty(
-                        rule.MemberName,
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-                    if (property == null)
-                    {
-                        throw new LuaMarshalAsConfigurationException(
-                            "[ZLua] MarshalAs XML Property '" + rule.MemberName + "' not found on "
-                            + type.FullName + " in " + rule.SourcePath);
-                    }
-
-                    PutMember(maps, property.MetadataToken, rule);
-                    break;
-                }
-
-                case LuaMarshalAsXmlTargetKind.Param:
-                {
-                    MethodBase method = ResolveMethod(type, rule.MethodName, rule.Signature, rule.SourcePath);
-                    ParameterInfo[] parameters = method.GetParameters();
-                    int index = rule.ParamIndex;
-                    if (index < 0 || index >= parameters.Length)
-                    {
-                        throw new LuaMarshalAsConfigurationException(
-                            "[ZLua] MarshalAs XML Param index " + index + " out of range for "
-                            + type.FullName + "." + rule.MethodName + rule.Signature
-                            + " in " + rule.SourcePath);
-                    }
-
-                    PutMethodSlot(maps, method.MetadataToken, index, rule);
-                    break;
-                }
-
-                case LuaMarshalAsXmlTargetKind.Return:
-                {
-                    MethodInfo methodInfo = ResolveMethod(type, rule.MethodName, rule.Signature, rule.SourcePath) as MethodInfo;
-                    if (methodInfo == null)
-                    {
-                        throw new LuaMarshalAsConfigurationException(
-                            "[ZLua] MarshalAs XML Return requires a MethodInfo (not constructor): "
-                            + type.FullName + "." + rule.MethodName + " in " + rule.SourcePath);
-                    }
-
-                    PutMethodSlot(maps, methodInfo.MetadataToken, -1, rule);
-                    break;
-                }
-
-                default:
                     throw new LuaMarshalAsConfigurationException(
-                        "[ZLua] Unknown MarshalAs XML target kind in " + rule.SourcePath);
+                        "[ZLua] MarshalAs XML type-level rule cannot target a generic type: "
+                        + rule.TypeFullName + " in " + rule.SourcePath);
+                }
+
+                PutMember(maps, type.MetadataToken, rule);
+                break;
+
+            case LuaMarshalAsXmlTargetKind.Field:
+            {
+                FieldInfo field = type.GetField(
+                    rule.MemberName,
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                if (field == null)
+                {
+                    throw new LuaMarshalAsConfigurationException(
+                        "[ZLua] MarshalAs XML Field '" + rule.MemberName + "' not found on "
+                        + type.FullName + " in " + rule.SourcePath);
+                }
+
+                // Field/Property/Param/Return may target open slots (T / List<T>); §3 checked at resolve.
+                PutMember(maps, field.MetadataToken, rule);
+                break;
+            }
+
+            case LuaMarshalAsXmlTargetKind.Property:
+            {
+                PropertyInfo property = type.GetProperty(
+                    rule.MemberName,
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                if (property == null)
+                {
+                    throw new LuaMarshalAsConfigurationException(
+                        "[ZLua] MarshalAs XML Property '" + rule.MemberName + "' not found on "
+                        + type.FullName + " in " + rule.SourcePath);
+                }
+
+                PutMember(maps, property.MetadataToken, rule);
+                break;
+            }
+
+            case LuaMarshalAsXmlTargetKind.Param:
+            {
+                MethodBase method = ResolveMethod(type, rule.MethodName, rule.Signature, rule.SourcePath);
+                ParameterInfo[] parameters = method.GetParameters();
+                int index = rule.ParamIndex;
+                if (index < 0 || index >= parameters.Length)
+                {
+                    throw new LuaMarshalAsConfigurationException(
+                        "[ZLua] MarshalAs XML Param index " + index + " out of range for "
+                        + type.FullName + "." + rule.MethodName + rule.Signature
+                        + " in " + rule.SourcePath);
+                }
+
+                PutMethodSlot(maps, method.MetadataToken, index, rule);
+                break;
+            }
+
+            case LuaMarshalAsXmlTargetKind.Return:
+            {
+                MethodInfo methodInfo = ResolveMethod(type, rule.MethodName, rule.Signature, rule.SourcePath) as MethodInfo;
+                if (methodInfo == null)
+                {
+                    throw new LuaMarshalAsConfigurationException(
+                        "[ZLua] MarshalAs XML Return requires a MethodInfo (not constructor): "
+                        + type.FullName + "." + rule.MethodName + " in " + rule.SourcePath);
+                }
+
+                PutMethodSlot(maps, methodInfo.MetadataToken, -1, rule);
+                break;
+            }
+
+            default:
+                throw new LuaMarshalAsConfigurationException(
+                    "[ZLua] Unknown MarshalAs XML target kind in " + rule.SourcePath);
             }
         }
 
